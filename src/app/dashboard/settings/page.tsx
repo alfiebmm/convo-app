@@ -10,6 +10,27 @@ interface TenantSettings {
       username: string;
       applicationPassword: string;
     };
+    shopify?: {
+      shopDomain: string;
+      accessToken: string;
+      blogId: string;
+    };
+    webflow?: {
+      siteId: string;
+      collectionId: string;
+      accessToken: string;
+    };
+    generic?: {
+      name: string;
+      endpoint: string;
+      method: "POST" | "PUT";
+      headers: Record<string, string>;
+      authType: "none" | "basic" | "bearer" | "custom";
+      authValue?: string;
+      bodyTemplate: string;
+      responseUrlPath?: string;
+      responseIdPath?: string;
+    };
   };
   autoPublish?: boolean;
   autoPublishThreshold?: number;
@@ -85,17 +106,17 @@ export default function SettingsPage() {
               settings={settings}
               onUpdate={setSettings}
             />
-            <IntegrationCard
-              name="Shopify"
-              description="Publish to Shopify blog"
-              connected={false}
-              comingSoon
+            <ShopifyIntegration
+              settings={settings}
+              onUpdate={setSettings}
             />
-            <IntegrationCard
-              name="Webflow"
-              description="Publish to Webflow CMS"
-              connected={false}
-              comingSoon
+            <WebflowIntegration
+              settings={settings}
+              onUpdate={setSettings}
+            />
+            <GenericIntegration
+              settings={settings}
+              onUpdate={setSettings}
             />
           </div>
         </section>
@@ -142,6 +163,49 @@ export default function SettingsPage() {
   );
 }
 
+// ─── Helper: Save CMS config ─────────────────────────────────
+
+async function saveCMSConfig(
+  cmsType: string,
+  cmsKey: string,
+  cmsData: Record<string, unknown>,
+  onUpdate: (s: TenantSettings) => void
+) {
+  const res = await fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cms: {
+        type: cmsType,
+        [cmsKey]: cmsData,
+      },
+    }),
+  });
+  const data = await res.json();
+  onUpdate(data.settings);
+}
+
+async function disconnectCMS(
+  cmsKey: string,
+  currentSettings: TenantSettings,
+  onUpdate: (s: TenantSettings) => void
+) {
+  // Remove the specific CMS config, keep others
+  const currentCms = currentSettings.cms ?? ({} as TenantSettings["cms"]);
+  const updatedCms: Record<string, unknown> = { ...currentCms, [cmsKey]: undefined };
+  // If the active type was this one, clear it
+  if (currentCms?.type === cmsKey) {
+    updatedCms.type = "";
+  }
+  const res = await fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cms: updatedCms }),
+  });
+  const data = await res.json();
+  onUpdate(data.settings);
+}
+
 // ─── WordPress Integration Card ──────────────────────────────
 
 function WordPressIntegration({
@@ -172,22 +236,12 @@ function WordPressIntegration({
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cms: {
-            type: "wordpress",
-            wordpress: {
-              siteUrl,
-              username,
-              applicationPassword: appPassword,
-            },
-          },
-        }),
-      });
-      const data = await res.json();
-      onUpdate(data.settings);
+      await saveCMSConfig(
+        "wordpress",
+        "wordpress",
+        { siteUrl, username, applicationPassword: appPassword },
+        onUpdate
+      );
       setShowForm(false);
     } catch (err) {
       console.error("Failed to save WordPress settings:", err);
@@ -199,13 +253,7 @@ function WordPressIntegration({
   async function handleDisconnect() {
     setSaving(true);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cms: {} }),
-      });
-      const data = await res.json();
-      onUpdate(data.settings);
+      await disconnectCMS("wordpress", settings, onUpdate);
       setSiteUrl("");
       setUsername("");
       setAppPassword("");
@@ -248,12 +296,7 @@ function WordPressIntegration({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isConnected && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-              Connected
-            </span>
-          )}
+          {isConnected && <ConnectedBadge />}
           {isConnected ? (
             <div className="flex gap-2">
               <button
@@ -283,10 +326,7 @@ function WordPressIntegration({
 
       {showForm && (
         <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Site URL
-            </label>
+          <FormField label="Site URL">
             <input
               type="url"
               value={siteUrl}
@@ -294,11 +334,8 @@ function WordPressIntegration({
               placeholder="https://yoursite.com"
               className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Username
-            </label>
+          </FormField>
+          <FormField label="Username">
             <input
               type="text"
               value={username}
@@ -306,11 +343,8 @@ function WordPressIntegration({
               placeholder="admin"
               className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Application Password
-            </label>
+          </FormField>
+          <FormField label="Application Password" hint="Generate in WordPress → Users → Application Passwords">
             <input
               type="password"
               value={appPassword}
@@ -318,39 +352,656 @@ function WordPressIntegration({
               placeholder="xxxx xxxx xxxx xxxx"
               className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
-            <p className="mt-1 text-xs text-slate-400">
-              Generate in WordPress → Users → Application Passwords
-            </p>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={handleSave}
-              disabled={saving || !siteUrl || !username || !appPassword}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
-            >
-              {saving ? "Saving..." : "Save"}
-            </button>
-            <button
-              onClick={handleTest}
-              disabled={testing || !siteUrl || !username || !appPassword}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-            >
-              {testing ? "Testing..." : "Test Connection"}
-            </button>
-          </div>
-          {testResult && (
-            <div
-              className={`mt-2 rounded-lg p-3 text-sm ${
-                testResult.success
-                  ? "bg-green-50 text-green-800"
-                  : "bg-red-50 text-red-800"
-              }`}
-            >
-              {testResult.success
-                ? "✓ Connection successful!"
-                : `✗ ${testResult.error}`}
+          </FormField>
+          <FormActions
+            onSave={handleSave}
+            onTest={handleTest}
+            saving={saving}
+            testing={testing}
+            disabled={!siteUrl || !username || !appPassword}
+          />
+          <TestResultBanner result={testResult} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Shopify Integration Card ────────────────────────────────
+
+function ShopifyIntegration({
+  settings,
+  onUpdate,
+}: {
+  settings: TenantSettings;
+  onUpdate: (s: TenantSettings) => void;
+}) {
+  const isConnected = !!settings.cms?.shopify?.shopDomain;
+  const [showForm, setShowForm] = useState(false);
+  const [shopDomain, setShopDomain] = useState(
+    settings.cms?.shopify?.shopDomain ?? ""
+  );
+  const [accessToken, setAccessToken] = useState(
+    settings.cms?.shopify?.accessToken ?? ""
+  );
+  const [blogId, setBlogId] = useState(
+    settings.cms?.shopify?.blogId ?? ""
+  );
+  const [blogs, setBlogs] = useState<Array<{ id: number; title: string }>>([]);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await saveCMSConfig(
+        "shopify",
+        "shopify",
+        { shopDomain, accessToken, blogId },
+        onUpdate
+      );
+      setShowForm(false);
+    } catch (err) {
+      console.error("Failed to save Shopify settings:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setSaving(true);
+    try {
+      await disconnectCMS("shopify", settings, onUpdate);
+      setShopDomain("");
+      setAccessToken("");
+      setBlogId("");
+      setBlogs([]);
+    } catch (err) {
+      console.error("Failed to disconnect:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/settings/test-shopify", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopDomain, accessToken }),
+      });
+      const data = await res.json();
+      setTestResult(data);
+      if (data.success && data.blogs) {
+        setBlogs(data.blogs);
+        // Auto-select first blog if none selected
+        if (!blogId && data.blogs.length > 0) {
+          setBlogId(String(data.blogs[0].id));
+        }
+      }
+    } catch {
+      setTestResult({ success: false, error: "Network error" });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-medium text-slate-900">Shopify</p>
+          <p className="text-sm text-slate-500">
+            Publish to Shopify blog
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isConnected && <ConnectedBadge />}
+          {isConnected ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowForm(!showForm)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={saving}
+                className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                Disconnect
+              </button>
             </div>
+          ) : (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Connect
+            </button>
           )}
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+          <FormField label="Shop Domain" hint="e.g. your-store.myshopify.com">
+            <input
+              type="text"
+              value={shopDomain}
+              onChange={(e) => setShopDomain(e.target.value)}
+              placeholder="your-store.myshopify.com"
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+          <FormField label="Access Token" hint="Admin API access token from your Shopify app">
+            <input
+              type="password"
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="shpat_xxxxx"
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+          <FormField label="Blog">
+            {blogs.length > 0 ? (
+              <select
+                value={blogId}
+                onChange={(e) => setBlogId(e.target.value)}
+                className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="">Select a blog...</option>
+                {blogs.map((blog) => (
+                  <option key={blog.id} value={String(blog.id)}>
+                    {blog.title}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  value={blogId}
+                  onChange={(e) => setBlogId(e.target.value)}
+                  placeholder="Test connection to load blogs"
+                  className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Click &quot;Test Connection&quot; to load available blogs
+                </p>
+              </div>
+            )}
+          </FormField>
+          <FormActions
+            onSave={handleSave}
+            onTest={handleTest}
+            saving={saving}
+            testing={testing}
+            disabled={!shopDomain || !accessToken}
+          />
+          <TestResultBanner result={testResult} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Webflow Integration Card ────────────────────────────────
+
+function WebflowIntegration({
+  settings,
+  onUpdate,
+}: {
+  settings: TenantSettings;
+  onUpdate: (s: TenantSettings) => void;
+}) {
+  const isConnected = !!settings.cms?.webflow?.siteId;
+  const [showForm, setShowForm] = useState(false);
+  const [siteId, setSiteId] = useState(
+    settings.cms?.webflow?.siteId ?? ""
+  );
+  const [collectionId, setCollectionId] = useState(
+    settings.cms?.webflow?.collectionId ?? ""
+  );
+  const [accessToken, setAccessToken] = useState(
+    settings.cms?.webflow?.accessToken ?? ""
+  );
+  const [collections, setCollections] = useState<
+    Array<{ id: string; displayName: string; slug: string }>
+  >([]);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await saveCMSConfig(
+        "webflow",
+        "webflow",
+        { siteId, collectionId, accessToken },
+        onUpdate
+      );
+      setShowForm(false);
+    } catch (err) {
+      console.error("Failed to save Webflow settings:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setSaving(true);
+    try {
+      await disconnectCMS("webflow", settings, onUpdate);
+      setSiteId("");
+      setCollectionId("");
+      setAccessToken("");
+      setCollections([]);
+    } catch (err) {
+      console.error("Failed to disconnect:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/settings/test-webflow", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteId, accessToken }),
+      });
+      const data = await res.json();
+      setTestResult(data);
+      if (data.success && data.collections) {
+        setCollections(data.collections);
+        if (!collectionId && data.collections.length > 0) {
+          setCollectionId(data.collections[0].id);
+        }
+      }
+    } catch {
+      setTestResult({ success: false, error: "Network error" });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-medium text-slate-900">Webflow</p>
+          <p className="text-sm text-slate-500">
+            Publish to Webflow CMS
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isConnected && <ConnectedBadge />}
+          {isConnected ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowForm(!showForm)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={saving}
+                className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Connect
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+          <FormField label="Site ID" hint="Found in Webflow Project Settings → General">
+            <input
+              type="text"
+              value={siteId}
+              onChange={(e) => setSiteId(e.target.value)}
+              placeholder="64abc..."
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+          <FormField label="Access Token" hint="Generate in Webflow → Integrations → API Access">
+            <input
+              type="password"
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="Bearer token"
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+          <FormField label="Collection">
+            {collections.length > 0 ? (
+              <select
+                value={collectionId}
+                onChange={(e) => setCollectionId(e.target.value)}
+                className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="">Select a collection...</option>
+                {collections.map((col) => (
+                  <option key={col.id} value={col.id}>
+                    {col.displayName} ({col.slug})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  value={collectionId}
+                  onChange={(e) => setCollectionId(e.target.value)}
+                  placeholder="Test connection to load collections"
+                  className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Click &quot;Test Connection&quot; to load available collections
+                </p>
+              </div>
+            )}
+          </FormField>
+          <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            ℹ️ Webflow items are created as drafts. You&apos;ll need to publish them in the Webflow Designer.
+          </div>
+          <FormActions
+            onSave={handleSave}
+            onTest={handleTest}
+            saving={saving}
+            testing={testing}
+            disabled={!siteId || !accessToken}
+          />
+          <TestResultBanner result={testResult} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Generic/Custom Integration Card ─────────────────────────
+
+const DEFAULT_BODY_TEMPLATE = `{
+  "title": "{{title}}",
+  "slug": "{{slug}}",
+  "content": "{{body_html}}",
+  "excerpt": "{{meta_description}}"
+}`;
+
+function GenericIntegration({
+  settings,
+  onUpdate,
+}: {
+  settings: TenantSettings;
+  onUpdate: (s: TenantSettings) => void;
+}) {
+  const genericConfig = settings.cms?.generic;
+  const isConnected = !!genericConfig?.endpoint;
+  const [showForm, setShowForm] = useState(false);
+
+  const [name, setName] = useState(genericConfig?.name ?? "");
+  const [endpoint, setEndpoint] = useState(genericConfig?.endpoint ?? "");
+  const [method, setMethod] = useState<"POST" | "PUT">(
+    genericConfig?.method ?? "POST"
+  );
+  const [authType, setAuthType] = useState<"none" | "basic" | "bearer" | "custom">(
+    genericConfig?.authType ?? "none"
+  );
+  const [authValue, setAuthValue] = useState(genericConfig?.authValue ?? "");
+  const [bodyTemplate, setBodyTemplate] = useState(
+    genericConfig?.bodyTemplate ?? DEFAULT_BODY_TEMPLATE
+  );
+  const [responseUrlPath, setResponseUrlPath] = useState(
+    genericConfig?.responseUrlPath ?? ""
+  );
+  const [responseIdPath, setResponseIdPath] = useState(
+    genericConfig?.responseIdPath ?? ""
+  );
+
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await saveCMSConfig(
+        "generic",
+        "generic",
+        {
+          name: name || "Custom API",
+          endpoint,
+          method,
+          headers: {},
+          authType,
+          authValue: authValue || undefined,
+          bodyTemplate,
+          responseUrlPath: responseUrlPath || undefined,
+          responseIdPath: responseIdPath || undefined,
+        },
+        onUpdate
+      );
+      setShowForm(false);
+    } catch (err) {
+      console.error("Failed to save Generic settings:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setSaving(true);
+    try {
+      await disconnectCMS("generic", settings, onUpdate);
+      setName("");
+      setEndpoint("");
+      setMethod("POST");
+      setAuthType("none");
+      setAuthValue("");
+      setBodyTemplate(DEFAULT_BODY_TEMPLATE);
+      setResponseUrlPath("");
+      setResponseIdPath("");
+    } catch (err) {
+      console.error("Failed to disconnect:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/settings/test-generic", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint,
+          headers: {},
+          authType,
+          authValue: authValue || undefined,
+        }),
+      });
+      const data = await res.json();
+      setTestResult(data);
+    } catch {
+      setTestResult({ success: false, error: "Network error" });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-medium text-slate-900">
+            {isConnected && genericConfig?.name
+              ? genericConfig.name
+              : "Custom / Generic API"}
+          </p>
+          <p className="text-sm text-slate-500">
+            Publish via any REST API
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isConnected && <ConnectedBadge />}
+          {isConnected ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowForm(!showForm)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={saving}
+                className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Connect
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+          <FormField label="Display Name">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Doggo Blog API"
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+          <FormField label="Endpoint URL">
+            <input
+              type="url"
+              value={endpoint}
+              onChange={(e) => setEndpoint(e.target.value)}
+              placeholder="https://example.com/api/v1/posts"
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+          <div className="grid max-w-md grid-cols-2 gap-3">
+            <FormField label="Method">
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value as "POST" | "PUT")}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+              </select>
+            </FormField>
+            <FormField label="Auth Type">
+              <select
+                value={authType}
+                onChange={(e) =>
+                  setAuthType(
+                    e.target.value as "none" | "basic" | "bearer" | "custom"
+                  )
+                }
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="none">None</option>
+                <option value="basic">Basic Auth</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="custom">Custom (via headers)</option>
+              </select>
+            </FormField>
+          </div>
+          {authType !== "none" && authType !== "custom" && (
+            <FormField
+              label={authType === "basic" ? "Credentials (user:pass)" : "Token"}
+            >
+              <input
+                type="password"
+                value={authValue}
+                onChange={(e) => setAuthValue(e.target.value)}
+                placeholder={
+                  authType === "basic" ? "username:password" : "your-api-token"
+                }
+                className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </FormField>
+          )}
+          <FormField
+            label="Body Template (JSON)"
+            hint="Placeholders: {{title}}, {{slug}}, {{body_html}}, {{body_markdown}}, {{meta_description}}, {{excerpt}}"
+          >
+            <textarea
+              value={bodyTemplate}
+              onChange={(e) => setBodyTemplate(e.target.value)}
+              rows={6}
+              className="mt-1 w-full max-w-lg rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono"
+            />
+          </FormField>
+          <div className="grid max-w-md grid-cols-2 gap-3">
+            <FormField label="Response URL Path" hint='e.g. "data.url"'>
+              <input
+                type="text"
+                value={responseUrlPath}
+                onChange={(e) => setResponseUrlPath(e.target.value)}
+                placeholder="data.url"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </FormField>
+            <FormField label="Response ID Path" hint='e.g. "data.id"'>
+              <input
+                type="text"
+                value={responseIdPath}
+                onChange={(e) => setResponseIdPath(e.target.value)}
+                placeholder="data.id"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </FormField>
+          </div>
+          <FormActions
+            onSave={handleSave}
+            onTest={handleTest}
+            saving={saving}
+            testing={testing}
+            disabled={!endpoint}
+          />
+          <TestResultBanner result={testResult} />
         </div>
       )}
     </div>
@@ -455,32 +1106,87 @@ function AutoPublishSettings({
   );
 }
 
-// ─── Generic Integration Card (Shopify, Webflow, etc.) ──────
+// ─── Shared UI Components ────────────────────────────────────
 
-function IntegrationCard({
-  name,
-  description,
-  connected,
-  comingSoon,
+function ConnectedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+      Connected
+    </span>
+  );
+}
+
+function FormField({
+  label,
+  hint,
+  children,
 }: {
-  name: string;
-  description: string;
-  connected: boolean;
-  comingSoon?: boolean;
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
-      <div>
-        <p className="font-medium text-slate-900">{name}</p>
-        <p className="text-sm text-slate-500">{description}</p>
-      </div>
-      {comingSoon ? (
-        <span className="text-xs font-medium text-slate-400">Coming soon</span>
-      ) : (
-        <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-          {connected ? "Connected" : "Connect"}
-        </button>
-      )}
+    <div>
+      <label className="block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      {children}
+      {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+    </div>
+  );
+}
+
+function FormActions({
+  onSave,
+  onTest,
+  saving,
+  testing,
+  disabled,
+}: {
+  onSave: () => void;
+  onTest: () => void;
+  saving: boolean;
+  testing: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex gap-2 pt-2">
+      <button
+        onClick={onSave}
+        disabled={saving || disabled}
+        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
+      >
+        {saving ? "Saving..." : "Save"}
+      </button>
+      <button
+        onClick={onTest}
+        disabled={testing || disabled}
+        className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+      >
+        {testing ? "Testing..." : "Test Connection"}
+      </button>
+    </div>
+  );
+}
+
+function TestResultBanner({
+  result,
+}: {
+  result: { success: boolean; error?: string } | null;
+}) {
+  if (!result) return null;
+  return (
+    <div
+      className={`mt-2 rounded-lg p-3 text-sm ${
+        result.success
+          ? "bg-green-50 text-green-800"
+          : "bg-red-50 text-red-800"
+      }`}
+    >
+      {result.success
+        ? "✓ Connection successful!"
+        : `✗ ${result.error}`}
     </div>
   );
 }

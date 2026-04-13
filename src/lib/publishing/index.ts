@@ -2,7 +2,7 @@
  * Publishing Orchestrator
  *
  * Routes content to the correct CMS publisher based on tenant settings.
- * Architected for future expansion (Shopify, Webflow, etc.).
+ * Supports WordPress, Shopify, Webflow, and Generic/Custom REST APIs.
  */
 import { db } from "../db";
 import { content, tenants } from "../db/schema";
@@ -12,16 +12,29 @@ import {
   type WPConfig,
   type PublishResult,
 } from "./wordpress";
+import {
+  publishToShopify,
+  type ShopifyConfig,
+} from "./shopify";
+import {
+  publishToWebflow,
+  type WebflowConfig,
+} from "./webflow";
+import {
+  publishToGeneric,
+  type GenericConfig,
+} from "./generic";
 
 export type { PublishResult } from "./wordpress";
 
-export type CMSType = "wordpress" | "shopify" | "webflow";
+export type CMSType = "wordpress" | "shopify" | "webflow" | "generic";
 
 export interface CMSConfig {
   type: CMSType;
   wordpress?: WPConfig;
-  // Future: shopify?: ShopifyConfig;
-  // Future: webflow?: WebflowConfig;
+  shopify?: ShopifyConfig;
+  webflow?: WebflowConfig;
+  generic?: GenericConfig;
 }
 
 export interface TenantSettings {
@@ -83,9 +96,54 @@ export async function publishContent(
       result = await publishToWordPress(cmsConfig.wordpress, item, draft);
       break;
     }
-    // Future CMS providers:
-    // case "shopify": { ... }
-    // case "webflow": { ... }
+    case "shopify": {
+      if (!cmsConfig.shopify) {
+        return {
+          success: false,
+          error: "Shopify credentials not configured",
+        };
+      }
+      const shopifyResult = await publishToShopify(cmsConfig.shopify, item, draft);
+      result = {
+        success: shopifyResult.success,
+        postId: shopifyResult.articleId,
+        url: shopifyResult.url,
+        error: shopifyResult.error,
+      };
+      break;
+    }
+    case "webflow": {
+      if (!cmsConfig.webflow) {
+        return {
+          success: false,
+          error: "Webflow credentials not configured",
+        };
+      }
+      const webflowResult = await publishToWebflow(cmsConfig.webflow, item);
+      result = {
+        success: webflowResult.success,
+        postId: webflowResult.itemId ? Number(webflowResult.itemId) : undefined,
+        url: webflowResult.url,
+        error: webflowResult.error,
+      };
+      break;
+    }
+    case "generic": {
+      if (!cmsConfig.generic) {
+        return {
+          success: false,
+          error: "Generic CMS not configured",
+        };
+      }
+      const genericResult = await publishToGeneric(cmsConfig.generic, item);
+      result = {
+        success: genericResult.success,
+        postId: genericResult.postId ? Number(genericResult.postId) : undefined,
+        url: genericResult.url,
+        error: genericResult.error,
+      };
+      break;
+    }
     default:
       return {
         success: false,
