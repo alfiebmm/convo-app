@@ -1,27 +1,21 @@
-import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
-import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
 
 /**
- * Dual-driver DB connection:
- * - Vercel/serverless: uses Neon HTTP driver (works in edge/serverless)
- * - Local dev: uses node-postgres (works in Node.js)
+ * DB connection using node-postgres.
+ * Works in both local dev and Vercel serverless (Node.js runtime).
+ *
+ * Note: Vercel API routes default to Node.js runtime (not Edge),
+ * so node-postgres works fine. If we ever need Edge runtime,
+ * we'd switch to Neon or Supabase's HTTP driver.
  */
-function createDb() {
-  const url = process.env.DATABASE_URL!;
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL!,
+  max: 5, // limit pool size for serverless
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 10000,
+});
 
-  if (process.env.VERCEL) {
-    // Neon HTTP driver for serverless
-    const sql = neon(url);
-    return drizzleNeon(sql, { schema });
-  }
-
-  // node-postgres for local dev
-  const pool = new pg.Pool({ connectionString: url });
-  return drizzleNode(pool, { schema });
-}
-
-export const db = createDb();
+export const db = drizzle(pool, { schema });
 export type Database = typeof db;
