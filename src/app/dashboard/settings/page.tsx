@@ -2,6 +2,42 @@
 
 import { useState, useEffect } from "react";
 
+interface AudienceConfig {
+  id: string;
+  name: string;
+  urlPatterns: string[];
+  persona: string;
+  ctaMessages: string[];
+  ctaAfterTurns: number;
+}
+
+interface DeflectRule {
+  topic: string;
+  response: string;
+}
+
+interface GuardrailsConfig {
+  audiences: AudienceConfig[];
+  topicBoundaries: {
+    allow: string[];
+    deflect: DeflectRule[];
+    hardBlock: string[];
+  };
+  conversationLimits: {
+    maxTurnsBeforeCTA: number;
+    idleTimeoutMinutes: number;
+  };
+}
+
+interface NotificationsConfig {
+  enabled: boolean;
+  telegram?: {
+    botToken: string;
+    chatId: string;
+  };
+  mode: "all" | "digest" | "off";
+}
+
 interface TenantSettings {
   cms?: {
     type: string;
@@ -34,6 +70,8 @@ interface TenantSettings {
   };
   autoPublish?: boolean;
   autoPublishThreshold?: number;
+  guardrails?: GuardrailsConfig;
+  notifications?: NotificationsConfig;
 }
 
 export default function SettingsPage() {
@@ -131,6 +169,12 @@ export default function SettingsPage() {
           </p>
           <AutoPublishSettings settings={settings} onUpdate={setSettings} />
         </section>
+
+        {/* Guardrails */}
+        <GuardrailsSection settings={settings} onUpdate={setSettings} />
+
+        {/* Notifications */}
+        <NotificationsSection settings={settings} onUpdate={setSettings} />
 
         {/* Team */}
         <section className="rounded-lg border border-slate-200 bg-white p-6">
@@ -1289,6 +1333,638 @@ function BillingSection() {
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+// ─── Guardrails Section ──────────────────────────────────────
+
+function GuardrailsSection({
+  settings,
+  onUpdate,
+}: {
+  settings: TenantSettings;
+  onUpdate: (s: TenantSettings) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [guardrails, setGuardrails] = useState<GuardrailsConfig>(
+    settings.guardrails ?? {
+      audiences: [],
+      topicBoundaries: { allow: [], deflect: [], hardBlock: [] },
+      conversationLimits: { maxTurnsBeforeCTA: 5, idleTimeoutMinutes: 10 },
+    }
+  );
+  const [editingAudience, setEditingAudience] = useState<number | null>(null);
+
+  async function saveGuardrails(updated: GuardrailsConfig) {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guardrails: updated }),
+      });
+      const data = await res.json();
+      onUpdate(data.settings);
+    } catch (err) {
+      console.error("Failed to save guardrails:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function addAudience() {
+    const newAudience: AudienceConfig = {
+      id: `audience-${Date.now()}`,
+      name: "",
+      urlPatterns: ["*"],
+      persona: "",
+      ctaMessages: [],
+      ctaAfterTurns: 5,
+    };
+    const updated = {
+      ...guardrails,
+      audiences: [...guardrails.audiences, newAudience],
+    };
+    setGuardrails(updated);
+    setEditingAudience(updated.audiences.length - 1);
+  }
+
+  function updateAudience(index: number, audience: AudienceConfig) {
+    const audiences = [...guardrails.audiences];
+    audiences[index] = audience;
+    const updated = { ...guardrails, audiences };
+    setGuardrails(updated);
+  }
+
+  function removeAudience(index: number) {
+    const audiences = guardrails.audiences.filter((_, i) => i !== index);
+    const updated = { ...guardrails, audiences };
+    setGuardrails(updated);
+    setEditingAudience(null);
+    saveGuardrails(updated);
+  }
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6">
+      <h2 className="text-lg font-semibold text-slate-900">
+        Guardrails & Personas
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Configure audience detection, conversation personas, and topic
+        boundaries.
+      </p>
+
+      {/* Audiences */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-700">Audiences</h3>
+          <button
+            onClick={addAudience}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            + Add Audience
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-3">
+          {guardrails.audiences.map((audience, idx) => (
+            <div
+              key={audience.id}
+              className="rounded-lg border border-slate-200 p-4"
+            >
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-slate-900">
+                  {audience.name || "Unnamed Audience"}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() =>
+                      setEditingAudience(editingAudience === idx ? null : idx)
+                    }
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                  >
+                    {editingAudience === idx ? "Collapse" : "Edit"}
+                  </button>
+                  <button
+                    onClick={() => removeAudience(idx)}
+                    className="text-sm text-red-500 hover:text-red-700"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+
+              {editingAudience === idx && (
+                <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+                  <FormField label="Audience Name">
+                    <input
+                      type="text"
+                      value={audience.name}
+                      onChange={(e) =>
+                        updateAudience(idx, {
+                          ...audience,
+                          name: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. Buyer, Breeder"
+                      className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </FormField>
+                  <FormField
+                    label="URL Patterns"
+                    hint='Comma-separated. Use * as wildcard. e.g. "/breeders*,/list-your-puppies*"'
+                  >
+                    <input
+                      type="text"
+                      value={audience.urlPatterns.join(",")}
+                      onChange={(e) =>
+                        updateAudience(idx, {
+                          ...audience,
+                          urlPatterns: e.target.value
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      placeholder="*"
+                      className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </FormField>
+                  <FormField label="Persona" hint="System prompt personality and instructions for this audience.">
+                    <textarea
+                      value={audience.persona}
+                      onChange={(e) =>
+                        updateAudience(idx, {
+                          ...audience,
+                          persona: e.target.value,
+                        })
+                      }
+                      rows={4}
+                      placeholder="Describe how the AI should behave for this audience..."
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </FormField>
+                  <FormField
+                    label="CTA Messages"
+                    hint="One per line. These will be naturally inserted after the turn threshold."
+                  >
+                    <textarea
+                      value={audience.ctaMessages.join("\n")}
+                      onChange={(e) =>
+                        updateAudience(idx, {
+                          ...audience,
+                          ctaMessages: e.target.value
+                            .split("\n")
+                            .filter(Boolean),
+                        })
+                      }
+                      rows={3}
+                      placeholder="Browse breeders →&#10;Join waitlist"
+                      className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </FormField>
+                  <FormField label="CTA After Turns">
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={audience.ctaAfterTurns}
+                      onChange={(e) =>
+                        updateAudience(idx, {
+                          ...audience,
+                          ctaAfterTurns: parseInt(e.target.value) || 5,
+                        })
+                      }
+                      className="mt-1 w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </FormField>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {guardrails.audiences.length === 0 && (
+            <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">
+              No audiences configured. Add one to enable persona-based
+              conversations.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Topic Boundaries */}
+      <div className="mt-6">
+        <h3 className="text-sm font-semibold text-slate-700">
+          Topic Boundaries
+        </h3>
+
+        <div className="mt-3 space-y-3">
+          <FormField
+            label="Allowed Topics"
+            hint="Comma-separated list of topics the AI can discuss freely."
+          >
+            <input
+              type="text"
+              value={guardrails.topicBoundaries.allow.join(", ")}
+              onChange={(e) => {
+                const updated = {
+                  ...guardrails,
+                  topicBoundaries: {
+                    ...guardrails.topicBoundaries,
+                    allow: e.target.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  },
+                };
+                setGuardrails(updated);
+              }}
+              placeholder="breed info, care, training, pricing"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-slate-700">
+                Deflect Rules
+              </label>
+              <button
+                onClick={() => {
+                  const updated = {
+                    ...guardrails,
+                    topicBoundaries: {
+                      ...guardrails.topicBoundaries,
+                      deflect: [
+                        ...guardrails.topicBoundaries.deflect,
+                        { topic: "", response: "" },
+                      ],
+                    },
+                  };
+                  setGuardrails(updated);
+                }}
+                className="text-sm text-slate-500 hover:text-slate-700"
+              >
+                + Add Rule
+              </button>
+            </div>
+            <p className="text-xs text-slate-400">
+              Topics to redirect with a specific response.
+            </p>
+            <div className="mt-2 space-y-2">
+              {guardrails.topicBoundaries.deflect.map((rule, idx) => (
+                <div key={idx} className="flex gap-2 items-start">
+                  <input
+                    type="text"
+                    value={rule.topic}
+                    onChange={(e) => {
+                      const deflect = [...guardrails.topicBoundaries.deflect];
+                      deflect[idx] = { ...deflect[idx], topic: e.target.value };
+                      setGuardrails({
+                        ...guardrails,
+                        topicBoundaries: {
+                          ...guardrails.topicBoundaries,
+                          deflect,
+                        },
+                      });
+                    }}
+                    placeholder="Topic"
+                    className="w-1/3 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={rule.response}
+                    onChange={(e) => {
+                      const deflect = [...guardrails.topicBoundaries.deflect];
+                      deflect[idx] = {
+                        ...deflect[idx],
+                        response: e.target.value,
+                      };
+                      setGuardrails({
+                        ...guardrails,
+                        topicBoundaries: {
+                          ...guardrails.topicBoundaries,
+                          deflect,
+                        },
+                      });
+                    }}
+                    placeholder="Response"
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      const deflect =
+                        guardrails.topicBoundaries.deflect.filter(
+                          (_, i) => i !== idx
+                        );
+                      setGuardrails({
+                        ...guardrails,
+                        topicBoundaries: {
+                          ...guardrails.topicBoundaries,
+                          deflect,
+                        },
+                      });
+                    }}
+                    className="px-2 py-2 text-red-400 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <FormField
+            label="Hard Block Topics"
+            hint="Comma-separated. The AI will never engage with these."
+          >
+            <input
+              type="text"
+              value={guardrails.topicBoundaries.hardBlock.join(", ")}
+              onChange={(e) => {
+                const updated = {
+                  ...guardrails,
+                  topicBoundaries: {
+                    ...guardrails.topicBoundaries,
+                    hardBlock: e.target.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  },
+                };
+                setGuardrails(updated);
+              }}
+              placeholder="puppy mill defence, animal welfare harm"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+        </div>
+      </div>
+
+      {/* Conversation Limits */}
+      <div className="mt-6">
+        <h3 className="text-sm font-semibold text-slate-700">
+          Conversation Limits
+        </h3>
+        <div className="mt-3 grid max-w-md grid-cols-2 gap-4">
+          <FormField label="Max turns before CTA">
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={guardrails.conversationLimits.maxTurnsBeforeCTA}
+              onChange={(e) => {
+                const updated = {
+                  ...guardrails,
+                  conversationLimits: {
+                    ...guardrails.conversationLimits,
+                    maxTurnsBeforeCTA: parseInt(e.target.value) || 5,
+                  },
+                };
+                setGuardrails(updated);
+              }}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+          <FormField label="Idle timeout (minutes)">
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={guardrails.conversationLimits.idleTimeoutMinutes}
+              onChange={(e) => {
+                const updated = {
+                  ...guardrails,
+                  conversationLimits: {
+                    ...guardrails.conversationLimits,
+                    idleTimeoutMinutes: parseInt(e.target.value) || 10,
+                  },
+                };
+                setGuardrails(updated);
+              }}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </FormField>
+        </div>
+      </div>
+
+      {/* Save */}
+      <div className="mt-6 flex gap-2">
+        <button
+          onClick={() => saveGuardrails(guardrails)}
+          disabled={saving}
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
+        >
+          {saving ? "Saving..." : "Save Guardrails"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ─── Notifications Section ───────────────────────────────────
+
+function NotificationsSection({
+  settings,
+  onUpdate,
+}: {
+  settings: TenantSettings;
+  onUpdate: (s: TenantSettings) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
+
+  const [notifications, setNotifications] = useState<NotificationsConfig>(
+    settings.notifications ?? {
+      enabled: false,
+      telegram: { botToken: "", chatId: "" },
+      mode: "all",
+    }
+  );
+
+  async function saveNotifications(updated: NotificationsConfig) {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifications: updated }),
+      });
+      const data = await res.json();
+      onUpdate(data.settings);
+    } catch (err) {
+      console.error("Failed to save notifications:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/settings/test-notification", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botToken: notifications.telegram?.botToken,
+          chatId: notifications.telegram?.chatId,
+          tenantName: "Your Site",
+        }),
+      });
+      const data = await res.json();
+      setTestResult(data);
+    } catch {
+      setTestResult({ success: false, error: "Network error" });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6">
+      <h2 className="text-lg font-semibold text-slate-900">Notifications</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Get notified when new conversations start.
+      </p>
+
+      <div className="mt-4 space-y-4">
+        {/* Enable toggle */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-700">
+              Enable notifications
+            </p>
+            <p className="text-xs text-slate-400">
+              Receive alerts when visitors start chatting.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              const updated = {
+                ...notifications,
+                enabled: !notifications.enabled,
+              };
+              setNotifications(updated);
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              notifications.enabled ? "bg-green-600" : "bg-slate-200"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                notifications.enabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+
+        {notifications.enabled && (
+          <>
+            {/* Mode */}
+            <FormField label="Mode">
+              <select
+                value={notifications.mode}
+                onChange={(e) => {
+                  const updated = {
+                    ...notifications,
+                    mode: e.target.value as "all" | "digest" | "off",
+                  };
+                  setNotifications(updated);
+                }}
+                className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="all">All — notify on every conversation</option>
+                <option value="digest">
+                  Digest — periodic summary (coming soon)
+                </option>
+                <option value="off">Off</option>
+              </select>
+            </FormField>
+
+            {/* Telegram */}
+            <div className="rounded-lg border border-slate-200 p-4">
+              <p className="font-medium text-slate-900">Telegram</p>
+              <div className="mt-3 space-y-3">
+                <FormField
+                  label="Bot Token"
+                  hint="Create a bot via @BotFather on Telegram"
+                >
+                  <input
+                    type="password"
+                    value={notifications.telegram?.botToken ?? ""}
+                    onChange={(e) => {
+                      const updated = {
+                        ...notifications,
+                        telegram: {
+                          ...notifications.telegram,
+                          botToken: e.target.value,
+                          chatId: notifications.telegram?.chatId ?? "",
+                        },
+                      };
+                      setNotifications(updated);
+                    }}
+                    placeholder="123456:ABC-DEF..."
+                    className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </FormField>
+                <FormField
+                  label="Chat ID"
+                  hint="Your Telegram user or group chat ID"
+                >
+                  <input
+                    type="text"
+                    value={notifications.telegram?.chatId ?? ""}
+                    onChange={(e) => {
+                      const updated = {
+                        ...notifications,
+                        telegram: {
+                          ...notifications.telegram,
+                          botToken: notifications.telegram?.botToken ?? "",
+                          chatId: e.target.value,
+                        },
+                      };
+                      setNotifications(updated);
+                    }}
+                    placeholder="-1001234567890"
+                    className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </FormField>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleTest}
+                    disabled={
+                      testing ||
+                      !notifications.telegram?.botToken ||
+                      !notifications.telegram?.chatId
+                    }
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                  >
+                    {testing ? "Sending..." : "Test Notification"}
+                  </button>
+                </div>
+                <TestResultBanner result={testResult} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Save */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => saveNotifications(notifications)}
+            disabled={saving}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving..." : "Save Notifications"}
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

@@ -55,6 +55,8 @@ export async function generateArticle(
 SUBTOPICS: ${topic.subtopics.join(", ")}
 USER INTENT: ${topic.userIntent}
 ARTICLE TYPE: ${topic.suggestedArticleType}
+TARGET AUDIENCE: ${topic.audience ?? "general"}
+CONTENT CATEGORY: ${topic.contentCategory ?? "faq"}
 SEO KEYWORDS: ${topic.seoKeywords.join(", ")}
 
 SOURCE CONVERSATION:

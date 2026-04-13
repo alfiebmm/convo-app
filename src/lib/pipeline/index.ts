@@ -26,6 +26,8 @@ export interface PipelineResult {
   topicAction?: "create" | "update";
   article?: GeneratedArticle;
   autoPublished?: boolean;
+  audience?: string;
+  contentCategory?: string;
   error?: string;
 }
 
@@ -139,6 +141,8 @@ export async function processConversation(
       topicAction: dedupResult.action,
       article,
       autoPublished,
+      audience: topic.audience,
+      contentCategory: topic.contentCategory,
     };
   } catch (err) {
     console.error(`[Pipeline] Error processing ${conversationId}:`, err);

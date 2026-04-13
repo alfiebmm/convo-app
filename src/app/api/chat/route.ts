@@ -6,6 +6,8 @@ import {
   getConversationMessages,
   addMessage,
 } from "@/lib/conversations";
+import { buildSystemPrompt } from "@/lib/guardrails";
+import { sendAdminNotification } from "@/lib/notifications";
 
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -14,11 +16,6 @@ function getOpenAI() {
   }
   return new OpenAI({ apiKey });
 }
-
-const DEFAULT_SYSTEM_PROMPT = `You are a friendly, knowledgeable assistant embedded on a website. 
-Your goal is to help visitors by answering their questions clearly and conversationally.
-Be concise but thorough. If you don't know something, say so honestly.
-Always be polite and professional.`;
 
 /**
  * POST /api/chat
@@ -54,9 +51,26 @@ export async function POST(req: NextRequest) {
 
     // Resolve or create conversation
     let convoId = conversationId;
+    const isNewConversation = !convoId;
     if (!convoId) {
       const convo = await createConversation(tenantId, visitorId, metadata);
       convoId = convo.id;
+
+      // Fire-and-forget admin notification for new conversations
+      sendAdminNotification(
+        {
+          id: tenant.id,
+          name: tenant.name,
+          slug: tenant.slug,
+          settings: tenant.settings as Record<string, unknown> | null,
+        },
+        {
+          id: convo.id,
+          visitorId,
+          metadata: metadata as Record<string, unknown> | undefined,
+        },
+        message
+      );
     }
 
     // Persist user message
@@ -69,12 +83,23 @@ export async function POST(req: NextRequest) {
       content: m.content,
     }));
 
-    // Build system prompt from tenant settings
-    const settings = tenant.settings as Record<string, unknown> | null;
-    const systemPrompt =
-      (settings?.persona as string) ||
-      (settings?.systemPrompt as string) ||
-      DEFAULT_SYSTEM_PROMPT;
+    // Count user turns (for CTA timing)
+    const userTurnCount = history.filter((m) => m.role === "user").length;
+
+    // Build system prompt via guardrails
+    const systemPrompt = buildSystemPrompt(
+      {
+        name: tenant.name,
+        domain: tenant.domain,
+        settings: tenant.settings as Record<string, unknown> | null,
+      },
+      {
+        pageUrl: (metadata as Record<string, unknown>)?.pageUrl as string | undefined,
+        referrer: (metadata as Record<string, unknown>)?.referrer as string | undefined,
+        visitorId,
+        turnCount: userTurnCount,
+      }
+    );
 
     // Stream from OpenAI
     const stream = await getOpenAI().chat.completions.create({
