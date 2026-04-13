@@ -144,20 +144,7 @@ export default function SettingsPage() {
         </section>
 
         {/* Billing */}
-        <section className="rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Billing</h2>
-          <div className="mt-4 flex items-center justify-between rounded-lg bg-slate-50 p-4">
-            <div>
-              <p className="font-medium text-slate-900">Starter Plan</p>
-              <p className="text-sm text-slate-500">
-                500 conversations / 10 articles per month
-              </p>
-            </div>
-            <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors">
-              Upgrade
-            </button>
-          </div>
-        </section>
+        <BillingSection />
       </div>
     </div>
   );
@@ -1103,6 +1090,206 @@ function AutoPublishSettings({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Billing Section ─────────────────────────────────────────
+
+function BillingSection() {
+  const [billingData, setBillingData] = useState<{
+    tenant?: { id: string; name: string; plan: string; stripeCustomerId: string | null };
+  } | null>(null);
+  const [usage, setUsage] = useState<{
+    conversations: number;
+    articles: number;
+  } | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => setBillingData(data))
+      .catch(() => {});
+
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((data) => setUsage(data))
+      .catch(() => {});
+  }, []);
+
+  const plan = billingData?.tenant?.plan ?? "starter";
+  const tenantId = billingData?.tenant?.id;
+  const limits = {
+    starter: { conversations: 500, articles: 10 },
+    growth: { conversations: 2000, articles: 50 },
+    pro: { conversations: 10000, articles: 200 },
+  }[plan] ?? { conversations: 500, articles: 10 };
+
+  async function handleUpgrade(targetPlan: "growth" | "pro") {
+    if (!tenantId) return;
+    setUpgrading(true);
+    try {
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, plan: targetPlan }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      console.error("Checkout error:", err);
+    } finally {
+      setUpgrading(false);
+    }
+  }
+
+  async function handleManageBilling() {
+    if (!tenantId) return;
+    try {
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      console.error("Portal error:", err);
+    }
+  }
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6">
+      <h2 className="text-lg font-semibold text-slate-900">Billing</h2>
+
+      {/* Current plan + usage */}
+      <div className="mt-4 rounded-lg bg-slate-50 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-slate-900 capitalize">
+              {plan} Plan
+            </p>
+            <p className="text-sm text-slate-500">
+              {limits.conversations.toLocaleString()} conversations / {limits.articles} articles per month
+            </p>
+          </div>
+          {billingData?.tenant?.stripeCustomerId && (
+            <button
+              onClick={handleManageBilling}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-white transition-colors"
+            >
+              Manage Billing
+            </button>
+          )}
+        </div>
+
+        {usage && (
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-slate-500 uppercase">
+                Conversations this month
+              </p>
+              <p className="mt-1 text-lg font-semibold text-slate-900">
+                {usage.conversations.toLocaleString()}{" "}
+                <span className="text-sm font-normal text-slate-400">
+                  / {limits.conversations.toLocaleString()}
+                </span>
+              </p>
+              <div className="mt-1 h-2 w-full rounded-full bg-slate-200">
+                <div
+                  className="h-2 rounded-full bg-blue-500 transition-all"
+                  style={{
+                    width: `${Math.min(100, (usage.conversations / limits.conversations) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500 uppercase">
+                Articles this month
+              </p>
+              <p className="mt-1 text-lg font-semibold text-slate-900">
+                {usage.articles.toLocaleString()}{" "}
+                <span className="text-sm font-normal text-slate-400">
+                  / {limits.articles}
+                </span>
+              </p>
+              <div className="mt-1 h-2 w-full rounded-full bg-slate-200">
+                <div
+                  className="h-2 rounded-full bg-emerald-500 transition-all"
+                  style={{
+                    width: `${Math.min(100, (usage.articles / limits.articles) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Plan comparison */}
+      {plan === "starter" && (
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 p-4">
+            <p className="font-medium text-slate-900">Growth</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">$49<span className="text-sm font-normal text-slate-500">/mo</span></p>
+            <ul className="mt-3 space-y-1 text-sm text-slate-500">
+              <li>✓ 2,000 conversations/mo</li>
+              <li>✓ 50 articles/mo</li>
+              <li>✓ Priority support</li>
+            </ul>
+            <button
+              onClick={() => handleUpgrade("growth")}
+              disabled={upgrading}
+              className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
+            >
+              {upgrading ? "Redirecting..." : "Upgrade to Growth"}
+            </button>
+          </div>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <p className="font-medium text-slate-900">Pro</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">$149<span className="text-sm font-normal text-slate-500">/mo</span></p>
+            <ul className="mt-3 space-y-1 text-sm text-slate-500">
+              <li>✓ 10,000 conversations/mo</li>
+              <li>✓ 200 articles/mo</li>
+              <li>✓ Custom branding</li>
+              <li>✓ Priority support</li>
+            </ul>
+            <button
+              onClick={() => handleUpgrade("pro")}
+              disabled={upgrading}
+              className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {upgrading ? "Redirecting..." : "Upgrade to Pro"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {plan !== "starter" && plan !== "pro" && (
+        <div className="mt-6">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-slate-900">Pro</p>
+                <p className="text-sm text-slate-500">$149/mo — 10,000 conversations, 200 articles</p>
+              </div>
+              <button
+                onClick={() => handleUpgrade("pro")}
+                disabled={upgrading}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {upgrading ? "Redirecting..." : "Upgrade to Pro"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

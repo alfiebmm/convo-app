@@ -2,30 +2,34 @@ import { db } from "@/lib/db";
 import { conversations, messages, content } from "@/lib/db/schema";
 import { eq, desc, sql, and, or } from "drizzle-orm";
 import Link from "next/link";
-
-const DEMO_TENANT_ID = "5067d163-5edd-448c-a0e6-4dc8adaccb02";
+import { getCurrentTenant } from "@/lib/auth-context";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  const tenant = await getCurrentTenant();
+  if (!tenant) redirect("/onboarding");
+  const tenantId = tenant.id;
+
   // Fetch stats
   const [convoCountResult] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(conversations)
-    .where(eq(conversations.tenantId, DEMO_TENANT_ID));
+    .where(eq(conversations.tenantId, tenantId));
 
   const [messageCountResult] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(messages)
     .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-    .where(eq(conversations.tenantId, DEMO_TENANT_ID));
+    .where(eq(conversations.tenantId, tenantId));
 
   const [contentQueueResult] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(content)
     .where(
       and(
-        eq(content.tenantId, DEMO_TENANT_ID),
+        eq(content.tenantId, tenantId),
         or(
           eq(content.status, "pending"),
           eq(content.status, "review"),
@@ -39,7 +43,7 @@ export default async function DashboardPage() {
     .from(content)
     .where(
       and(
-        eq(content.tenantId, DEMO_TENANT_ID),
+        eq(content.tenantId, tenantId),
         or(eq(content.status, "published"), eq(content.status, "approved"))
       )
     );
@@ -53,7 +57,7 @@ export default async function DashboardPage() {
   const recentConvos = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.tenantId, DEMO_TENANT_ID))
+    .where(eq(conversations.tenantId, tenantId))
     .orderBy(desc(conversations.startedAt))
     .limit(5);
 
@@ -63,7 +67,7 @@ export default async function DashboardPage() {
     .from(content)
     .where(
       and(
-        eq(content.tenantId, DEMO_TENANT_ID),
+        eq(content.tenantId, tenantId),
         or(eq(content.status, "pending"), eq(content.status, "review"))
       )
     )

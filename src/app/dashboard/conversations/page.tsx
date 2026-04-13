@@ -4,18 +4,21 @@ import { eq, and, desc, type SQL } from "drizzle-orm";
 import ConversationList from "./conversation-list";
 import { ConversationStatusFilter } from "./conversation-filters";
 import { Suspense } from "react";
-
-const DEMO_TENANT_ID = "5067d163-5edd-448c-a0e6-4dc8adaccb02";
+import { getCurrentTenant } from "@/lib/auth-context";
+import { redirect } from "next/navigation";
 
 export default async function ConversationsPage({
   searchParams,
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
+  const tenant = await getCurrentTenant();
+  if (!tenant) redirect("/onboarding");
+
   const params = await searchParams;
   const statusFilter = params.status;
 
-  const conditions: SQL[] = [eq(conversations.tenantId, DEMO_TENANT_ID)];
+  const conditions: SQL[] = [eq(conversations.tenantId, tenant.id)];
   if (statusFilter && statusFilter !== "all") {
     conditions.push(
       eq(
