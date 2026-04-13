@@ -140,9 +140,11 @@ export async function POST(req: NextRequest) {
         "Access-Control-Allow-Origin": "*",
       },
     });
-  } catch {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Chat API error:", message);
     return new Response(
-      JSON.stringify({ error: "Invalid request body" }),
+      JSON.stringify({ error: message }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
