@@ -411,7 +411,7 @@ class ConvoWidget {
         <input type="text" placeholder="Type a message..." aria-label="Type a message" />
         <button aria-label="Send message">${SEND_ICON}</button>
       </div>
-      <div class="convo-powered">Powered by Convo</div>
+      <div class="convo-powered">Powered by <a href="https://convoapp.com.au" target="_blank" rel="noopener">Convo</a></div>
     `;
 
     this.messagesEl = this.panel.querySelector(".convo-messages")!;
