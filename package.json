@@ -10,15 +10,20 @@
     "build:widget": "node scripts/build-widget.mjs"
   },
   "dependencies": {
+    "@auth/drizzle-adapter": "^1.11.1",
     "@neondatabase/serverless": "^1.0.2",
+    "@tailwindcss/typography": "^0.5.19",
     "drizzle-orm": "^0.45.2",
     "marked": "^18.0.0",
     "next": "16.2.3",
+    "next-auth": "^5.0.0-beta.30",
+    "nodemailer": "^8.0.5",
     "openai": "^6.34.0",
     "pg": "^8.20.0",
     "postgres": "^3.4.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "stripe": "^22.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

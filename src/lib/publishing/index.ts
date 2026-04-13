@@ -79,7 +79,18 @@ export async function publishContent(
   const cmsConfig = settings.cms;
 
   if (!cmsConfig?.type) {
-    return { success: false, error: "No CMS configured for this tenant" };
+    // No external CMS — publish to hosted Q&A pages
+    const hostedUrl = `/${tenant.slug}/${item.slug}`;
+    await db
+      .update(content)
+      .set({
+        status: "published",
+        publishedUrl: hostedUrl,
+        publishedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(content.id, contentId));
+    return { success: true, url: hostedUrl };
   }
 
   // 3. Route to correct publisher
