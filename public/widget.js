@@ -1,4 +1,4 @@
-"use strict";(()=>{function f(){let t=document.currentScript??document.querySelector("script[data-tenant]"),e=(o,s)=>t?.getAttribute(`data-${o}`)??s,n="";if(t&&t.src)try{n=new URL(t.src).origin}catch{}return{tenantId:e("tenant",""),color:e("color","#3B82F6"),welcome:e("welcome","Hi there! How can I help you today?"),name:e("name","Convo"),position:e("position","right"),apiBase:n}}function b(){let t="convo_visitor_id",e=localStorage.getItem(t);return e||(e="v_"+crypto.randomUUID(),localStorage.setItem(t,e)),e}function m(t){let e=t.position==="left"?"left: 20px;":"right: 20px;",n=t.position==="left"?"left: 20px;":"right: 20px;";return`
+"use strict";(()=>{function v(){let n=document.currentScript??document.querySelector("script[data-tenant]"),e=(o,s)=>n?.getAttribute(`data-${o}`)??s,t="";if(n&&n.src)try{t=new URL(n.src).origin}catch{}return{tenantId:e("tenant",""),color:e("color","#3B82F6"),welcome:e("welcome","Hi there! How can I help you today?"),name:e("name","Convo"),position:e("position","right"),apiBase:t}}function b(){let n="convo_visitor_id",e=localStorage.getItem(n);return e||(e="v_"+crypto.randomUUID(),localStorage.setItem(n,e)),e}function m(n){let e=n.position==="left"?"left: 20px;":"right: 20px;",t=n.position==="left"?"left: 20px;":"right: 20px;";return`
     *,
     *::before,
     *::after {
@@ -23,7 +23,7 @@
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: ${t.color};
+      background: ${n.color};
       color: #fff;
       border: none;
       cursor: pointer;
@@ -51,7 +51,7 @@
     .convo-panel {
       position: fixed;
       bottom: 88px;
-      ${n}
+      ${t}
       width: 380px;
       max-width: calc(100vw - 24px);
       height: 520px;
@@ -77,7 +77,7 @@
     /* Header */
     .convo-header {
       padding: 16px 20px;
-      background: ${t.color};
+      background: ${n.color};
       color: #fff;
       display: flex;
       align-items: center;
@@ -131,7 +131,7 @@
     }
     .convo-msg.user {
       align-self: flex-end;
-      background: ${t.color};
+      background: ${n.color};
       color: #fff;
       border-bottom-right-radius: 4px;
     }
@@ -202,7 +202,7 @@
       transition: border-color 0.15s ease;
     }
     .convo-input-area input:focus {
-      border-color: ${t.color};
+      border-color: ${n.color};
     }
     .convo-input-area input::placeholder {
       color: #94a3b8;
@@ -211,7 +211,7 @@
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      background: ${t.color};
+      background: ${n.color};
       color: #fff;
       border: none;
       cursor: pointer;
@@ -243,13 +243,13 @@
     @media (max-width: 440px) {
       .convo-panel {
         width: calc(100vw - 16px);
-        ${t.position==="left"?"left: 8px;":"right: 8px;"}
+        ${n.position==="left"?"left: 8px;":"right: 8px;"}
         height: calc(100vh - 100px);
         bottom: 80px;
         border-radius: 12px;
       }
     }
-  `}var p='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',x='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',y='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',a=class{constructor(){this.conversationId=null;this.messages=[];this.isOpen=!1;this.isStreaming=!1;this.sessionTracked=!1;this.config=f(),this.visitorId=b(),this.init()}init(){if(!this.config.tenantId){console.warn("[Convo] Missing data-tenant attribute on script tag.");return}let e=document.createElement("div");e.id="convo-widget",this.shadow=e.attachShadow({mode:"open"}),document.body.appendChild(e),this.render(),this.attachEvents(),this.trackSession()}render(){let e=document.createElement("style");e.textContent=m(this.config),this.bubble=document.createElement("button"),this.bubble.className="convo-bubble",this.bubble.setAttribute("aria-label","Open chat"),this.bubble.innerHTML=p,this.panel=document.createElement("div"),this.panel.className="convo-panel",this.panel.innerHTML=`
+  `}var p='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',x='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',y='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',a=class{constructor(){this.conversationId=null;this.messages=[];this.isOpen=!1;this.isStreaming=!1;this.sessionTracked=!1;this.config=v(),this.visitorId=b(),this.init()}init(){if(!this.config.tenantId){console.warn("[Convo] Missing data-tenant attribute on script tag.");return}let e=document.createElement("div");e.id="convo-widget",this.shadow=e.attachShadow({mode:"open"}),document.body.appendChild(e),this.render(),this.attachEvents(),this.trackSession()}render(){let e=document.createElement("style");e.textContent=m(this.config),this.bubble=document.createElement("button"),this.bubble.className="convo-bubble",this.bubble.setAttribute("aria-label","Open chat"),this.bubble.innerHTML=p,this.panel=document.createElement("div"),this.panel.className="convo-panel",this.panel.innerHTML=`
       <div class="convo-header">
         <div class="convo-header-dot"></div>
         <div class="convo-header-text">
@@ -263,5 +263,5 @@
         <button aria-label="Send message">${y}</button>
       </div>
       <div class="convo-powered">Powered by <a href="https://convo.app" target="_blank" rel="noopener">Convo</a></div>
-    `,this.messagesEl=this.panel.querySelector(".convo-messages"),this.inputEl=this.panel.querySelector("input"),this.sendBtn=this.panel.querySelector(".convo-input-area button"),this.shadow.appendChild(e),this.shadow.appendChild(this.panel),this.shadow.appendChild(this.bubble),this.addMessageToUI("assistant",this.config.welcome)}attachEvents(){this.bubble.addEventListener("click",()=>this.toggle()),this.sendBtn.addEventListener("click",()=>this.send()),this.inputEl.addEventListener("keydown",e=>{e.key==="Enter"&&!e.shiftKey&&(e.preventDefault(),this.send())})}toggle(){this.isOpen=!this.isOpen,this.panel.classList.toggle("visible",this.isOpen),this.bubble.classList.toggle("open",this.isOpen),this.bubble.innerHTML=this.isOpen?x:p,this.bubble.setAttribute("aria-label",this.isOpen?"Close chat":"Open chat"),this.isOpen&&setTimeout(()=>this.inputEl.focus(),300)}async send(){let e=this.inputEl.value.trim();if(!(!e||this.isStreaming)){this.inputEl.value="",this.addMessageToUI("user",e),this.messages.push({role:"user",content:e}),this.isStreaming=!0,this.sendBtn.disabled=!0,this.showTyping();try{let n=await fetch(`${this.config.apiBase}/api/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,conversationId:this.conversationId,visitorId:this.visitorId,message:e,metadata:{pageUrl:window.location.href,referrer:document.referrer||null}})});if(!n.ok||!n.body)throw new Error(`HTTP ${n.status}`);this.hideTyping();let o=this.addMessageToUI("assistant",""),s="",h=n.body.getReader(),g=new TextDecoder,r="";for(;;){let{done:u,value:v}=await h.read();if(u)break;r+=g.decode(v,{stream:!0});let l=r.split(`
-`);r=l.pop()||"";for(let d of l){if(!d.startsWith("data: "))continue;let c=d.slice(6).trim();if(c)try{let i=JSON.parse(c);i.type==="meta"&&i.conversationId?(this.conversationId=i.conversationId,this.trackEngagement()):i.type==="token"&&i.content?(s+=i.content,o.textContent=s,this.scrollToBottom()):i.type==="error"&&(o.textContent="Sorry, something went wrong. Please try again.")}catch{}}}this.messages.push({role:"assistant",content:s})}catch{this.hideTyping(),this.addMessageToUI("assistant","Sorry, I'm having trouble connecting. Please try again in a moment.")}finally{this.isStreaming=!1,this.sendBtn.disabled=!1}}}addMessageToUI(e,n){let o=document.createElement("div");return o.className=`convo-msg ${e}`,o.textContent=n,this.messagesEl.appendChild(o),this.scrollToBottom(),o}showTyping(){let e=document.createElement("div");e.className="convo-typing",e.id="convo-typing-indicator",e.innerHTML="<span></span><span></span><span></span>",this.messagesEl.appendChild(e),this.scrollToBottom()}hideTyping(){let e=this.shadow.getElementById("convo-typing-indicator");e&&e.remove()}scrollToBottom(){this.messagesEl.scrollTop=this.messagesEl.scrollHeight}escapeHtml(e){let n=document.createElement("div");return n.textContent=e,n.innerHTML}async trackSession(){if(!this.sessionTracked){this.sessionTracked=!0;try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,pageUrl:window.location.href})})}catch{}}}async trackEngagement(){try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,engaged:!0,conversationId:this.conversationId})})}catch{}}};typeof window<"u"&&(document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>new a):new a);})();
+    `,this.messagesEl=this.panel.querySelector(".convo-messages"),this.inputEl=this.panel.querySelector("input"),this.sendBtn=this.panel.querySelector(".convo-input-area button"),this.shadow.appendChild(e),this.shadow.appendChild(this.panel),this.shadow.appendChild(this.bubble),this.addMessageToUI("assistant",this.config.welcome)}attachEvents(){this.bubble.addEventListener("click",()=>this.toggle()),this.sendBtn.addEventListener("click",()=>this.send()),this.inputEl.addEventListener("keydown",e=>{e.key==="Enter"&&!e.shiftKey&&(e.preventDefault(),this.send())})}toggle(){this.isOpen=!this.isOpen,this.panel.classList.toggle("visible",this.isOpen),this.bubble.classList.toggle("open",this.isOpen),this.bubble.innerHTML=this.isOpen?x:p,this.bubble.setAttribute("aria-label",this.isOpen?"Close chat":"Open chat"),this.isOpen&&setTimeout(()=>this.inputEl.focus(),300)}async send(){let e=this.inputEl.value.trim();if(!(!e||this.isStreaming)){this.inputEl.value="",this.addMessageToUI("user",e),this.messages.push({role:"user",content:e}),this.isStreaming=!0,this.sendBtn.disabled=!0,this.showTyping();try{let t=await fetch(`${this.config.apiBase}/api/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,conversationId:this.conversationId,visitorId:this.visitorId,message:e,metadata:{pageUrl:window.location.href,referrer:document.referrer||null}})});if(!t.ok||!t.body)throw new Error(`HTTP ${t.status}`);this.hideTyping();let o=this.addMessageToUI("assistant",""),s="",h=t.body.getReader(),g=new TextDecoder,r="";for(;;){let{done:u,value:f}=await h.read();if(u)break;r+=g.decode(f,{stream:!0});let l=r.split(`
+`);r=l.pop()||"";for(let d of l){if(!d.startsWith("data: "))continue;let c=d.slice(6).trim();if(c)try{let i=JSON.parse(c);i.type==="meta"&&i.conversationId?(this.conversationId=i.conversationId,this.trackEngagement()):i.type==="token"&&i.content?(s+=i.content,o.innerHTML=this.renderMarkdown(s),this.scrollToBottom()):i.type==="error"&&(o.textContent="Sorry, something went wrong. Please try again.")}catch{}}}this.messages.push({role:"assistant",content:s})}catch{this.hideTyping(),this.addMessageToUI("assistant","Sorry, I'm having trouble connecting. Please try again in a moment.")}finally{this.isStreaming=!1,this.sendBtn.disabled=!1}}}addMessageToUI(e,t){let o=document.createElement("div");return o.className=`convo-msg ${e}`,e==="assistant"?o.innerHTML=this.renderMarkdown(t):o.textContent=t,this.messagesEl.appendChild(o),this.scrollToBottom(),o}showTyping(){let e=document.createElement("div");e.className="convo-typing",e.id="convo-typing-indicator",e.innerHTML="<span></span><span></span><span></span>",this.messagesEl.appendChild(e),this.scrollToBottom()}hideTyping(){let e=this.shadow.getElementById("convo-typing-indicator");e&&e.remove()}scrollToBottom(){this.messagesEl.scrollTop=this.messagesEl.scrollHeight}escapeHtml(e){let t=document.createElement("div");return t.textContent=e,t.innerHTML}renderMarkdown(e){let t=this.escapeHtml(e);return t=t.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"),t=t.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,"<em>$1</em>"),t=t.replace(/`(.+?)`/g,'<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>'),t=t.replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">$1</a>'),t=t.replace(/^- (.+)$/gm,"\u2022 $1"),t=t.replace(/\n/g,"<br>"),t}async trackSession(){if(!this.sessionTracked){this.sessionTracked=!0;try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,pageUrl:window.location.href})})}catch{}}}async trackEngagement(){try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,engaged:!0,conversationId:this.conversationId})})}catch{}}};typeof window<"u"&&(document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>new a):new a);})();

@@ -516,7 +516,7 @@ class ConvoWidget {
               this.trackEngagement();
             } else if (event.type === "token" && event.content) {
               fullContent += event.content;
-              assistantEl.textContent = fullContent;
+              assistantEl.innerHTML = this.renderMarkdown(fullContent);
               this.scrollToBottom();
             } else if (event.type === "error") {
               assistantEl.textContent =
@@ -544,7 +544,11 @@ class ConvoWidget {
   private addMessageToUI(role: "user" | "assistant", content: string): HTMLDivElement {
     const el = document.createElement("div");
     el.className = `convo-msg ${role}`;
-    el.textContent = content;
+    if (role === "assistant") {
+      el.innerHTML = this.renderMarkdown(content);
+    } else {
+      el.textContent = content;
+    }
     this.messagesEl.appendChild(el);
     this.scrollToBottom();
     return el;
@@ -572,6 +576,28 @@ class ConvoWidget {
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  /**
+   * Lightweight markdown → HTML for chat messages.
+   * Supports: **bold**, *italic*, [links](url), `code`, and line breaks.
+   * Escapes HTML first to prevent XSS.
+   */
+  private renderMarkdown(raw: string): string {
+    let html = this.escapeHtml(raw);
+    // Bold: **text**
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    // Italic: *text* (but not inside bold)
+    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+    // Inline code: `text`
+    html = html.replace(/`(.+?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>');
+    // Links: [text](url) — open in new tab
+    html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">$1</a>');
+    // Bullet lists: lines starting with "- "
+    html = html.replace(/^- (.+)$/gm, "• $1");
+    // Line breaks
+    html = html.replace(/\n/g, "<br>");
+    return html;
   }
 
   private async trackSession() {
