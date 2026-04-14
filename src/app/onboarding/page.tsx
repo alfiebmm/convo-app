@@ -252,8 +252,8 @@ export default function OnboardingPage() {
                   name="Pro"
                   price="$149/mo"
                   features={[
-                    `${APP_CONFIG.limits.pro.conversationsPerMonth.toLocaleString()} conversations/mo`,
-                    `${APP_CONFIG.limits.pro.articlesPerMonth} articles/mo`,
+                    `${APP_CONFIG.limits.scale.conversationsPerMonth.toLocaleString()} conversations/mo`,
+                    `${APP_CONFIG.limits.scale.articlesPerMonth} articles/mo`,
                   ]}
                 />
               </div>

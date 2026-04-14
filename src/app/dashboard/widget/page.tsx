@@ -104,7 +104,7 @@ export default function WidgetPage() {
             </label>
             <input
               type="color"
-              defaultValue={APP_CONFIG.branding.secondary}
+              defaultValue={APP_CONFIG.branding.primary}
               className="mt-1 h-10 w-16 rounded border border-slate-200"
             />
           </div>

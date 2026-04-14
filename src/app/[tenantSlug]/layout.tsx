@@ -24,7 +24,7 @@ export default async function TenantPublicLayout({
   }
 
   const settings = (tenant.settings ?? {}) as TenantSettings;
-  const primaryColor = settings.primaryColor || APP_CONFIG.branding.secondary;
+  const primaryColor = settings.primaryColor || APP_CONFIG.branding.primary;
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
