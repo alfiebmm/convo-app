@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convo — Logo Explorations</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #09090B; color: #FAFAFA; -webkit-font-smoothing: antialiased; }
+
+.header {
+  padding: 40px;
+  border-bottom: 1px solid #27272A;
+}
+.header h1 { font-family: Outfit; font-size: 20px; font-weight: 600; }
+.header p { font-size: 13px; color: #71717A; margin-top: 4px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.card {
+  padding: 80px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  border-bottom: 1px solid #27272A;
+  border-right: 1px solid #27272A;
+  position: relative;
+}
+.card:nth-child(2n) { border-right: none; }
+
+.card-label {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #52525B;
+}
+
+.card-sub {
+  margin-top: 20px;
+  font-size: 12px;
+  color: #52525B;
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+/* Light cards */
+.card.light { background: #FAFAFA; }
+.card.light .card-label { color: #A1A1AA; }
+.card.light .card-sub { color: #A1A1AA; }
+
+/* Orange card */
+.card.orange { background: #FF6B2C; }
+.card.orange .card-label { color: rgba(255,255,255,0.4); }
+.card.orange .card-sub { color: rgba(255,255,255,0.6); }
+
+/* ═══ OPTION A: Clean Outfit 800, custom 'o' treatment ═══ */
+.logo-a {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 72px;
+  letter-spacing: -0.05em;
+  color: #FAFAFA;
+  position: relative;
+}
+.logo-a .o-accent {
+  color: #FF6B2C;
+}
+.card.light .logo-a { color: #09090B; }
+.card.orange .logo-a { color: white; }
+.card.orange .logo-a .o-accent { color: white; opacity: 0.5; }
+
+/* ═══ OPTION B: Outfit 700, tighter, dot on the 'o' ═══ */
+.logo-b {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 68px;
+  letter-spacing: -0.04em;
+  color: #FAFAFA;
+  position: relative;
+  display: inline-block;
+}
+.logo-b-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #FF6B2C;
+  border-radius: 50%;
+}
+.card.light .logo-b { color: #09090B; }
+.card.orange .logo-b { color: white; }
+.card.orange .logo-b-dot { background: white; }
+
+/* ═══ OPTION C: SVG custom wordmark — connected letterforms ═══ */
+/* Hand-crafted paths */
+
+/* ═══ OPTION D: Outfit 900 with the 'v' as a chat bubble tail ═══ */
+.logo-d {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 900;
+  font-size: 72px;
+  letter-spacing: -0.05em;
+  color: #FAFAFA;
+}
+.card.light .logo-d { color: #09090B; }
+.card.orange .logo-d { color: white; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Convo — Wordmark Explorations</h1>
+  <p>6 directions. All lowercase. Orange + black system. Pick your favourite or mix elements.</p>
+</div>
+
+<div class="grid">
+
+  <!-- ═══ A: Orange O ═══ -->
+  <div class="card">
+    <div class="card-label">A — Orange accent O</div>
+    <div class="logo-a">conv<span class="o-accent">o</span></div>
+    <div class="card-sub">The final 'o' pops in orange — subtle brand mark within the wordmark. Memorable, dead simple.</div>
+  </div>
+  
+  <div class="card light">
+    <div class="card-label">A — Light</div>
+    <div class="logo-a">conv<span class="o-accent">o</span></div>
+  </div>
+
+  <!-- ═══ B: Dot accent ═══ -->
+  <div class="card">
+    <div class="card-label">B — Floating dot</div>
+    <div style="position: relative; display: inline-block;">
+      <span style="font-family: Outfit; font-weight: 700; font-size: 68px; letter-spacing: -0.04em; color: #FAFAFA;">convo</span>
+      <span style="position: absolute; top: -2px; right: -14px; width: 12px; height: 12px; background: #FF6B2C; border-radius: 50; display: block;"></span>
+    </div>
+    <div class="card-sub">Floating orange dot — suggests a notification, a message waiting, something alive.</div>
+  </div>
+  
+  <div class="card light">
+    <div class="card-label">B — Light</div>
+    <div style="position: relative; display: inline-block;">
+      <span style="font-family: Outfit; font-weight: 700; font-size: 68px; letter-spacing: -0.04em; color: #09090B;">convo</span>
+      <span style="position: absolute; top: -2px; right: -14px; width: 12px; height: 12px; background: #FF6B2C; border-radius: 50%; display: block;"></span>
+    </div>
+  </div>
+
+  <!-- ═══ C: SVG custom with connected letters ═══ -->
+  <div class="card">
+    <div class="card-label">C — Custom SVG wordmark</div>
+    <svg width="280" height="72" viewBox="0 0 280 72" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <style>@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@800&amp;display=swap');</style>
+      </defs>
+      <!-- Base wordmark -->
+      <text x="0" y="56" font-family="Outfit, sans-serif" font-weight="800" font-size="68" fill="#FAFAFA" letter-spacing="-3">convo</text>
+      <!-- Orange speech bubble tail extending from the 'o' -->
+      <path d="M255 40 Q255 52, 248 58 L258 68 L262 56 Q268 52, 268 40" fill="#FF6B2C" opacity="0.9"/>
+    </svg>
+    <div class="card-sub">The final 'o' grows a subtle chat tail — the wordmark IS the icon.</div>
+  </div>
+  
+  <div class="card light">
+    <div class="card-label">C — Light</div>
+    <svg width="280" height="72" viewBox="0 0 280 72" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="56" font-family="Outfit, sans-serif" font-weight="800" font-size="68" fill="#09090B" letter-spacing="-3">convo</text>
+      <path d="M255 40 Q255 52, 248 58 L258 68 L262 56 Q268 52, 268 40" fill="#FF6B2C" opacity="0.9"/>
+    </svg>
+  </div>
+
+  <!-- ═══ D: Gradient O fill ═══ -->
+  <div class="card">
+    <div class="card-label">D — Gradient fill O</div>
+    <svg width="260" height="64" viewBox="0 0 260 64" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="og" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#FF6B2C"/>
+          <stop offset="100%" stop-color="#FF8F5C"/>
+        </linearGradient>
+      </defs>
+      <text x="0" y="52" font-family="Outfit, sans-serif" font-weight="800" font-size="64" letter-spacing="-3">
+        <tspan fill="#FAFAFA">conv</tspan><tspan fill="url(#og)">o</tspan>
+      </text>
+    </svg>
+    <div class="card-sub">Same idea as A but with a warm gradient on the 'o'. More depth, still clean.</div>
+  </div>
+  
+  <div class="card light">
+    <div class="card-label">D — Light</div>
+    <svg width="260" height="64" viewBox="0 0 260 64" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="52" font-family="Outfit, sans-serif" font-weight="800" font-size="64" letter-spacing="-3">
+        <tspan fill="#09090B">conv</tspan><tspan fill="url(#og)">o</tspan>
+      </text>
+    </svg>
+  </div>
+
+  <!-- ═══ E: Ultra-tight, all orange ═══ -->
+  <div class="card" style="background: #18181B;">
+    <div class="card-label">E — Full orange wordmark</div>
+    <div style="font-family: Outfit; font-weight: 900; font-size: 76px; letter-spacing: -0.06em; color: #FF6B2C;">convo</div>
+    <div class="card-sub">Full orange wordmark. Bold, unapologetic. Works when the name IS the brand.</div>
+  </div>
+  
+  <div class="card light">
+    <div class="card-label">E — Light</div>
+    <div style="font-family: Outfit; font-weight: 900; font-size: 76px; letter-spacing: -0.06em; color: #FF6B2C;">convo</div>
+  </div>
+
+  <!-- ═══ F: Outlined O ═══ -->
+  <div class="card">
+    <div class="card-label">F — Outlined O</div>
+    <svg width="280" height="64" viewBox="0 0 280 64" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="52" font-family="Outfit, sans-serif" font-weight="800" font-size="64" fill="#FAFAFA" letter-spacing="-3">conv</text>
+      <!-- Outlined 'o' -->
+      <circle cx="252" cy="34" r="20" fill="none" stroke="#FF6B2C" stroke-width="5"/>
+    </svg>
+    <div class="card-sub">Solid wordmark with an outlined 'o' — creates visual tension. The 'o' becomes a standalone mark.</div>
+  </div>
+  
+  <div class="card orange">
+    <div class="card-label">F — On orange</div>
+    <svg width="280" height="64" viewBox="0 0 280 64" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="52" font-family="Outfit, sans-serif" font-weight="800" font-size="64" fill="white" letter-spacing="-3">conv</text>
+      <circle cx="252" cy="34" r="20" fill="none" stroke="white" stroke-width="5"/>
+    </svg>
+  </div>
+
+</div>
+
+</body>
+</html>

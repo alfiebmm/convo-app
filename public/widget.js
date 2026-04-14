@@ -1,4 +1,4 @@
-"use strict";(()=>{function v(){let n=document.currentScript??document.querySelector("script[data-tenant]"),e=(o,s)=>n?.getAttribute(`data-${o}`)??s,t="";if(n&&n.src)try{t=new URL(n.src).origin}catch{}return{tenantId:e("tenant",""),color:e("color","#3B82F6"),welcome:e("welcome","Hi there! How can I help you today?"),name:e("name","Convo"),position:e("position","right"),apiBase:t}}function b(){let n="convo_visitor_id",e=localStorage.getItem(n);return e||(e="v_"+crypto.randomUUID(),localStorage.setItem(n,e)),e}function m(n){let e=n.position==="left"?"left: 20px;":"right: 20px;",t=n.position==="left"?"left: 20px;":"right: 20px;";return`
+"use strict";(()=>{function m(){let i=document.currentScript??document.querySelector("script[data-tenant]"),e=(n,s)=>i?.getAttribute(`data-${n}`)??s,t="";if(i&&i.src)try{t=new URL(i.src).origin}catch{}return{tenantId:e("tenant",""),color:e("color","#3B82F6"),welcome:e("welcome","Hi there! How can I help you today?"),name:e("name","Convo"),position:e("position","right"),apiBase:t}}function b(){let i="convo_visitor_id",e=localStorage.getItem(i);return e||(e="v_"+crypto.randomUUID(),localStorage.setItem(i,e)),e}function x(i){let e=i.position==="left"?"left: 20px;":"right: 20px;",t=i.position==="left"?"left: 20px;":"right: 20px;";return`
     *,
     *::before,
     *::after {
@@ -23,7 +23,7 @@
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: ${n.color};
+      background: ${i.color};
       color: #fff;
       border: none;
       cursor: pointer;
@@ -77,7 +77,7 @@
     /* Header */
     .convo-header {
       padding: 16px 20px;
-      background: ${n.color};
+      background: ${i.color};
       color: #fff;
       display: flex;
       align-items: center;
@@ -131,7 +131,7 @@
     }
     .convo-msg.user {
       align-self: flex-end;
-      background: ${n.color};
+      background: ${i.color};
       color: #fff;
       border-bottom-right-radius: 4px;
     }
@@ -202,7 +202,7 @@
       transition: border-color 0.15s ease;
     }
     .convo-input-area input:focus {
-      border-color: ${n.color};
+      border-color: ${i.color};
     }
     .convo-input-area input::placeholder {
       color: #94a3b8;
@@ -211,7 +211,7 @@
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      background: ${n.color};
+      background: ${i.color};
       color: #fff;
       border: none;
       cursor: pointer;
@@ -243,13 +243,13 @@
     @media (max-width: 440px) {
       .convo-panel {
         width: calc(100vw - 16px);
-        ${n.position==="left"?"left: 8px;":"right: 8px;"}
+        ${i.position==="left"?"left: 8px;":"right: 8px;"}
         height: calc(100vh - 100px);
         bottom: 80px;
         border-radius: 12px;
       }
     }
-  `}var p='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',x='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',y='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',a=class{constructor(){this.conversationId=null;this.messages=[];this.isOpen=!1;this.isStreaming=!1;this.sessionTracked=!1;this.config=v(),this.visitorId=b(),this.init()}init(){if(!this.config.tenantId){console.warn("[Convo] Missing data-tenant attribute on script tag.");return}let e=document.createElement("div");e.id="convo-widget",this.shadow=e.attachShadow({mode:"open"}),document.body.appendChild(e),this.render(),this.attachEvents(),this.trackSession()}render(){let e=document.createElement("style");e.textContent=m(this.config),this.bubble=document.createElement("button"),this.bubble.className="convo-bubble",this.bubble.setAttribute("aria-label","Open chat"),this.bubble.innerHTML=p,this.panel=document.createElement("div"),this.panel.className="convo-panel",this.panel.innerHTML=`
+  `}var h='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',y='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',w='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',r=class r{constructor(){this.conversationId=null;this.messages=[];this.isOpen=!1;this.isStreaming=!1;this.sessionTracked=!1;this.pipelineTriggered=!1;this.idleTimer=null;this.config=m(),this.visitorId=b(),this.init()}init(){if(!this.config.tenantId){console.warn("[Convo] Missing data-tenant attribute on script tag.");return}let e=document.createElement("div");e.id="convo-widget",this.shadow=e.attachShadow({mode:"open"}),document.body.appendChild(e),this.render(),this.attachEvents(),this.trackSession()}render(){let e=document.createElement("style");e.textContent=x(this.config),this.bubble=document.createElement("button"),this.bubble.className="convo-bubble",this.bubble.setAttribute("aria-label","Open chat"),this.bubble.innerHTML=h,this.panel=document.createElement("div"),this.panel.className="convo-panel",this.panel.innerHTML=`
       <div class="convo-header">
         <div class="convo-header-dot"></div>
         <div class="convo-header-text">
@@ -260,8 +260,8 @@
       <div class="convo-messages"></div>
       <div class="convo-input-area">
         <input type="text" placeholder="Type a message..." aria-label="Type a message" />
-        <button aria-label="Send message">${y}</button>
+        <button aria-label="Send message">${w}</button>
       </div>
       <div class="convo-powered">Powered by <a href="https://convoapp.com.au" target="_blank" rel="noopener">Convo</a></div>
-    `,this.messagesEl=this.panel.querySelector(".convo-messages"),this.inputEl=this.panel.querySelector("input"),this.sendBtn=this.panel.querySelector(".convo-input-area button"),this.shadow.appendChild(e),this.shadow.appendChild(this.panel),this.shadow.appendChild(this.bubble),this.addMessageToUI("assistant",this.config.welcome)}attachEvents(){this.bubble.addEventListener("click",()=>this.toggle()),this.sendBtn.addEventListener("click",()=>this.send()),this.inputEl.addEventListener("keydown",e=>{e.key==="Enter"&&!e.shiftKey&&(e.preventDefault(),this.send())})}toggle(){this.isOpen=!this.isOpen,this.panel.classList.toggle("visible",this.isOpen),this.bubble.classList.toggle("open",this.isOpen),this.bubble.innerHTML=this.isOpen?x:p,this.bubble.setAttribute("aria-label",this.isOpen?"Close chat":"Open chat"),this.isOpen&&setTimeout(()=>this.inputEl.focus(),300)}async send(){let e=this.inputEl.value.trim();if(!(!e||this.isStreaming)){this.inputEl.value="",this.addMessageToUI("user",e),this.messages.push({role:"user",content:e}),this.isStreaming=!0,this.sendBtn.disabled=!0,this.showTyping();try{let t=await fetch(`${this.config.apiBase}/api/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,conversationId:this.conversationId,visitorId:this.visitorId,message:e,metadata:{pageUrl:window.location.href,referrer:document.referrer||null}})});if(!t.ok||!t.body)throw new Error(`HTTP ${t.status}`);this.hideTyping();let o=this.addMessageToUI("assistant",""),s="",h=t.body.getReader(),g=new TextDecoder,r="";for(;;){let{done:u,value:f}=await h.read();if(u)break;r+=g.decode(f,{stream:!0});let l=r.split(`
-`);r=l.pop()||"";for(let d of l){if(!d.startsWith("data: "))continue;let c=d.slice(6).trim();if(c)try{let i=JSON.parse(c);i.type==="meta"&&i.conversationId?(this.conversationId=i.conversationId,this.trackEngagement()):i.type==="token"&&i.content?(s+=i.content,o.innerHTML=this.renderMarkdown(s),this.scrollToBottom()):i.type==="error"&&(o.textContent="Sorry, something went wrong. Please try again.")}catch{}}}this.messages.push({role:"assistant",content:s})}catch{this.hideTyping(),this.addMessageToUI("assistant","Sorry, I'm having trouble connecting. Please try again in a moment.")}finally{this.isStreaming=!1,this.sendBtn.disabled=!1}}}addMessageToUI(e,t){let o=document.createElement("div");return o.className=`convo-msg ${e}`,e==="assistant"?o.innerHTML=this.renderMarkdown(t):o.textContent=t,this.messagesEl.appendChild(o),this.scrollToBottom(),o}showTyping(){let e=document.createElement("div");e.className="convo-typing",e.id="convo-typing-indicator",e.innerHTML="<span></span><span></span><span></span>",this.messagesEl.appendChild(e),this.scrollToBottom()}hideTyping(){let e=this.shadow.getElementById("convo-typing-indicator");e&&e.remove()}scrollToBottom(){this.messagesEl.scrollTop=this.messagesEl.scrollHeight}escapeHtml(e){let t=document.createElement("div");return t.textContent=e,t.innerHTML}renderMarkdown(e){let t=this.escapeHtml(e);return t=t.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"),t=t.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,"<em>$1</em>"),t=t.replace(/`(.+?)`/g,'<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>'),t=t.replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">$1</a>'),t=t.replace(/^- (.+)$/gm,"\u2022 $1"),t=t.replace(/\n/g,"<br>"),t}async trackSession(){if(!this.sessionTracked){this.sessionTracked=!0;try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,pageUrl:window.location.href})})}catch{}}}async trackEngagement(){try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,engaged:!0,conversationId:this.conversationId})})}catch{}}};typeof window<"u"&&(document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>new a):new a);})();
+    `,this.messagesEl=this.panel.querySelector(".convo-messages"),this.inputEl=this.panel.querySelector("input"),this.sendBtn=this.panel.querySelector(".convo-input-area button"),this.shadow.appendChild(e),this.shadow.appendChild(this.panel),this.shadow.appendChild(this.bubble),this.addMessageToUI("assistant",this.config.welcome)}attachEvents(){this.bubble.addEventListener("click",()=>this.toggle()),this.sendBtn.addEventListener("click",()=>this.send()),this.inputEl.addEventListener("keydown",e=>{e.key==="Enter"&&!e.shiftKey&&(e.preventDefault(),this.send())})}toggle(){this.isOpen=!this.isOpen,this.panel.classList.toggle("visible",this.isOpen),this.bubble.classList.toggle("open",this.isOpen),this.bubble.innerHTML=this.isOpen?y:h,this.bubble.setAttribute("aria-label",this.isOpen?"Close chat":"Open chat"),this.isOpen?setTimeout(()=>this.inputEl.focus(),300):this.triggerPipeline()}async send(){let e=this.inputEl.value.trim();if(!(!e||this.isStreaming)){this.inputEl.value="",this.addMessageToUI("user",e),this.messages.push({role:"user",content:e}),this.isStreaming=!0,this.sendBtn.disabled=!0,this.showTyping();try{let t=await fetch(`${this.config.apiBase}/api/chat`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,conversationId:this.conversationId,visitorId:this.visitorId,message:e,metadata:{pageUrl:window.location.href,referrer:document.referrer||null}})});if(!t.ok||!t.body)throw new Error(`HTTP ${t.status}`);this.hideTyping();let n=this.addMessageToUI("assistant",""),s="",g=t.body.getReader(),u=new TextDecoder,l="";for(;;){let{done:f,value:v}=await g.read();if(f)break;l+=u.decode(v,{stream:!0});let d=l.split(`
+`);l=d.pop()||"";for(let c of d){if(!c.startsWith("data: "))continue;let p=c.slice(6).trim();if(p)try{let o=JSON.parse(p);o.type==="meta"&&o.conversationId?(this.conversationId=o.conversationId,this.trackEngagement()):o.type==="token"&&o.content?(s+=o.content,n.innerHTML=this.renderMarkdown(s),this.scrollToBottom()):o.type==="error"&&(n.textContent="Sorry, something went wrong. Please try again.")}catch{}}}this.messages.push({role:"assistant",content:s}),this.resetIdleTimer()}catch{this.hideTyping(),this.addMessageToUI("assistant","Sorry, I'm having trouble connecting. Please try again in a moment.")}finally{this.isStreaming=!1,this.sendBtn.disabled=!1}}}addMessageToUI(e,t){let n=document.createElement("div");return n.className=`convo-msg ${e}`,e==="assistant"?n.innerHTML=this.renderMarkdown(t):n.textContent=t,this.messagesEl.appendChild(n),this.scrollToBottom(),n}showTyping(){let e=document.createElement("div");e.className="convo-typing",e.id="convo-typing-indicator",e.innerHTML="<span></span><span></span><span></span>",this.messagesEl.appendChild(e),this.scrollToBottom()}hideTyping(){let e=this.shadow.getElementById("convo-typing-indicator");e&&e.remove()}scrollToBottom(){this.messagesEl.scrollTop=this.messagesEl.scrollHeight}escapeHtml(e){let t=document.createElement("div");return t.textContent=e,t.innerHTML}renderMarkdown(e){let t=this.escapeHtml(e);return t=t.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"),t=t.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,"<em>$1</em>"),t=t.replace(/`(.+?)`/g,'<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>'),t=t.replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">$1</a>'),t=t.replace(/^- (.+)$/gm,"\u2022 $1"),t=t.replace(/\n/g,"<br>"),t}async trackSession(){if(!this.sessionTracked){this.sessionTracked=!0;try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,pageUrl:window.location.href})})}catch{}}}async trackEngagement(){try{await fetch(`${this.config.apiBase}/api/widget/track`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenantId:this.config.tenantId,visitorId:this.visitorId,engaged:!0,conversationId:this.conversationId})})}catch{}}triggerPipeline(){this.pipelineTriggered||!this.conversationId||this.messages.length<2||(this.pipelineTriggered=!0,this.clearIdleTimer(),fetch(`${this.config.apiBase}/api/pipeline/trigger`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({conversationId:this.conversationId})}).catch(()=>{}))}resetIdleTimer(){this.clearIdleTimer(),this.conversationId&&this.messages.length>=2&&!this.pipelineTriggered&&(this.idleTimer=setTimeout(()=>this.triggerPipeline(),r.IDLE_TIMEOUT_MS))}clearIdleTimer(){this.idleTimer&&(clearTimeout(this.idleTimer),this.idleTimer=null)}};r.IDLE_TIMEOUT_MS=12e4;var a=r;typeof window<"u"&&(document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>new a):new a);})();

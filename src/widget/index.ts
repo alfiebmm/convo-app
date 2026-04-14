@@ -353,6 +353,9 @@ class ConvoWidget {
   private isOpen = false;
   private isStreaming = false;
   private sessionTracked = false;
+  private pipelineTriggered = false;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private static IDLE_TIMEOUT_MS = 120000; // 2 minutes
 
   // DOM refs (inside Shadow DOM)
   private shadow!: ShadowRoot;
@@ -451,6 +454,9 @@ class ConvoWidget {
 
     if (this.isOpen) {
       setTimeout(() => this.inputEl.focus(), 300);
+    } else {
+      // Widget closed — trigger pipeline if conversation happened
+      this.triggerPipeline();
     }
   }
 
@@ -529,6 +535,7 @@ class ConvoWidget {
       }
 
       this.messages.push({ role: "assistant", content: fullContent });
+      this.resetIdleTimer();
     } catch {
       this.hideTyping();
       this.addMessageToUI(
@@ -633,6 +640,37 @@ class ConvoWidget {
       });
     } catch {
       // Non-critical
+    }
+  }
+
+  /**
+   * Trigger the content pipeline for the current conversation.
+   * Called when: (1) widget is closed after messages, (2) idle timeout.
+   * Fire-and-forget — never blocks the UI.
+   */
+  private triggerPipeline() {
+    if (this.pipelineTriggered || !this.conversationId || this.messages.length < 2) return;
+    this.pipelineTriggered = true;
+    this.clearIdleTimer();
+
+    fetch(`${this.config.apiBase}/api/pipeline/trigger`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: this.conversationId }),
+    }).catch(() => { /* non-critical */ });
+  }
+
+  private resetIdleTimer() {
+    this.clearIdleTimer();
+    if (this.conversationId && this.messages.length >= 2 && !this.pipelineTriggered) {
+      this.idleTimer = setTimeout(() => this.triggerPipeline(), ConvoWidget.IDLE_TIMEOUT_MS);
+    }
+  }
+
+  private clearIdleTimer() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
     }
   }
 }

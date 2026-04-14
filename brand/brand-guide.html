@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convo — Brand Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600&family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* ═══ PRIMARY ═══ */
+  --convo-orange: #FF6B2C;
+  --convo-orange-light: #FF8F5C;
+  --convo-orange-dark: #E85A1E;
+  --convo-orange-subtle: rgba(255, 107, 44, 0.08);
+  
+  /* ═══ NEUTRALS ═══ */
+  --convo-black: #09090B;
+  --convo-900: #18181B;
+  --convo-800: #27272A;
+  --convo-700: #3F3F46;
+  --convo-600: #52525B;
+  --convo-500: #71717A;
+  --convo-400: #A1A1AA;
+  --convo-300: #D4D4D8;
+  --convo-200: #E4E4E7;
+  --convo-100: #F4F4F5;
+  --convo-50: #FAFAFA;
+  --convo-white: #FFFFFF;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--convo-900);
+  background: var(--convo-white);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container { max-width: 1080px; margin: 0 auto; padding: 0 40px; }
+
+section {
+  padding: 80px 0;
+  border-bottom: 1px solid var(--convo-200);
+}
+section:last-child { border-bottom: none; }
+
+/* ═══ TYPOGRAPHY ═══ */
+.section-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--convo-orange);
+  margin-bottom: 16px;
+}
+
+h2 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--convo-black);
+  margin-bottom: 12px;
+}
+
+h3 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--convo-black);
+  margin-bottom: 8px;
+}
+
+p { color: var(--convo-600); font-size: 15px; line-height: 1.7; }
+p.lead { font-size: 17px; line-height: 1.7; max-width: 600px; color: var(--convo-500); }
+
+/* ═══ HERO ═══ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: var(--convo-black);
+  position: relative;
+  overflow: hidden;
+  border-bottom: none;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(255, 107, 44, 0.08) 0%, transparent 65%);
+}
+
+.hero-content { position: relative; z-index: 1; }
+
+.hero h1 {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(56px, 8vw, 88px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  color: var(--convo-white);
+  margin-bottom: 20px;
+}
+
+.hero h1 span { color: var(--convo-orange); }
+
+.hero p {
+  color: var(--convo-500);
+  font-size: 17px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.hero .version-tag {
+  display: inline-block;
+  margin-top: 40px;
+  padding: 5px 14px;
+  border: 1px solid var(--convo-800);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--convo-500);
+  letter-spacing: 0.04em;
+}
+
+/* ═══ LOGO ═══ */
+.logo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 40px;
+}
+
+.logo-card {
+  border-radius: 16px;
+  padding: 56px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  position: relative;
+}
+
+.logo-card.light { background: var(--convo-100); }
+.logo-card.dark { background: var(--convo-black); }
+.logo-card.orange { background: var(--convo-orange); }
+.logo-card.warm { background: #1C1210; }
+
+.logo-card-label {
+  position: absolute;
+  bottom: 14px;
+  left: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+/* ═══ ICON SIZES ═══ */
+.icon-sizes {
+  display: flex;
+  gap: 20px;
+  align-items: end;
+  margin-top: 32px;
+}
+
+.icon-size {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-size span {
+  font-size: 11px;
+  color: var(--convo-400);
+  font-weight: 500;
+}
+
+.icon-box {
+  background: var(--convo-black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ═══ COLOR ═══ */
+.palette-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.color-chip {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--convo-200);
+}
+
+.color-swatch { height: 100px; }
+
+.color-info {
+  padding: 12px 14px;
+  background: white;
+}
+
+.color-name {
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--convo-black);
+  margin-bottom: 2px;
+}
+
+.color-hex {
+  font-size: 12px;
+  color: var(--convo-400);
+  font-family: 'Inter', monospace;
+}
+
+/* ═══ NEUTRAL SCALE ═══ */
+.neutral-strip {
+  display: flex;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 32px;
+  height: 64px;
+}
+
+.neutral-strip > div { flex: 1; position: relative; }
+.neutral-strip > div span {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ═══ TYPE SPECIMEN ═══ */
+.type-specimen {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.type-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 32px;
+  align-items: baseline;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--convo-200);
+}
+
+.type-meta {
+  font-size: 12px;
+  color: var(--convo-400);
+  line-height: 1.7;
+}
+
+.type-meta strong {
+  display: block;
+  font-size: 13px;
+  color: var(--convo-black);
+  margin-bottom: 2px;
+}
+
+/* ═══ UI ELEMENTS ═══ */
+.btn-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--convo-orange);
+  color: white;
+}
+.btn-primary:hover { background: var(--convo-orange-dark); }
+
+.btn-dark {
+  background: var(--convo-black);
+  color: white;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--convo-black);
+  border: 1px solid var(--convo-300);
+}
+
+.btn-soft {
+  background: var(--convo-orange-subtle);
+  color: var(--convo-orange-dark);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-orange { background: var(--convo-orange-subtle); color: var(--convo-orange-dark); }
+.badge-neutral { background: var(--convo-100); color: var(--convo-600); }
+.badge-success { background: rgba(34, 197, 94, 0.08); color: #16A34A; }
+
+/* ═══ WIDGET MOCKUP ═══ */
+.widget-preview { display: flex; justify-content: center; margin-top: 40px; }
+
+.widget-mock {
+  width: 360px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.wm-header {
+  background: var(--convo-black);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wm-avatar {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--convo-orange);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.wm-header h4 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+}
+
+.wm-header span { font-size: 12px; color: var(--convo-500); }
+
+.wm-messages { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+
+.wm-msg {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wm-msg.bot { background: var(--convo-100); color: var(--convo-800); border-bottom-left-radius: 4px; align-self: flex-start; }
+.wm-msg.user { background: var(--convo-black); color: white; border-bottom-right-radius: 4px; align-self: flex-end; }
+
+.wm-input {
+  padding: 14px 20px;
+  border-top: 1px solid var(--convo-200);
+  display: flex; align-items: center; gap: 10px;
+}
+
+.wm-input-field {
+  flex: 1;
+  padding: 9px 14px;
+  border: 1px solid var(--convo-200);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--convo-400);
+  background: var(--convo-50);
+}
+
+.wm-send {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  background: var(--convo-orange);
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ═══ DO / DON'T ═══ */
+.do-dont {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 32px;
+}
+
+.dd-card {
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid;
+}
+
+.dd-card.do { border-color: #22C55E; background: rgba(34, 197, 94, 0.03); }
+.dd-card.dont { border-color: #EF4444; background: rgba(239, 68, 68, 0.03); }
+
+.dd-card .tag {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.dd-card.do .tag { color: #16A34A; }
+.dd-card.dont .tag { color: #EF4444; }
+
+.dd-card ul { list-style: none; padding: 0; }
+.dd-card li { padding: 3px 0; font-size: 13px; color: var(--convo-600); }
+.dd-card li::before { margin-right: 6px; font-weight: 700; }
+.dd-card.do li::before { content: '✓'; color: #16A34A; }
+.dd-card.dont li::before { content: '✗'; color: #EF4444; }
+
+/* ═══ PERSONALITY ═══ */
+.trait-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 32px;
+}
+
+.trait-card {
+  padding: 28px;
+  border: 1px solid var(--convo-200);
+  border-radius: 14px;
+}
+
+.trait-card h3 { font-size: 16px; margin-bottom: 6px; }
+.trait-card p { font-size: 13px; line-height: 1.6; }
+
+.trait-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 16px;
+  font-size: 20px;
+  background: var(--convo-orange-subtle);
+}
+
+/* ═══ EXAMPLES ═══ */
+.example-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 32px;
+}
+
+.example-card {
+  padding: 24px;
+  background: var(--convo-50);
+  border-radius: 12px;
+  border: 1px solid var(--convo-200);
+}
+
+.example-card .tag {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div class="hero-content">
+    <div style="margin-bottom: 56px;">
+      <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 64px; color: #FF6B2C; letter-spacing: -0.03em;">convo</div>
+    </div>
+    <h1>Brand <span>Guide</span></h1>
+    <p>The identity system for Convo — conversations that convert.</p>
+    <div class="version-tag">v1.0 — April 2026</div>
+  </div>
+</section>
+
+<!-- ═══ PERSONALITY ═══ -->
+<section>
+  <div class="container">
+    <div class="section-label">01 — Personality</div>
+    <h2>Smart, fast, unmistakable.</h2>
+    <p class="lead">Convo is the AI chatbot that turns website visitors into conversations — and conversations into content. The brand feels like a product built by people who ship fast and care about craft.</p>
+    
+    <div class="trait-grid">
+      <div class="trait-card">
+        <div class="trait-icon">⚡</div>
+        <h3>Energetic</h3>
+        <p>Convo doesn't sit still. The brand radiates momentum — warm colours, confident type, and a bias for action.</p>
+      </div>
+      <div class="trait-card">
+        <div class="trait-icon">🧠</div>
+        <h3>Intelligent</h3>
+        <p>Behind the energy is genuine substance. Clean information design, precise language, zero fluff.</p>
+      </div>
+      <div class="trait-card">
+        <div class="trait-icon">🤝</div>
+        <h3>Approachable</h3>
+        <p>No enterprise jargon. Convo talks like a sharp colleague — direct, warm, and actually helpful.</p>
+      </div>
+    </div>
+    
+    <div style="margin-top: 40px; padding: 24px 28px; background: var(--convo-50); border: 1px solid var(--convo-200); border-radius: 12px;">
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;">
+        <div>
+          <div style="font-size: 11px; color: var(--convo-400); margin-bottom: 4px; font-weight: 500;">Personality</div>
+          <div style="font-family: Outfit; font-weight: 600; font-size: 14px; color: var(--convo-black);">Sharp · Warm · Fast</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: var(--convo-400); margin-bottom: 4px; font-weight: 500;">Voice</div>
+          <div style="font-family: Outfit; font-weight: 600; font-size: 14px; color: var(--convo-black);">Confident · Direct · Human</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: var(--convo-400); margin-bottom: 4px; font-weight: 500;">Audience</div>
+          <div style="font-family: Outfit; font-weight: 600; font-size: 14px; color: var(--convo-black);">SMBs · Marketers · Founders</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: var(--convo-400); margin-bottom: 4px; font-weight: 500;">Benchmarks</div>
+          <div style="font-family: Outfit; font-weight: 600; font-size: 14px; color: var(--convo-black);">Linear · Vercel · Loom</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ LOGO ═══ -->
+<section>
+  <div class="container">
+    <div class="section-label">02 — Logo</div>
+    <h2>The mark.</h2>
+    <p class="lead">A pure wordmark in Fredoka 700 — bubbly, rounded letterforms that feel friendly and alive. All lowercase. Always in Convo Orange unless reversed to white on dark backgrounds.</p>
+    
+    <div class="logo-grid">
+      <div class="logo-card light">
+        <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 72px; color: #FF6B2C; letter-spacing: -0.03em;">convo</div>
+        <div class="logo-card-label" style="color: var(--convo-400);">On light</div>
+      </div>
+      
+      <div class="logo-card dark">
+        <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 72px; color: #FF6B2C; letter-spacing: -0.03em;">convo</div>
+        <div class="logo-card-label" style="color: var(--convo-600);">On dark</div>
+      </div>
+      
+      <div class="logo-card orange">
+        <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 72px; color: white; letter-spacing: -0.03em;">convo</div>
+        <div class="logo-card-label" style="color: rgba(255,255,255,0.5);">On brand</div>
+      </div>
+      
+      <div class="logo-card" style="background: #09090B;">
+        <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 72px; color: white; letter-spacing: -0.03em;">convo</div>
+        <div class="logo-card-label" style="color: var(--convo-600);">White on black</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 48px;">App Icon / Favicon</h3>
+    <p style="margin-bottom: 24px;">The lowercase 'c' from Fredoka on a black tile. Reads at every size.</p>
+    <div class="icon-sizes">
+      <div class="icon-size">
+        <div class="icon-box" style="width: 80px; height: 80px; border-radius: 18px;">
+          <span style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 52px; color: #FF6B2C; line-height: 1; padding-top: 4px;">c</span>
+        </div>
+        <span>80px</span>
+      </div>
+      <div class="icon-size">
+        <div class="icon-box" style="width: 56px; height: 56px; border-radius: 14px;">
+          <span style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 36px; color: #FF6B2C; line-height: 1; padding-top: 2px;">c</span>
+        </div>
+        <span>56px</span>
+      </div>
+      <div class="icon-size">
+        <div class="icon-box" style="width: 36px; height: 36px; border-radius: 8px;">
+          <span style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 24px; color: #FF6B2C; line-height: 1; padding-top: 1px;">c</span>
+        </div>
+        <span>36px</span>
+      </div>
+      <div class="icon-size">
+        <div class="icon-box" style="width: 20px; height: 20px; border-radius: 5px;">
+          <span style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 14px; color: #FF6B2C; line-height: 1;">c</span>
+        </div>
+        <span>20px</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ COLOUR ═══ -->
+<section>
+  <div class="container">
+    <div class="section-label">03 — Colour</div>
+    <h2>Orange + black. That's it.</h2>
+    <p class="lead">One bold primary. Clean neutrals. The palette is deliberately restrained — let the product and the content do the talking.</p>
+    
+    <h3 style="margin-top: 36px;">Primary</h3>
+    <div class="palette-row">
+      <div class="color-chip">
+        <div class="color-swatch" style="background: #FF6B2C;"></div>
+        <div class="color-info">
+          <div class="color-name">Convo Orange</div>
+          <div class="color-hex">#FF6B2C — Primary</div>
+        </div>
+      </div>
+      <div class="color-chip">
+        <div class="color-swatch" style="background: #FF8F5C;"></div>
+        <div class="color-info">
+          <div class="color-name">Orange Light</div>
+          <div class="color-hex">#FF8F5C — Hover</div>
+        </div>
+      </div>
+      <div class="color-chip">
+        <div class="color-swatch" style="background: #E85A1E;"></div>
+        <div class="color-info">
+          <div class="color-name">Orange Dark</div>
+          <div class="color-hex">#E85A1E — Pressed</div>
+        </div>
+      </div>
+      <div class="color-chip">
+        <div class="color-swatch" style="background: rgba(255,107,44,0.08); border-bottom: 1px solid var(--convo-200);"></div>
+        <div class="color-info">
+          <div class="color-name">Orange Subtle</div>
+          <div class="color-hex">8% opacity — Backgrounds</div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 36px;">Semantic</h3>
+    <div class="palette-row">
+      <div class="color-chip">
+        <div class="color-swatch" style="background: #22C55E;"></div>
+        <div class="color-info">
+          <div class="color-name">Success</div>
+          <div class="color-hex">#22C55E</div>
+        </div>
+      </div>
+      <div class="color-chip">
+        <div class="color-swatch" style="background: #3B82F6;"></div>
+        <div class="color-info">
+          <div class="color-name">Info</div>
+          <div class="color-hex">#3B82F6</div>
+        </div>
+      </div>
+      <div class="color-chip">
+        <div class="color-swatch" style="background: #EF4444;"></div>
+        <div class="color-info">
+          <div class="color-name">Error</div>
+          <div class="color-hex">#EF4444</div>
+        </div>
+      </div>
+      <div class="color-chip">
+        <div class="color-swatch" style="background: #F59E0B;"></div>
+        <div class="color-info">
+          <div class="color-name">Warning</div>
+          <div class="color-hex">#F59E0B</div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 36px;">Neutral scale</h3>
+    <div class="neutral-strip">
+      <div style="background: #09090B;"><span style="color: #71717A;">900</span></div>
+      <div style="background: #18181B;"><span style="color: #71717A;">800</span></div>
+      <div style="background: #27272A;"><span style="color: #A1A1AA;">700</span></div>
+      <div style="background: #3F3F46;"><span style="color: #A1A1AA;">600</span></div>
+      <div style="background: #52525B;"><span style="color: #D4D4D8;">500</span></div>
+      <div style="background: #71717A;"><span style="color: #E4E4E7;">400</span></div>
+      <div style="background: #A1A1AA;"><span style="color: #27272A;">300</span></div>
+      <div style="background: #D4D4D8;"><span style="color: #3F3F46;">200</span></div>
+      <div style="background: #E4E4E7;"><span style="color: #52525B;">100</span></div>
+      <div style="background: #F4F4F5;"><span style="color: #71717A;">50</span></div>
+      <div style="background: #FAFAFA; border: 1px solid #E4E4E7;"><span style="color: #A1A1AA;">white</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ TYPOGRAPHY ═══ -->
+<section>
+  <div class="container">
+    <div class="section-label">04 — Typography</div>
+    <h2>Outfit + Inter.</h2>
+    <p class="lead"><strong style="color: var(--convo-black);">Outfit</strong> for everything that needs to grab you — headlines, UI, buttons. <strong style="color: var(--convo-black);">Inter</strong> for everything that needs to inform — body, captions, data.</p>
+    
+    <div class="type-specimen">
+      <div class="type-row">
+        <div class="type-meta">
+          <strong>Display</strong>
+          Outfit 800<br>
+          -0.04em<br>
+          0.95 line-height
+        </div>
+        <div style="font-family: Outfit; font-size: 56px; font-weight: 800; line-height: 0.95; letter-spacing: -0.04em; color: var(--convo-black);">Every conversation<br>counts.</div>
+      </div>
+      
+      <div class="type-row">
+        <div class="type-meta">
+          <strong>Heading</strong>
+          Outfit 700<br>
+          -0.03em<br>
+          1.1 line-height
+        </div>
+        <div style="font-family: Outfit; font-size: 32px; font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; color: var(--convo-black);">Turn every chat into content that ranks.</div>
+      </div>
+      
+      <div class="type-row">
+        <div class="type-meta">
+          <strong>Subheading</strong>
+          Outfit 600<br>
+          -0.01em<br>
+          1.35 line-height
+        </div>
+        <div style="font-family: Outfit; font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; color: var(--convo-black);">AI-powered conversations that understand your business, engage your visitors, and write your next blog post.</div>
+      </div>
+      
+      <div class="type-row">
+        <div class="type-meta">
+          <strong>Body</strong>
+          Inter 400<br>
+          0 tracking<br>
+          1.7 line-height
+        </div>
+        <div style="font-family: Inter; font-size: 15px; line-height: 1.7; color: var(--convo-600);">Convo sits on your website and does two things brilliantly: engages every visitor with genuinely helpful conversation, and turns those conversations into SEO-optimised articles. It's the growth loop that runs itself.</div>
+      </div>
+      
+      <div class="type-row" style="border-bottom: none;">
+        <div class="type-meta">
+          <strong>Caption</strong>
+          Inter 500<br>
+          0 tracking<br>
+          1.6 line-height
+        </div>
+        <div style="font-family: Inter; font-size: 12px; font-weight: 500; line-height: 1.6; color: var(--convo-400);">Conversations stored with full context · Topics auto-extracted · Articles published to your CMS · Sitemap updated</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ UI ═══ -->
+<section>
+  <div class="container">
+    <div class="section-label">05 — UI Elements</div>
+    <h2>Clean, confident, tactile.</h2>
+    <p class="lead">8–12px radii. Tight spacing. Strong contrast. Every element earns its place.</p>
+    
+    <div>
+      <h3 style="margin-top: 32px;">Buttons</h3>
+      <div class="btn-row">
+        <button class="btn btn-primary">Get started free →</button>
+        <button class="btn btn-dark">View demo</button>
+        <button class="btn btn-ghost">Learn more</button>
+        <button class="btn btn-soft">See pricing</button>
+      </div>
+    </div>
+    
+    <div>
+      <h3 style="margin-top: 32px;">Badges</h3>
+      <div class="btn-row">
+        <span class="badge badge-orange">✦ AI-Powered</span>
+        <span class="badge badge-success">● Live</span>
+        <span class="badge badge-neutral">Free tier</span>
+      </div>
+    </div>
+    
+    <h3 style="margin-top: 40px;">Widget</h3>
+    <p>The product's front door. Black header, clean messages, orange send button.</p>
+    <div class="widget-preview">
+      <div class="widget-mock">
+        <div class="wm-header">
+          <div class="wm-avatar">
+            <span style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 22px; color: white; line-height: 1;">c</span>
+          </div>
+          <div>
+            <div class="wm-header" style="padding: 0; background: none;">
+              <div>
+                <h4 style="font-family: Outfit; font-size: 15px; font-weight: 600; color: white;">Convo</h4>
+                <span style="font-size: 11px; color: rgba(255,255,255,0.5);">Usually replies instantly</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="wm-messages">
+          <div class="wm-msg bot">Hey there 👋 How can I help you today?</div>
+          <div class="wm-msg user">What SEO packages do you offer?</div>
+          <div class="wm-msg bot">We've got three tiers starting at <strong>$2,500/mo</strong> — all include technical audits, content, and monthly reporting. Want the breakdown?</div>
+        </div>
+        <div class="wm-input">
+          <div class="wm-input-field">Type a message...</div>
+          <div class="wm-send">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ VOICE ═══ -->
+<section>
+  <div class="container">
+    <div class="section-label">06 — Voice</div>
+    <h2>Write like a human.</h2>
+    <p class="lead">Confident without being cocky. Smart without being nerdy. Write like you're texting a friend who runs a business.</p>
+    
+    <div class="do-dont">
+      <div class="dd-card do">
+        <div class="tag">Do</div>
+        <ul>
+          <li>Short, punchy sentences</li>
+          <li>Lead with the benefit</li>
+          <li>Be specific — use numbers</li>
+          <li>Australian English (colour, optimise)</li>
+          <li>Say "you" and "your"</li>
+        </ul>
+      </div>
+      <div class="dd-card dont">
+        <div class="tag">Don't</div>
+        <ul>
+          <li>Corporate jargon ("leverage", "synergy")</li>
+          <li>Over-explain — trust the reader</li>
+          <li>Be vague ("improve your marketing")</li>
+          <li>Passive voice when active works</li>
+          <li>Say "AI-powered" in every sentence</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="example-row">
+      <div class="example-card">
+        <div class="tag" style="color: #16A34A;">✓ This</div>
+        <p style="font-size: 14px; color: var(--convo-black); font-style: italic;">"Your website visitors are already asking questions. Convo turns those conversations into blog posts that rank."</p>
+      </div>
+      <div class="example-card">
+        <div class="tag" style="color: #EF4444;">✗ Not this</div>
+        <p style="font-size: 14px; color: var(--convo-black); font-style: italic;">"Our AI-powered solution leverages natural language processing to facilitate automated content generation from conversational inputs."</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<section style="background: var(--convo-black); border-bottom: none; padding: 48px 0;">
+  <div class="container" style="text-align: center;">
+    <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 40px; color: #FF6B2C; letter-spacing: -0.03em;">convo</div>
+    <p style="color: var(--convo-500); margin-top: 12px; font-size: 13px;">Conversations that convert. © 2026</p>
+    <p style="color: var(--convo-600); margin-top: 4px; font-size: 12px;">convoapp.com.au</p>
+  </div>
+</section>
+
+</body>
+</html>

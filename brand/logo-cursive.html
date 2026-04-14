@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convo — Cursive Wordmark Explorations</title>
+<link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Lobster&family=Quicksand:wght@700&family=Fredoka:wght@600;700&family=Comfortaa:wght@700&family=Baloo+2:wght@700;800&family=Grandstander:wght@700;800&family=Nunito:wght@800;900&family=Righteous&family=Sniglet:wght@800&family=Satisfy&family=Inter:wght@500&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: #09090B; color: #FAFAFA; -webkit-font-smoothing: antialiased; }
+
+.header { padding: 40px; border-bottom: 1px solid #27272A; }
+.header h1 { font-family: Inter; font-size: 18px; font-weight: 600; }
+.header p { font-size: 13px; color: #71717A; margin-top: 4px; }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; }
+
+.card {
+  padding: 72px 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  border-bottom: 1px solid #27272A;
+  border-right: 1px solid #27272A;
+  position: relative;
+}
+.card:nth-child(2n) { border-right: none; }
+
+.card.light { background: #FAFAFA; }
+
+.card-label {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #52525B;
+}
+.card.light .card-label { color: #A1A1AA; }
+
+.card-font {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #3F3F46;
+  font-family: Inter;
+}
+.card.light .card-font { color: #D4D4D8; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Convo — Cursive / Fun Wordmark</h1>
+  <p>Full orange. Playful fonts. Pick the energy that fits.</p>
+</div>
+
+<div class="grid">
+
+  <!-- 1: Pacifico — classic script -->
+  <div class="card">
+    <div class="card-label">1</div>
+    <div class="card-font">Pacifico</div>
+    <div style="font-family: Pacifico, cursive; font-size: 72px; color: #FF6B2C; letter-spacing: -0.01em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">1</div>
+    <div style="font-family: Pacifico, cursive; font-size: 72px; color: #FF6B2C; letter-spacing: -0.01em;">convo</div>
+  </div>
+
+  <!-- 2: Lobster — bold connected script -->
+  <div class="card">
+    <div class="card-label">2</div>
+    <div class="card-font">Lobster</div>
+    <div style="font-family: Lobster, cursive; font-size: 80px; color: #FF6B2C; letter-spacing: 0.01em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">2</div>
+    <div style="font-family: Lobster, cursive; font-size: 80px; color: #FF6B2C; letter-spacing: 0.01em;">convo</div>
+  </div>
+
+  <!-- 3: Fredoka — bubbly rounded -->
+  <div class="card">
+    <div class="card-label">3</div>
+    <div class="card-font">Fredoka 700</div>
+    <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 76px; color: #FF6B2C; letter-spacing: -0.03em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">3</div>
+    <div style="font-family: Fredoka, sans-serif; font-weight: 700; font-size: 76px; color: #FF6B2C; letter-spacing: -0.03em;">convo</div>
+  </div>
+
+  <!-- 4: Grandstander — playful rounded with personality -->
+  <div class="card">
+    <div class="card-label">4</div>
+    <div class="card-font">Grandstander 800</div>
+    <div style="font-family: Grandstander, cursive; font-weight: 800; font-size: 72px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">4</div>
+    <div style="font-family: Grandstander, cursive; font-weight: 800; font-size: 72px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+
+  <!-- 5: Baloo 2 — thick, friendly, Indian-inspired round -->
+  <div class="card">
+    <div class="card-label">5</div>
+    <div class="card-font">Baloo 2 · 800</div>
+    <div style="font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 80px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">5</div>
+    <div style="font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 80px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+
+  <!-- 6: Quicksand — geometric rounded, modern -->
+  <div class="card">
+    <div class="card-label">6</div>
+    <div class="card-font">Quicksand 700</div>
+    <div style="font-family: Quicksand, sans-serif; font-weight: 700; font-size: 76px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">6</div>
+    <div style="font-family: Quicksand, sans-serif; font-weight: 700; font-size: 76px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+
+  <!-- 7: Comfortaa — geometric rounded, techy-fun -->
+  <div class="card">
+    <div class="card-label">7</div>
+    <div class="card-font">Comfortaa 700</div>
+    <div style="font-family: Comfortaa, cursive; font-weight: 700; font-size: 72px; color: #FF6B2C; letter-spacing: -0.01em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">7</div>
+    <div style="font-family: Comfortaa, cursive; font-weight: 700; font-size: 72px; color: #FF6B2C; letter-spacing: -0.01em;">convo</div>
+  </div>
+
+  <!-- 8: Nunito 900 — super rounded, friendly AF -->
+  <div class="card">
+    <div class="card-label">8</div>
+    <div class="card-font">Nunito 900</div>
+    <div style="font-family: Nunito, sans-serif; font-weight: 900; font-size: 76px; color: #FF6B2C; letter-spacing: -0.04em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">8</div>
+    <div style="font-family: Nunito, sans-serif; font-weight: 900; font-size: 76px; color: #FF6B2C; letter-spacing: -0.04em;">convo</div>
+  </div>
+
+  <!-- 9: Righteous — retro-modern, geometric curves -->
+  <div class="card">
+    <div class="card-label">9</div>
+    <div class="card-font">Righteous</div>
+    <div style="font-family: Righteous, cursive; font-size: 76px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">9</div>
+    <div style="font-family: Righteous, cursive; font-size: 76px; color: #FF6B2C; letter-spacing: -0.02em;">convo</div>
+  </div>
+
+  <!-- 10: Satisfy — flowing signature style -->
+  <div class="card">
+    <div class="card-label">10</div>
+    <div class="card-font">Satisfy</div>
+    <div style="font-family: Satisfy, cursive; font-size: 80px; color: #FF6B2C;">convo</div>
+  </div>
+  <div class="card light">
+    <div class="card-label">10</div>
+    <div style="font-family: Satisfy, cursive; font-size: 80px; color: #FF6B2C;">convo</div>
+  </div>
+
+</div>
+
+</body>
+</html>
