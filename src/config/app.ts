@@ -5,36 +5,47 @@
  */
 export const APP_CONFIG = {
   name: "Convo",
-  tagline: "Conversations that rank",
+  tagline: "Conversations that convert",
   description:
     "AI chatbot that turns website conversations into SEO-optimised content.",
-  url: "https://convo.app", // placeholder
-  support: "hello@convo.app", // placeholder
+  url: "https://convoapp.com.au",
+  support: "support@convoapp.com.au",
 
   branding: {
-    // Neutral palette — will be updated with final brand
-    primary: "#0F172A", // slate-900
-    secondary: "#3B82F6", // blue-500
-    accent: "#10B981", // emerald-500
+    primary: "#FF6B2C",       // Convo Orange
+    primaryLight: "#FF8F5C",  // hover
+    primaryDark: "#E85A1E",   // pressed
+    primarySubtle: "rgba(255,107,44,0.08)",
     background: "#FFFFFF",
-    foreground: "#0F172A",
-    muted: "#F1F5F9", // slate-100
-    mutedForeground: "#64748B", // slate-500
-    border: "#E2E8F0", // slate-200
+    foreground: "#09090B",    // zinc-950
+    muted: "#F4F4F5",         // zinc-100
+    mutedForeground: "#71717A", // zinc-400
+    border: "#E4E4E7",        // zinc-200
+    card: "#FAFAFA",          // zinc-50
+    success: "#22C55E",
+    info: "#3B82F6",
+    error: "#EF4444",
+    warning: "#F59E0B",
+  },
+
+  fonts: {
+    logo: "'Fredoka', sans-serif",
+    display: "'Outfit', sans-serif",
+    body: "'Inter', sans-serif",
   },
 
   limits: {
     starter: {
-      conversationsPerMonth: 500,
-      articlesPerMonth: 10,
+      conversationsPerMonth: 100,
+      articlesPerMonth: 5,
     },
     growth: {
-      conversationsPerMonth: 2000,
+      conversationsPerMonth: -1, // unlimited
       articlesPerMonth: 50,
     },
-    pro: {
-      conversationsPerMonth: 10000,
-      articlesPerMonth: 200,
+    scale: {
+      conversationsPerMonth: -1,
+      articlesPerMonth: -1,
     },
   },
 } as const;
