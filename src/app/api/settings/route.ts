@@ -65,6 +65,8 @@ export async function GET() {
     tenant: {
       id: tenant.id,
       name: tenant.name,
+      slug: tenant.slug,
+      domain: tenant.domain,
       plan: tenant.plan,
       stripeCustomerId: tenant.stripeCustomerId,
     },
@@ -94,17 +96,35 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
   }
 
+  // Extract tenant-level fields (name, domain) from body — rest goes into settings jsonb
+  const { name: newName, domain: newDomain, ...settingsBody } = body;
+
   const currentSettings = (tenant.settings ?? {}) as Record<string, unknown>;
-  const newSettings = { ...currentSettings, ...body };
+  const newSettings = { ...currentSettings, ...settingsBody };
+
+  // Build the update payload
+  const updatePayload: Record<string, unknown> = {
+    settings: newSettings,
+    updatedAt: new Date(),
+  };
+  if (typeof newName === "string") updatePayload.name = newName;
+  if (typeof newDomain === "string") updatePayload.domain = newDomain || null;
 
   const [updated] = await db
     .update(tenants)
-    .set({
-      settings: newSettings,
-      updatedAt: new Date(),
-    })
+    .set(updatePayload)
     .where(eq(tenants.id, tenantId))
     .returning();
 
-  return NextResponse.json({ settings: updated.settings });
+  return NextResponse.json({
+    settings: updated.settings,
+    tenant: {
+      id: updated.id,
+      name: updated.name,
+      slug: updated.slug,
+      domain: updated.domain,
+      plan: updated.plan,
+      stripeCustomerId: updated.stripeCustomerId,
+    },
+  });
 }

@@ -1,6 +1,102 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { APP_CONFIG } from "@/config/app";
 
+interface WidgetConfig {
+  chatbotName: string;
+  welcomeMessage: string;
+  systemPrompt: string;
+  primaryColor: string;
+  allowedTopics: string;
+}
+
+interface TenantInfo {
+  id: string;
+  name: string;
+  slug: string;
+  domain: string | null;
+}
+
+const DEFAULT_WIDGET: WidgetConfig = {
+  chatbotName: APP_CONFIG.name,
+  welcomeMessage: "Hi! How can I help you today?",
+  systemPrompt:
+    "You are a helpful assistant for this website. Answer questions based on the site content. Be friendly and concise.",
+  primaryColor: APP_CONFIG.branding.primary,
+  allowedTopics: "",
+};
+
 export default function WidgetPage() {
+  const [config, setConfig] = useState<WidgetConfig>(DEFAULT_WIDGET);
+  const [tenant, setTenant] = useState<TenantInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.tenant) setTenant(data.tenant);
+        const w = data.settings?.widget as Partial<WidgetConfig> | undefined;
+        if (w) {
+          setConfig({
+            chatbotName: w.chatbotName ?? DEFAULT_WIDGET.chatbotName,
+            welcomeMessage: w.welcomeMessage ?? DEFAULT_WIDGET.welcomeMessage,
+            systemPrompt: w.systemPrompt ?? DEFAULT_WIDGET.systemPrompt,
+            primaryColor: w.primaryColor ?? DEFAULT_WIDGET.primaryColor,
+            allowedTopics: w.allowedTopics ?? DEFAULT_WIDGET.allowedTopics,
+          });
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ widget: config }),
+      });
+      const data = await res.json();
+      if (data.tenant) setTenant(data.tenant);
+      // Re-sync from response
+      const w = data.settings?.widget as Partial<WidgetConfig> | undefined;
+      if (w) {
+        setConfig({
+          chatbotName: w.chatbotName ?? DEFAULT_WIDGET.chatbotName,
+          welcomeMessage: w.welcomeMessage ?? DEFAULT_WIDGET.welcomeMessage,
+          systemPrompt: w.systemPrompt ?? DEFAULT_WIDGET.systemPrompt,
+          primaryColor: w.primaryColor ?? DEFAULT_WIDGET.primaryColor,
+          allowedTopics: w.allowedTopics ?? DEFAULT_WIDGET.allowedTopics,
+        });
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save widget config:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+      </div>
+    );
+  }
+
+  const tenantSlug = tenant?.slug ?? "YOUR_TENANT_SLUG";
+  const tenantId = tenant?.id ?? "YOUR_TENANT_ID";
+  const hubUrl = `${APP_CONFIG.url}/${tenantSlug}`;
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-slate-900">Widget</h1>
@@ -10,9 +106,7 @@ export default function WidgetPage() {
 
       {/* Install snippet */}
       <div className="mt-8">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Installation
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-900">Installation</h2>
         <p className="mt-2 text-sm text-slate-500">
           Add this snippet before the closing{" "}
           <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">
@@ -24,7 +118,7 @@ export default function WidgetPage() {
           <pre className="text-sm text-green-400 overflow-x-auto">
             {`<script
   src="${APP_CONFIG.url}/widget.js"
-  data-tenant="YOUR_TENANT_ID"
+  data-tenant="${tenantId}"
   async
 ></script>`}
           </pre>
@@ -33,11 +127,10 @@ export default function WidgetPage() {
 
       {/* Content Hub */}
       <div className="mt-8">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Content Hub
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-900">Content Hub</h2>
         <p className="mt-2 text-sm text-slate-500">
-          Your published Q&amp;A content is publicly browsable at your hosted hub.
+          Your published Q&amp;A content is publicly browsable at your hosted
+          hub.
         </p>
         <div className="mt-4 rounded-lg border border-slate-200 bg-white p-6">
           <label className="block text-sm font-medium text-slate-700">
@@ -45,10 +138,10 @@ export default function WidgetPage() {
           </label>
           <div className="mt-2 flex items-center gap-3">
             <code className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              {APP_CONFIG.url}/YOUR_TENANT_SLUG
+              {hubUrl}
             </code>
             <a
-              href={`${APP_CONFIG.url}/YOUR_TENANT_SLUG`}
+              href={hubUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
@@ -56,17 +149,12 @@ export default function WidgetPage() {
               View Hub →
             </a>
           </div>
-          <p className="mt-2 text-xs text-slate-400">
-            Replace YOUR_TENANT_SLUG with your actual tenant slug. Content published without an external CMS will appear here automatically.
-          </p>
         </div>
       </div>
 
       {/* Widget Config */}
       <div className="mt-8">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Configuration
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-900">Configuration</h2>
         <div className="mt-4 space-y-6 rounded-lg border border-slate-200 bg-white p-6">
           <div>
             <label className="block text-sm font-medium text-slate-700">
@@ -74,7 +162,10 @@ export default function WidgetPage() {
             </label>
             <input
               type="text"
-              defaultValue={APP_CONFIG.name}
+              value={config.chatbotName}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, chatbotName: e.target.value }))
+              }
               className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
           </div>
@@ -84,7 +175,10 @@ export default function WidgetPage() {
             </label>
             <input
               type="text"
-              defaultValue="Hi! How can I help you today?"
+              value={config.welcomeMessage}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, welcomeMessage: e.target.value }))
+              }
               className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
           </div>
@@ -94,7 +188,10 @@ export default function WidgetPage() {
             </label>
             <textarea
               rows={4}
-              defaultValue="You are a helpful assistant for this website. Answer questions based on the site content. Be friendly and concise."
+              value={config.systemPrompt}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, systemPrompt: e.target.value }))
+              }
               className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
           </div>
@@ -102,21 +199,49 @@ export default function WidgetPage() {
             <label className="block text-sm font-medium text-slate-700">
               Primary Colour
             </label>
-            <input
-              type="color"
-              defaultValue={APP_CONFIG.branding.primary}
-              className="mt-1 h-10 w-16 rounded border border-slate-200"
-            />
+            <div className="mt-1 flex items-center gap-3">
+              <input
+                type="color"
+                value={config.primaryColor}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, primaryColor: e.target.value }))
+                }
+                className="h-10 w-16 rounded border border-slate-200"
+              />
+              <span className="text-sm text-slate-500 font-mono">
+                {config.primaryColor}
+              </span>
+            </div>
           </div>
           <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input type="checkbox" className="rounded" />
-              Auto-publish content (confidence threshold: 0.8+)
+            <label className="block text-sm font-medium text-slate-700">
+              Allowed Topics
             </label>
+            <input
+              type="text"
+              value={config.allowedTopics}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, allowedTopics: e.target.value }))
+              }
+              placeholder="e.g. breed info, pricing, care tips (comma-separated, leave empty for all)"
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Comma-separated list. Leave empty to allow all topics.
+            </p>
           </div>
-          <button className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 transition-colors">
-            Save Configuration
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Saving..." : "Save Configuration"}
+            </button>
+            {saved && (
+              <span className="text-sm text-green-600">✓ Saved</span>
+            )}
+          </div>
         </div>
       </div>
     </div>

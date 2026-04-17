@@ -142,13 +142,25 @@ export function buildSystemPrompt(
   const settings = tenant.settings ?? {};
   const guardrails = settings.guardrails as GuardrailsConfig | undefined;
 
-  // No guardrails configured — use legacy persona or default
+  // No guardrails configured — use widget config, legacy persona, or default
   if (!guardrails || !guardrails.audiences?.length) {
-    return (
+    const widget = settings.widget as Record<string, unknown> | undefined;
+    let prompt =
+      (widget?.systemPrompt as string) ??
       (settings.persona as string) ??
       (settings.systemPrompt as string) ??
-      `You are a friendly, knowledgeable assistant embedded on ${tenant.name}'s website. Be concise but thorough. If you don't know something, say so honestly.`
-    );
+      `You are a friendly, knowledgeable assistant embedded on ${tenant.name}'s website. Be concise but thorough. If you don't know something, say so honestly.`;
+
+    // Append context
+    prompt += `\n\nYou are the AI assistant for ${tenant.name}${tenant.domain ? ` (${tenant.domain})` : ""}.`;
+
+    // Append widget allowed topics if set
+    const allowedTopics = widget?.allowedTopics as string | undefined;
+    if (allowedTopics?.trim()) {
+      prompt += `\n\nYou should only discuss topics related to: ${allowedTopics.trim()}. Politely decline to discuss other topics.`;
+    }
+
+    return prompt;
   }
 
   const audience = detectAudience(guardrails.audiences, metadata.pageUrl);

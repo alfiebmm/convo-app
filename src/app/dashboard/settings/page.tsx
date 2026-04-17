@@ -77,16 +77,48 @@ interface TenantSettings {
 export default function SettingsPage() {
   const [settings, setSettings] = useState<TenantSettings>({});
   const [loading, setLoading] = useState(true);
+  const [siteName, setSiteName] = useState("");
+  const [domain, setDomain] = useState("");
+  const [savingGeneral, setSavingGeneral] = useState(false);
+  const [generalSaved, setGeneralSaved] = useState(false);
 
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data) => {
         setSettings(data.settings ?? {});
+        if (data.tenant) {
+          setSiteName(data.tenant.name ?? "");
+          setDomain(data.tenant.domain ?? "");
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
+
+  async function handleSaveGeneral() {
+    setSavingGeneral(true);
+    setGeneralSaved(false);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: siteName, domain }),
+      });
+      const data = await res.json();
+      if (data.tenant) {
+        setSiteName(data.tenant.name ?? "");
+        setDomain(data.tenant.domain ?? "");
+      }
+      if (data.settings) setSettings(data.settings);
+      setGeneralSaved(true);
+      setTimeout(() => setGeneralSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save general settings:", err);
+    } finally {
+      setSavingGeneral(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -114,7 +146,8 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                defaultValue="My Website"
+                value={siteName}
+                onChange={(e) => setSiteName(e.target.value)}
                 className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
             </div>
@@ -124,9 +157,23 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
                 placeholder="example.com"
                 className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveGeneral}
+                disabled={savingGeneral}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
+              >
+                {savingGeneral ? "Saving..." : "Save"}
+              </button>
+              {generalSaved && (
+                <span className="text-sm text-green-600">✓ Saved</span>
+              )}
             </div>
           </div>
         </section>
