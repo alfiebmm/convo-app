@@ -371,11 +371,17 @@ class ConvoWidget {
     this.init();
   }
 
-  private init() {
+  private async init() {
     if (!this.config.tenantId) {
       console.warn("[Convo] Missing data-tenant attribute on script tag.");
       return;
     }
+
+    // Pull the latest widget config (name, welcome, colour) from the server
+    // so dashboard edits reflect live without the site owner having to update
+    // their embed snippet. Script-tag attributes act as fallbacks if the fetch
+    // fails or the tenant hasn't saved settings yet.
+    await this.mergeRemoteConfig();
 
     // Create host element with Shadow DOM
     const host = document.createElement("div");
@@ -386,6 +392,37 @@ class ConvoWidget {
     this.render();
     this.attachEvents();
     this.trackSession();
+  }
+
+  /**
+   * Fetch name/welcome/color from /api/widget/config and overlay onto
+   * the script-tag config. Non-blocking failures — if the API is
+   * unreachable we silently fall back to the embed-provided values.
+   */
+  private async mergeRemoteConfig(): Promise<void> {
+    try {
+      const res = await fetch(
+        `${this.config.apiBase}/api/widget/config?tenant=${encodeURIComponent(this.config.tenantId)}`,
+        { method: "GET", credentials: "omit" }
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        name?: string | null;
+        welcome?: string | null;
+        color?: string | null;
+      };
+      if (typeof data.name === "string" && data.name.trim()) {
+        this.config.name = data.name;
+      }
+      if (typeof data.welcome === "string" && data.welcome.trim()) {
+        this.config.welcome = data.welcome;
+      }
+      if (typeof data.color === "string" && data.color.trim()) {
+        this.config.color = data.color;
+      }
+    } catch {
+      // Offline, CORS, or API down — silently fall back to script-tag values
+    }
   }
 
   private render() {
