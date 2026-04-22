@@ -586,6 +586,29 @@ class ConvoWidget {
   }
 
   /**
+   * Is this link internal (same origin as the host page)?
+   * Relative URLs (starting with /, #, ?) are always internal.
+   * Absolute URLs are internal if they match window.location.origin.
+   * (CON-18 — internal links should stay in-tab, external should open new tab.)
+   */
+  private isInternalLink(url: string): boolean {
+    if (!url) return false;
+    const trimmed = url.trim();
+    // Protocol-specific — always external behaviour
+    if (/^(mailto:|tel:|sms:|javascript:)/i.test(trimmed)) return false;
+    // Relative paths / hash / query → internal
+    if (trimmed.startsWith("/") || trimmed.startsWith("#") || trimmed.startsWith("?")) return true;
+    // Absolute URL — compare origin
+    try {
+      const u = new URL(trimmed, window.location.href);
+      return u.origin === window.location.origin;
+    } catch {
+      // Malformed URL → treat as relative/internal
+      return true;
+    }
+  }
+
+  /**
    * Lightweight markdown → HTML for chat messages.
    * Supports: **bold**, *italic*, [links](url), `code`, and line breaks.
    * Escapes HTML first to prevent XSS.
@@ -598,8 +621,16 @@ class ConvoWidget {
     html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
     // Inline code: `text`
     html = html.replace(/`(.+?)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:0.9em;">$1</code>');
-    // Links: [text](url) — open in new tab
-    html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">$1</a>');
+    // Links: [text](url) — internal links stay in-tab, external links open in new tab (CON-18)
+    html = html.replace(/\[(.+?)\]\((.+?)\)/g, (_match, text, url) => {
+      const isInternal = this.isInternalLink(url);
+      const safeText = this.escapeHtml(text);
+      const safeUrl = this.escapeHtml(url);
+      if (isInternal) {
+        return `<a href="${safeUrl}" style="color:inherit;text-decoration:underline;">${safeText}</a>`;
+      }
+      return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">${safeText}</a>`;
+    });
     // Bullet lists: lines starting with "- "
     html = html.replace(/^- (.+)$/gm, "• $1");
     // Line breaks
