@@ -586,9 +586,12 @@ class ConvoWidget {
   }
 
   /**
-   * Is this link internal (same origin as the host page)?
+   * Is this link internal (same root domain as the host page)?
    * Relative URLs (starting with /, #, ?) are always internal.
-   * Absolute URLs are internal if they match window.location.origin.
+   * Absolute URLs are internal if they share the registrable root domain
+   * (e.g. doggo.com.au and www.doggo.com.au both count as internal).
+   * Different protocol (http vs https) is NOT treated as external — browsers
+   * upgrade these automatically and they're still the same site to the user.
    * (CON-18 — internal links should stay in-tab, external should open new tab.)
    */
   private isInternalLink(url: string): boolean {
@@ -598,10 +601,16 @@ class ConvoWidget {
     if (/^(mailto:|tel:|sms:|javascript:)/i.test(trimmed)) return false;
     // Relative paths / hash / query → internal
     if (trimmed.startsWith("/") || trimmed.startsWith("#") || trimmed.startsWith("?")) return true;
-    // Absolute URL — compare origin
+    // Absolute URL — compare registrable root domain
     try {
       const u = new URL(trimmed, window.location.href);
-      return u.origin === window.location.origin;
+      const strip = (h: string) => h.replace(/^www\./i, "").toLowerCase();
+      const linkHost = strip(u.hostname);
+      const pageHost = strip(window.location.hostname);
+      if (linkHost === pageHost) return true;
+      // Subdomain match — treat app.foo.com as internal when page is foo.com
+      if (linkHost.endsWith("." + pageHost) || pageHost.endsWith("." + linkHost)) return true;
+      return false;
     } catch {
       // Malformed URL → treat as relative/internal
       return true;

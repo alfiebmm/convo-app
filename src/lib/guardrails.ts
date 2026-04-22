@@ -160,8 +160,9 @@ export function buildSystemPrompt(
       prompt += `\n\nYou should only discuss topics related to: ${allowedTopics.trim()}. Politely decline to discuss other topics.`;
     }
 
-    // Response-length guardrail (CON-13)
-    prompt += `\n\n# Response Length\nKeep every reply to a maximum of 2 short paragraphs. Aim for conversational brevity — this is a chat widget, not a long-form article. If the user asks something complex, give the key answer up front and invite a follow-up question rather than dumping everything at once.`;
+    // Response-length guardrail (CON-13). Prepended as a HARD rule so the model
+    // treats it as a constraint, not a style suggestion.
+    prompt = `# HARD RULE — Response Length\nEvery reply MUST be at most 2 short paragraphs (roughly 4–6 sentences total). This is a chat widget, not an article. If the user asks something that would need more, give the single most important answer first and invite a follow-up question. Do NOT produce bullet lists longer than 3 items. Never exceed 2 paragraphs.\n\n` + prompt;
 
     return prompt;
   }
@@ -241,10 +242,7 @@ export function buildSystemPrompt(
     }
   }
 
-  // Response-length guardrail (CON-13)
-  sections.push(
-    `# Response Length\nKeep every reply to a maximum of 2 short paragraphs. Aim for conversational brevity — this is a chat widget, not a long-form article. If the user asks something complex, give the key answer up front and invite a follow-up question rather than dumping everything at once.`
-  );
-
-  return sections.join("\n\n");
+  // Response-length guardrail (CON-13). Prepended as a HARD rule so the model
+  // treats it as a constraint, not a style suggestion.
+  return `# HARD RULE — Response Length\nEvery reply MUST be at most 2 short paragraphs (roughly 4–6 sentences total). This is a chat widget, not an article. If the user asks something that would need more, give the single most important answer first and invite a follow-up question. Do NOT produce bullet lists longer than 3 items. Never exceed 2 paragraphs.\n\n` + sections.join("\n\n");
 }
