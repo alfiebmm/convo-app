@@ -132,6 +132,35 @@ export interface TenantForGuardrails {
 }
 
 /**
+ * Collect allowed topics from both the structured Settings location and
+ * the legacy flat Widget location, deduped. Structured takes precedence
+ * on collisions but we merge so neither source silently disappears.
+ */
+function collectAllowedTopics(
+  settings: Record<string, unknown>
+): string[] {
+  const out = new Set<string>();
+  const guardrails = settings.guardrails as GuardrailsConfig | undefined;
+  const structured = guardrails?.topicBoundaries?.allow;
+  if (Array.isArray(structured)) {
+    structured
+      .map((t) => (typeof t === "string" ? t.trim() : ""))
+      .filter(Boolean)
+      .forEach((t) => out.add(t));
+  }
+  const widget = settings.widget as Record<string, unknown> | undefined;
+  const legacy = widget?.allowedTopics;
+  if (typeof legacy === "string" && legacy.trim()) {
+    legacy
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((t) => out.add(t));
+  }
+  return Array.from(out);
+}
+
+/**
  * Build a complete system prompt from tenant guardrails config
  * and conversation context.
  */
@@ -154,10 +183,14 @@ export function buildSystemPrompt(
     // Append context
     prompt += `\n\nYou are the AI assistant for ${tenant.name}${tenant.domain ? ` (${tenant.domain})` : ""}.`;
 
-    // Append widget allowed topics if set
-    const allowedTopics = widget?.allowedTopics as string | undefined;
-    if (allowedTopics?.trim()) {
-      prompt += `\n\nYou should only discuss topics related to: ${allowedTopics.trim()}. Politely decline to discuss other topics.`;
+    // Allowed topics — single source of truth is now
+    // settings.guardrails.topicBoundaries.allow (array). We also honour the
+    // legacy flat settings.widget.allowedTopics (comma-separated string) so
+    // tenants created before the Widget-tab field was removed don't lose
+    // their topic restrictions.
+    const allowedTopics = collectAllowedTopics(settings);
+    if (allowedTopics.length) {
+      prompt += `\n\nYou should only discuss topics related to: ${allowedTopics.join(", ")}. Politely decline to discuss other topics.`;
     }
 
     // Response-length guardrail (CON-13). Prepended as a HARD rule so the model

@@ -8,7 +8,6 @@ interface WidgetConfig {
   welcomeMessage: string;
   systemPrompt: string;
   primaryColor: string;
-  allowedTopics: string;
 }
 
 interface TenantInfo {
@@ -24,7 +23,6 @@ const DEFAULT_WIDGET: WidgetConfig = {
   systemPrompt:
     "You are a helpful assistant for this website. Answer questions based on the site content. Be friendly and concise.",
   primaryColor: APP_CONFIG.branding.primary,
-  allowedTopics: "",
 };
 
 export default function WidgetPage() {
@@ -46,7 +44,6 @@ export default function WidgetPage() {
             welcomeMessage: w.welcomeMessage ?? DEFAULT_WIDGET.welcomeMessage,
             systemPrompt: w.systemPrompt ?? DEFAULT_WIDGET.systemPrompt,
             primaryColor: w.primaryColor ?? DEFAULT_WIDGET.primaryColor,
-            allowedTopics: w.allowedTopics ?? DEFAULT_WIDGET.allowedTopics,
           });
         }
         setLoading(false);
@@ -73,7 +70,6 @@ export default function WidgetPage() {
           welcomeMessage: w.welcomeMessage ?? DEFAULT_WIDGET.welcomeMessage,
           systemPrompt: w.systemPrompt ?? DEFAULT_WIDGET.systemPrompt,
           primaryColor: w.primaryColor ?? DEFAULT_WIDGET.primaryColor,
-          allowedTopics: w.allowedTopics ?? DEFAULT_WIDGET.allowedTopics,
         });
       }
       setSaved(true);
@@ -213,23 +209,17 @@ export default function WidgetPage() {
               </span>
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Allowed Topics
-            </label>
-            <input
-              type="text"
-              value={config.allowedTopics}
-              onChange={(e) =>
-                setConfig((c) => ({ ...c, allowedTopics: e.target.value }))
-              }
-              placeholder="e.g. breed info, pricing, care tips (comma-separated, leave empty for all)"
-              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Comma-separated list. Leave empty to allow all topics.
-            </p>
-          </div>
+          <p className="text-xs text-slate-400">
+            Looking for topic restrictions, deflect rules, or audience
+            personas? Those live under{" "}
+            <a
+              href="/dashboard/settings"
+              className="text-blue-600 underline hover:text-blue-700"
+            >
+              Settings → Topic Boundaries
+            </a>
+            .
+          </p>
           <div className="flex items-center gap-3">
             <button
               onClick={handleSave}
