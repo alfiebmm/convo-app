@@ -368,7 +368,48 @@ class ConvoWidget {
   constructor() {
     this.config = getConfig();
     this.visitorId = getVisitorId();
+    // CON-40: rehydrate active session from sessionStorage so clicking
+    // an internal link (which reloads the page) doesn't nuke the chat.
+    // sessionStorage is scoped to the browser tab, so closing the tab or
+    // navigating to a different site still ends the conversation cleanly.
+    this.restoreSession();
     this.init();
+  }
+
+  private sessionStorageKey(): string {
+    return `convo_session_${this.config.tenantId}_${this.visitorId}`;
+  }
+
+  private restoreSession(): void {
+    try {
+      const raw = sessionStorage.getItem(this.sessionStorageKey());
+      if (!raw) return;
+      const data = JSON.parse(raw) as {
+        conversationId?: string | null;
+        messages?: Message[];
+        sessionTracked?: boolean;
+      };
+      if (data.conversationId) this.conversationId = data.conversationId;
+      if (Array.isArray(data.messages)) this.messages = data.messages;
+      if (data.sessionTracked) this.sessionTracked = true;
+    } catch {
+      // Corrupt sessionStorage — ignore, start fresh
+    }
+  }
+
+  private persistSession(): void {
+    try {
+      sessionStorage.setItem(
+        this.sessionStorageKey(),
+        JSON.stringify({
+          conversationId: this.conversationId,
+          messages: this.messages,
+          sessionTracked: this.sessionTracked,
+        })
+      );
+    } catch {
+      // Quota exceeded or storage disabled — no-op
+    }
   }
 
   private async init() {
@@ -462,8 +503,14 @@ class ConvoWidget {
     this.shadow.appendChild(this.panel);
     this.shadow.appendChild(this.bubble);
 
-    // Show welcome message
-    this.addMessageToUI("assistant", this.config.welcome);
+    // CON-40: if we rehydrated a session, replay it. Otherwise show welcome.
+    if (this.messages.length > 0) {
+      for (const m of this.messages) {
+        this.addMessageToUI(m.role, m.content);
+      }
+    } else {
+      this.addMessageToUI("assistant", this.config.welcome);
+    }
   }
 
   private attachEvents() {
@@ -504,6 +551,7 @@ class ConvoWidget {
     this.inputEl.value = "";
     this.addMessageToUI("user", text);
     this.messages.push({ role: "user", content: text });
+    this.persistSession(); // CON-40: save user turn immediately
 
     this.isStreaming = true;
     this.sendBtn.disabled = true;
@@ -572,6 +620,7 @@ class ConvoWidget {
       }
 
       this.messages.push({ role: "assistant", content: fullContent });
+      this.persistSession(); // CON-40
       this.resetIdleTimer();
     } catch {
       this.hideTyping();

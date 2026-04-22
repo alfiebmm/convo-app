@@ -132,6 +132,30 @@ export interface TenantForGuardrails {
 }
 
 /**
+ * Behavioural rules that apply to every reply, regardless of tenant config.
+ * Prepended to the system prompt so the model treats them as hard constraints.
+ */
+const GLOBAL_RULES = `# HARD RULES — Behaviour
+
+## Response length
+Use discretion. Match the length to the question:
+- Simple factual questions ("what's x?") → 1 short sentence
+- Social / conversational ("hi", "thanks") → 1 sentence
+- Informational with context → 1–2 short paragraphs
+- NEVER exceed 2 short paragraphs in one reply
+- NEVER use bullet lists longer than 3 items
+Don't pad. Don't repeat the question back. Don't add filler like "Great question!"
+
+## Clarify before answering
+If the user's first message is vague, ambiguous, or could be answered differently depending on who they are or what they need, ask ONE clarifying question before answering. Do NOT guess. Guessing wastes their time.
+
+If you asked a qualifying question (e.g. "are you a farmer or contractor?") and their reply does NOT clearly answer it, politely re-ask. Do not proceed with a generic response that assumes an answer.
+
+Once you know the user's context, use it. Every subsequent reply should reflect what they told you — don't keep re-asking or ignore their stated context.
+
+`;
+
+/**
  * Collect allowed topics from both the structured Settings location and
  * the legacy flat Widget location, deduped. Structured takes precedence
  * on collisions but we merge so neither source silently disappears.
@@ -193,9 +217,9 @@ export function buildSystemPrompt(
       prompt += `\n\nYou should only discuss topics related to: ${allowedTopics.join(", ")}. Politely decline to discuss other topics.`;
     }
 
-    // Response-length guardrail (CON-13). Prepended as a HARD rule so the model
-    // treats it as a constraint, not a style suggestion.
-    prompt = `# HARD RULE — Response Length\nEvery reply MUST be at most 2 short paragraphs (roughly 4–6 sentences total). This is a chat widget, not an article. If the user asks something that would need more, give the single most important answer first and invite a follow-up question. Do NOT produce bullet lists longer than 3 items. Never exceed 2 paragraphs.\n\n` + prompt;
+    // CON-42: response length, graduated not fixed. CON-41: clarify before
+    // answering vague questions.
+    prompt = GLOBAL_RULES + prompt;
 
     return prompt;
   }
@@ -275,7 +299,7 @@ export function buildSystemPrompt(
     }
   }
 
-  // Response-length guardrail (CON-13). Prepended as a HARD rule so the model
-  // treats it as a constraint, not a style suggestion.
-  return `# HARD RULE — Response Length\nEvery reply MUST be at most 2 short paragraphs (roughly 4–6 sentences total). This is a chat widget, not an article. If the user asks something that would need more, give the single most important answer first and invite a follow-up question. Do NOT produce bullet lists longer than 3 items. Never exceed 2 paragraphs.\n\n` + sections.join("\n\n");
+  // CON-42: response length, graduated not fixed. CON-41: clarify before
+  // answering vague questions.
+  return GLOBAL_RULES + sections.join("\n\n");
 }
