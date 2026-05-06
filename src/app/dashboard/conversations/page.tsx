@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { conversations, messages } from "@/lib/db/schema";
-import { eq, and, desc, type SQL } from "drizzle-orm";
+import { eq, and, desc, isNotNull, isNull, type SQL } from "drizzle-orm";
 import ConversationList from "./conversation-list";
 import { ConversationStatusFilter } from "./conversation-filters";
 import { Suspense } from "react";
@@ -19,20 +19,31 @@ export default async function ConversationsPage({
   const statusFilter = params.status;
 
   const conditions: SQL[] = [eq(conversations.tenantId, tenant.id)];
-  if (statusFilter && statusFilter !== "all") {
-    conditions.push(
-      eq(
-        conversations.status,
-        statusFilter as "active" | "completed" | "archived"
-      )
-    );
+
+  // Filter handles two axes: lifecycle status (active/completed/archived)
+  // AND triage flags (needs_followup/resolved). Triage filters take
+  // precedence when selected.
+  if (statusFilter === "needs_followup") {
+    conditions.push(eq(conversations.needsFollowup, true));
+  } else if (statusFilter === "resolved") {
+    conditions.push(isNotNull(conversations.resolvedAt));
+  } else if (
+    statusFilter === "active" ||
+    statusFilter === "completed" ||
+    statusFilter === "archived"
+  ) {
+    conditions.push(eq(conversations.status, statusFilter));
   }
 
   const convos = await db
     .select()
     .from(conversations)
     .where(and(...conditions))
-    .orderBy(desc(conversations.startedAt))
+    .orderBy(
+      // Pin needs-follow-up rows to the top, then newest first.
+      desc(conversations.needsFollowup),
+      desc(conversations.startedAt)
+    )
     .limit(100);
 
   // Get last message for each conversation
@@ -52,9 +63,14 @@ export default async function ConversationsPage({
         messageCount: convo.messageCount,
         startedAt: convo.startedAt,
         lastMessage: lastMsg?.content ?? null,
+        needsFollowup: convo.needsFollowup,
+        resolvedAt: convo.resolvedAt,
       };
     })
   );
+
+  // Suppress unused import warning when filter logic doesn't hit isNull yet.
+  void isNull;
 
   return (
     <div>

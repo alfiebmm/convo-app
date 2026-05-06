@@ -12,6 +12,8 @@ export function ConversationStatusFilter() {
     { value: "active", label: "Active" },
     { value: "completed", label: "Completed" },
     { value: "archived", label: "Archived" },
+    { value: "needs_followup", label: "Needs follow-up" },
+    { value: "resolved", label: "Resolved" },
   ];
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {

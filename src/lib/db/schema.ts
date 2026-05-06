@@ -173,6 +173,13 @@ export const conversations = pgTable(
     status: conversationStatusEnum("status").default("active").notNull(),
     metadata: jsonb("metadata").default({}).notNull(), // page URL, referrer, device, etc.
     messageCount: integer("message_count").default(0).notNull(),
+    // Human triage flags — independent of conversation lifecycle status.
+    // A conversation can be `active` AND `needsFollowup`; resolving clears the flag.
+    needsFollowup: boolean("needs_followup").default(false).notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     startedAt: timestamp("started_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -184,6 +191,7 @@ export const conversations = pgTable(
   (table) => [
     index("conversations_tenant_idx").on(table.tenantId),
     index("conversations_status_idx").on(table.tenantId, table.status),
+    index("conversations_followup_idx").on(table.tenantId, table.needsFollowup),
   ]
 );
 
