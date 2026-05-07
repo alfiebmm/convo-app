@@ -1,0 +1,25 @@
+/**
+ * Forum Config Types (K-01)
+ * 
+ * Re-exports the TypeScript types inferred from the Zod schema.
+ * Import from this file when you need the type definitions across the app.
+ * 
+ * @example
+ * ```typescript
+ * import type { ForumConfig, CtaRule } from '@/lib/forum-config/types';
+ * 
+ * function applyConfig(config: ForumConfig) {
+ *   // ...
+ * }
+ * ```
+ */
+
+export type {
+  ForumConfig,
+  AiPersona,
+  CtaRule,
+  QualifyingQuestion,
+  SeoDefaults,
+  Connectors,
+  Limits,
+} from "./schema";
