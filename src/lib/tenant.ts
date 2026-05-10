@@ -3,8 +3,9 @@
  * Every API/page request resolves the current tenant from the session.
  */
 import { db } from "./db";
-import { tenants, tenantMembers, users } from "./db/schema";
+import { tenants, tenantMembers } from "./db/schema";
 import { eq, and } from "drizzle-orm";
+import { indexTenantSite } from "./knowledge/indexer";
 
 export async function getTenantBySlug(slug: string) {
   const [tenant] = await db
@@ -41,7 +42,7 @@ export async function createTenant(data: {
   domain?: string;
   ownerUserId: string;
 }) {
-  return db.transaction(async (tx) => {
+  const tenant = await db.transaction(async (tx) => {
     const [tenant] = await tx
       .insert(tenants)
       .values({
@@ -59,6 +60,21 @@ export async function createTenant(data: {
 
     return tenant;
   });
+
+  // Trigger site indexing asynchronously if domain provided
+  if (data.domain) {
+    // Fire and forget - don't block tenant creation
+    setImmediate(() => {
+      indexTenantSite(tenant.id, data.domain!).catch((error) => {
+        console.error(
+          `[Tenant] Failed to index site for tenant ${tenant.id}:`,
+          error
+        );
+      });
+    });
+  }
+
+  return tenant;
 }
 
 export async function checkMembership(tenantId: string, userId: string) {
