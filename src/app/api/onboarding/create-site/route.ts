@@ -8,6 +8,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createTenant } from "@/lib/tenant";
 
+// Site crawl kicks off in `after()` inside createTenant. Force Node runtime
+// (crawler uses cheerio + fetch). maxDuration covers the foreground response
+// only — the crawl itself runs in waitUntil and has its own budget.
+export const runtime = "nodejs";
+export const maxDuration = 10;
+
 function slugify(name: string): string {
   return name
     .toLowerCase()

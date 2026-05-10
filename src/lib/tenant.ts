@@ -2,6 +2,7 @@
  * Multi-tenant context utilities.
  * Every API/page request resolves the current tenant from the session.
  */
+import { after } from "next/server";
 import { db } from "./db";
 import { tenants, tenantMembers } from "./db/schema";
 import { eq, and } from "drizzle-orm";
@@ -61,16 +62,20 @@ export async function createTenant(data: {
     return tenant;
   });
 
-  // Trigger site indexing asynchronously if domain provided
+  // Trigger site indexing AFTER the response is sent. `after()` is Next 15+/16
+  // primitive that runs work post-response on Vercel without truncating it the
+  // way `setImmediate` does on serverless. Caller still gets fast tenant create.
   if (data.domain) {
-    // Fire and forget - don't block tenant creation
-    setImmediate(() => {
-      indexTenantSite(tenant.id, data.domain!).catch((error) => {
+    const domain = data.domain;
+    after(async () => {
+      try {
+        await indexTenantSite(tenant.id, domain);
+      } catch (error) {
         console.error(
           `[Tenant] Failed to index site for tenant ${tenant.id}:`,
           error
         );
-      });
+      }
     });
   }
 

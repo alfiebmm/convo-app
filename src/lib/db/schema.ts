@@ -12,6 +12,7 @@ import {
   varchar,
   real,
   primaryKey,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
 
@@ -346,8 +347,11 @@ export const knowledgeItems = pgTable(
     type: knowledgeItemTypeEnum("type").notNull(),
     // For 'page': source URL; for 'file': null (parent_id links to knowledge_files)
     sourceUrl: text("source_url"),
-    // For 'file' chunks: links to parent file record (CON-87 will populate)
-    parentId: uuid("parent_id"),
+    // For 'file' chunks: links to parent file record. CASCADE so deleting a file
+    // wipes its chunks atomically (used by DELETE /api/knowledge/files/[id]).
+    parentId: uuid("parent_id").references((): AnyPgColumn => knowledgeFiles.id, {
+      onDelete: "cascade",
+    }),
     title: text("title").notNull(),
     content: text("content").notNull(),
     contentHash: text("content_hash").notNull(), // SHA-256 for change detection

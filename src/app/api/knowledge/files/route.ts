@@ -2,7 +2,7 @@
  * POST /api/knowledge/files - Upload a file to tenant knowledge base
  * GET  /api/knowledge/files - List tenant knowledge files with stats
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getCurrentTenant } from "@/lib/auth-context";
 import { db } from "@/lib/db";
 import { knowledgeFiles, knowledgeItems } from "@/lib/db/schema";
@@ -10,6 +10,14 @@ import { eq, sql } from "drizzle-orm";
 import { getSupabaseClient } from "@/lib/supabase-client";
 import { ingestFile } from "@/lib/knowledge/file-ingest";
 import { randomUUID } from "crypto";
+
+// Force Node runtime: pdf-parse, mammoth, and Supabase service-role client all
+// need full Node APIs. Edge runtime would 500 here.
+export const runtime = "nodejs";
+// Upload + DB insert is fast (<5s); ingestion runs in `after()` and can use the
+// full waitUntil budget on Vercel Pro (~5min). Bumping this only affects the
+// foreground request — kept short so the user sees the 201 quickly.
+export const maxDuration = 30;
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const ALLOWED_MIME_TYPES = [
@@ -144,9 +152,15 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Trigger background ingestion (fire-and-forget)
-    ingestFile(fileId).catch((err) => {
-      console.error(`Background ingestion failed for ${fileId}:`, err);
+    // Run ingestion AFTER the response is sent so Vercel keeps the function
+    // alive via `waitUntil`. `setImmediate` would be cut off when the function
+    // freezes, leaving the file stuck on status='pending' forever.
+    after(async () => {
+      try {
+        await ingestFile(fileId);
+      } catch (err) {
+        console.error(`[Knowledge] Background ingestion failed for ${fileId}:`, err);
+      }
     });
 
     return NextResponse.json(
