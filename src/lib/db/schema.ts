@@ -12,6 +12,7 @@ import {
   varchar,
   real,
   primaryKey,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
 
@@ -47,6 +48,25 @@ export const memberRoleEnum = pgEnum("member_role", [
   "admin",
   "editor",
   "viewer",
+]);
+
+export const knowledgeItemTypeEnum = pgEnum("knowledge_item_type", [
+  "page",
+  "file",
+]);
+
+export const knowledgeItemStatusEnum = pgEnum("knowledge_item_status", [
+  "pending",
+  "processing",
+  "indexed",
+  "failed",
+]);
+
+export const knowledgeFileStatusEnum = pgEnum("knowledge_file_status", [
+  "pending",
+  "processing",
+  "indexed",
+  "failed",
 ]);
 
 // ============================================================
@@ -312,3 +332,84 @@ export const widgetSessions = pgTable(
   },
   (table) => [index("widget_sessions_tenant_idx").on(table.tenantId)]
 );
+
+// ============================================================
+// KNOWLEDGE ITEMS (site scraper + file upload RAG)
+// ============================================================
+
+export const knowledgeItems = pgTable(
+  "knowledge_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    type: knowledgeItemTypeEnum("type").notNull(),
+    // For 'page': source URL; for 'file': null (parent_id links to knowledge_files)
+    sourceUrl: text("source_url"),
+    // For 'file' chunks: links to parent file record. CASCADE so deleting a file
+    // wipes its chunks atomically (used by DELETE /api/knowledge/files/[id]).
+    parentId: uuid("parent_id").references((): AnyPgColumn => knowledgeFiles.id, {
+      onDelete: "cascade",
+    }),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    contentHash: text("content_hash").notNull(), // SHA-256 for change detection
+    // Metadata: for 'page': { meta_description, h1, internal_links: [], chunk_index? }
+    //           for 'file': { chunk_index, original_filename }
+    metadata: jsonb("metadata").default({}).notNull(),
+    // Embedding: vector(1536) if pgvector available, else stored as jsonb array
+    // Using text for now as drizzle-orm's vector type support varies
+    embedding: text("embedding"), // Will be cast to vector(1536) at DB level
+    status: knowledgeItemStatusEnum("status").default("pending").notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("knowledge_items_tenant_type_idx").on(table.tenantId, table.type),
+    index("knowledge_items_tenant_url_idx").on(table.tenantId, table.sourceUrl),
+    index("knowledge_items_tenant_parent_idx").on(table.tenantId, table.parentId),
+    index("knowledge_items_status_idx").on(table.tenantId, table.status),
+  ]
+);
+
+// ============================================================
+// KNOWLEDGE FILES (K-05 File Upload)
+// ============================================================
+
+export const knowledgeFiles = pgTable(
+  "knowledge_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    originalFilename: text("original_filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    storagePath: text("storage_path").notNull(),
+    status: knowledgeFileStatusEnum("status").default("pending").notNull(),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    indexedAt: timestamp("indexed_at", { withTimezone: true }),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("knowledge_files_tenant_idx").on(table.tenantId),
+    index("knowledge_files_status_idx").on(table.tenantId, table.status),
+  ]
+);
+
+
