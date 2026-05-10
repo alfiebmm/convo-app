@@ -4,6 +4,7 @@
  * Displays site indexing status with placeholder for re-sync (CON-86).
  */
 import Link from "next/link";
+import { ResyncButton } from "./resync-button";
 
 interface WebsiteContentProps {
   domain: string | null;
@@ -46,14 +47,17 @@ export function WebsiteContent({
           </p>
         </div>
         
-        {/* Re-sync button (disabled, coming in CON-86) */}
-        <button
-          disabled
-          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-400 cursor-not-allowed"
-          title="Re-sync feature coming in K-04 (CON-86)"
-        >
-          Re-sync
-        </button>
+        {/* Re-sync triggers a fresh crawl. Full delta-detection / age-warning
+            UX is tracked in CON-86 (K-04); this is the working MVP wired up
+            on day one so the button isn't a dead control. */}
+        <ResyncButton
+          disabled={!domain}
+          disabledTitle={
+            !domain
+              ? "Add a domain in Settings before re-syncing"
+              : undefined
+          }
+        />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -106,12 +110,13 @@ export function WebsiteContent({
         </div>
       )}
 
-      {/* Next steps info */}
+      {/* Helper banner once the site is indexed. */}
       {domain && pagesIndexed > 0 && (
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
           <p className="text-sm text-blue-800">
-            <strong>Indexed successfully!</strong> Re-sync and manual sync
-            features are coming in <span className="font-mono">K-04 (CON-86)</span>.
+            <strong>Indexed successfully.</strong> Hit Re-sync to refresh after
+            site changes. Delta detection and age warnings ship in{" "}
+            <span className="font-mono">K-04 (CON-86)</span>.
           </p>
         </div>
       )}
