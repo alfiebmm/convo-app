@@ -11,7 +11,8 @@ export default async function KnowledgePage() {
   const tenant = await getCurrentTenant();
   if (!tenant) redirect("/onboarding");
 
-  // Fetch files with chunk counts
+  // Fetch files with chunk counts. Same bigint-as-string trap as above — cast
+  // to int so the file-list UI sees a real number for chunksIndexed.
   const files = await db
     .select({
       id: knowledgeFiles.id,
@@ -22,7 +23,7 @@ export default async function KnowledgePage() {
       uploadedAt: knowledgeFiles.uploadedAt,
       indexedAt: knowledgeFiles.indexedAt,
       errorMessage: knowledgeFiles.errorMessage,
-      chunksIndexed: sql<number>`COUNT(${knowledgeItems.id})`.as(
+      chunksIndexed: sql<number>`COUNT(${knowledgeItems.id})::int`.as(
         "chunks_indexed"
       ),
     })
@@ -32,10 +33,13 @@ export default async function KnowledgePage() {
     .groupBy(knowledgeFiles.id)
     .orderBy(sql`${knowledgeFiles.uploadedAt} DESC`);
 
-  // Fetch website indexing stats
+  // Fetch website indexing stats. NOTE: COUNT(...) returns Postgres bigint which
+  // the `pg` driver serializes as a string ("0", "42"). Cast to integer in SQL
+  // so the typed result is actually a number — otherwise downstream strict
+  // equality (pagesIndexed === 0) silently fails and the status pill misreads.
   const [websiteStats] = await db
     .select({
-      pagesIndexed: sql<number>`COUNT(DISTINCT ${knowledgeItems.sourceUrl})`.as(
+      pagesIndexed: sql<number>`COUNT(DISTINCT ${knowledgeItems.sourceUrl})::int`.as(
         "pages_indexed"
       ),
       lastSynced: sql<Date | null>`MAX(${knowledgeItems.lastSyncedAt})`.as(

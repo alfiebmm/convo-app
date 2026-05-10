@@ -5,7 +5,7 @@
  */
 import { db } from "@/lib/db";
 import { knowledgeItems } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { crawlSite, type CrawledPage } from "./crawler";
 import { chunkText, generateEmbeddings, formatEmbeddingForDB } from "./embeddings";
 import { createHash } from "crypto";
@@ -152,12 +152,19 @@ function hashContent(content: string): string {
 
 /**
  * Get indexing status for a tenant.
+ *
+ * Uses a single grouped query — the previous implementation pulled every page
+ * row into memory just to call Set.size on URLs, and also ordered lastSyncedAt
+ * ASC so it returned the OLDEST sync timestamp instead of the most recent.
+ *
+ * COUNT(DISTINCT ...) is cast to ::int so the typed result is a real number
+ * (Postgres bigint serializes through node-postgres as a string by default).
  */
 export async function getIndexingStatus(tenantId: string) {
-  // Count unique source URLs (pages)
-  const result = await db
+  const [row] = await db
     .select({
-      sourceUrl: knowledgeItems.sourceUrl,
+      pagesIndexed: sql<number>`COUNT(DISTINCT ${knowledgeItems.sourceUrl})::int`,
+      lastSyncedAt: sql<Date | null>`MAX(${knowledgeItems.lastSyncedAt})`,
     })
     .from(knowledgeItems)
     .where(
@@ -166,27 +173,13 @@ export async function getIndexingStatus(tenantId: string) {
         eq(knowledgeItems.type, "page")
       )
     );
-  
-  // Get unique page count
-  const uniqueUrls = new Set(result.map((r) => r.sourceUrl));
-  const pagesIndexed = uniqueUrls.size;
-  
-  // Get most recent sync timestamp
-  const [lastSynced] = await db
-    .select({ last_synced_at: knowledgeItems.lastSyncedAt })
-    .from(knowledgeItems)
-    .where(
-      and(
-        eq(knowledgeItems.tenantId, tenantId),
-        eq(knowledgeItems.type, "page")
-      )
-    )
-    .orderBy(knowledgeItems.lastSyncedAt)
-    .limit(1);
-  
+
+  const pagesIndexed = row?.pagesIndexed ?? 0;
+  const lastSyncedAt = row?.lastSyncedAt ?? null;
+
   return {
     pages_indexed: pagesIndexed,
-    last_synced_at: lastSynced?.last_synced_at?.toISOString() || null,
+    last_synced_at: lastSyncedAt ? new Date(lastSyncedAt).toISOString() : null,
     status: pagesIndexed > 0 ? "indexed" : "pending",
   };
 }
