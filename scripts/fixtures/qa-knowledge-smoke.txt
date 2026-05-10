@@ -1,0 +1,16 @@
+Convo Smoke Test Document for K-05 File Upload Pipeline
+
+This is a synthetic test document used to validate the end-to-end file ingestion pipeline before the PR ships to production. It contains enough content to produce at least one embedding chunk, but is short enough that the full ingestion (extraction, chunking, embedding, insertion) completes in well under sixty seconds.
+
+The pipeline under test does the following:
+1. Accept a multipart upload at POST /api/knowledge/files with a tenant-scoped session.
+2. Validate MIME type against the allowlist of PDF, DOCX, and plain text.
+3. Validate size against the twenty megabyte ceiling.
+4. Push the raw bytes to the Supabase Storage bucket named knowledge-files at a tenant-scoped path.
+5. Insert a knowledge_files row with status equal to pending.
+6. Schedule background ingestion via Next.js after() so it survives the serverless response.
+7. Background work extracts the text, chunks it into roughly five hundred token windows with a fifty token overlap, generates OpenAI text-embedding-three-small embeddings, inserts chunks into knowledge_items with type set to file and parent_id linking back to the file row, and finally flips the knowledge_files status to indexed.
+
+If everything works correctly, this short document should produce one or two chunks in knowledge_items with non-null embeddings, and the parent knowledge_files row should land on status indexed within roughly ten seconds.
+
+End of test document.
