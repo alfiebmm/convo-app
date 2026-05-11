@@ -71,6 +71,7 @@ export default async function KnowledgePage() {
           domain={tenant.domain}
           pagesIndexed={websiteStats?.pagesIndexed || 0}
           lastSynced={websiteStats?.lastSynced}
+          nowMs={Date.now()}
         />
       </div>
 
