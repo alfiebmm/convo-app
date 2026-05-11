@@ -8,6 +8,10 @@ import {
 } from "@/lib/conversations";
 import { buildSystemPrompt } from "@/lib/guardrails";
 import { sendAdminNotification } from "@/lib/notifications";
+import {
+  retrieveRelevantChunks,
+  formatChunksForPrompt,
+} from "@/lib/knowledge/retrieval";
 
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -101,12 +105,39 @@ export async function POST(req: NextRequest) {
       }
     );
 
+    // Retrieve relevant indexed site content for THIS user message (K-07 / CON-89).
+    // Failure here must not break the chat — we degrade to no-context if anything
+    // goes wrong. Tracking-only: errors are logged for ops.
+    let retrievalContext = "";
+    const retrievalStart = Date.now();
+    try {
+      const chunks = await retrieveRelevantChunks(tenant.id, message, {
+        limit: 6,
+        maxDistance: 0.7,
+      });
+      retrievalContext = formatChunksForPrompt(chunks);
+      if (chunks.length > 0) {
+        console.log(
+          `[Chat] retrieved ${chunks.length} chunks in ${Date.now() - retrievalStart}ms ` +
+            `for tenant ${tenant.id} (top distance ${chunks[0].distance.toFixed(3)})`
+        );
+      }
+    } catch (err) {
+      console.error("[Chat] retrieval failed (non-fatal):", err);
+    }
+
+    // System prompt gets the retrieved chunks appended (when any). Empty
+    // string when retrieval yields nothing — effectively no behaviour change.
+    const fullSystemPrompt = retrievalContext
+      ? `${systemPrompt}\n\n${retrievalContext}`
+      : systemPrompt;
+
     // Stream from OpenAI
     const stream = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       stream: true,
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: fullSystemPrompt },
         ...history,
       ],
     });
