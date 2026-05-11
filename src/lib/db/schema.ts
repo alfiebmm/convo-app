@@ -413,3 +413,80 @@ export const knowledgeFiles = pgTable(
 );
 
 
+
+// ============================================================
+// SITE SYNC JOBS (K-04 / CON-86)
+// ============================================================
+//
+// One row per re-sync run. The UI polls the latest row for the tenant to
+// show progress + completion. The job orchestrator chains processSyncBatch()
+// invocations via after() and bumps the counters as it goes.
+
+export const siteSyncJobStatusEnum = pgEnum("site_sync_job_status", [
+  "queued",
+  "running",
+  "completed",
+  "failed",
+]);
+
+export const siteSyncUrlStatusEnum = pgEnum("site_sync_url_status", [
+  "pending",
+  "processing",
+  "done",
+  "failed",
+  "skipped",
+]);
+
+export const siteSyncJobs = pgTable(
+  "site_sync_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    status: siteSyncJobStatusEnum("status").default("queued").notNull(),
+    pagesTotal: integer("pages_total").default(0).notNull(),
+    pagesProcessed: integer("pages_processed").default(0).notNull(),
+    pagesAdded: integer("pages_added").default(0).notNull(),
+    pagesUpdated: integer("pages_updated").default(0).notNull(),
+    pagesUnchanged: integer("pages_unchanged").default(0).notNull(),
+    pagesFailed: integer("pages_failed").default(0).notNull(),
+    errorMessage: text("error_message"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("site_sync_jobs_tenant_idx").on(table.tenantId, table.createdAt),
+  ]
+);
+
+export const siteSyncUrls = pgTable(
+  "site_sync_urls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .references(() => siteSyncJobs.id, { onDelete: "cascade" })
+      .notNull(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    url: text("url").notNull(),
+    status: siteSyncUrlStatusEnum("status").default("pending").notNull(),
+    position: integer("position").notNull(),
+    errorMessage: text("error_message"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("site_sync_urls_job_status_idx").on(table.jobId, table.status),
+    index("site_sync_urls_job_position_idx").on(table.jobId, table.position),
+  ]
+);

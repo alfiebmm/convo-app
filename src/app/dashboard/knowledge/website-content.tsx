@@ -1,21 +1,28 @@
 /**
- * Website Content section (CON-85)
- * 
- * Displays site indexing status with placeholder for re-sync (CON-86).
+ * Website Content section (CON-85 + CON-86 K-04).
+ *
+ * Displays site indexing status with a working Re-sync button + 7-day
+ * staleness warning (CON-86 / K-04).
  */
 import Link from "next/link";
 import { ResyncButton } from "./resync-button";
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface WebsiteContentProps {
   domain: string | null;
   pagesIndexed: number;
   lastSynced: Date | null;
+  /** Current time in ms, passed from the server-rendering page so the
+   * component itself stays pure (no Date.now() inside the body). */
+  nowMs: number;
 }
 
 export function WebsiteContent({
   domain,
   pagesIndexed,
   lastSynced,
+  nowMs,
 }: WebsiteContentProps) {
   // Format last synced date
   const formatDate = (date: Date | null) => {
@@ -47,9 +54,10 @@ export function WebsiteContent({
           </p>
         </div>
         
-        {/* Re-sync triggers a fresh crawl. Full delta-detection / age-warning
-            UX is tracked in CON-86 (K-04); this is the working MVP wired up
-            on day one so the button isn't a dead control. */}
+        {/* Re-sync kicks off an incremental sync job (CON-86 / K-04). The
+            orchestrator chains after() invocations so big sites complete
+            even on Vercel Hobby's 60s function cap. Per-URL upsert keeps
+            chat retrieval continuous during a sync. */}
         <ResyncButton
           disabled={!domain}
           disabledTitle={
@@ -110,13 +118,26 @@ export function WebsiteContent({
         </div>
       )}
 
-      {/* Helper banner once the site is indexed. */}
-      {domain && pagesIndexed > 0 && (
+      {/* Staleness banner once the site is indexed but the last sync is
+          older than seven days. Encourages a refresh without nagging. */}
+      {domain && pagesIndexed > 0 && lastSynced &&
+        nowMs - new Date(lastSynced).getTime() > SEVEN_DAYS_MS && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm text-amber-800">
+              <strong>Index is more than 7 days old.</strong> Hit Re-sync to
+              refresh so the chat bot reflects your latest site changes.
+            </p>
+          </div>
+        )}
+
+      {/* Helper banner the first time we see a healthy index. */}
+      {domain && pagesIndexed > 0 && (!lastSynced ||
+        nowMs - new Date(lastSynced).getTime() <= SEVEN_DAYS_MS) && (
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
           <p className="text-sm text-blue-800">
-            <strong>Indexed successfully.</strong> Hit Re-sync to refresh after
-            site changes. Delta detection and age warnings ship in{" "}
-            <span className="font-mono">K-04 (CON-86)</span>.
+            <strong>Indexed successfully.</strong> Hit Re-sync any time to
+            refresh after site changes — the orchestrator upserts per URL so
+            chat answers stay live during the run.
           </p>
         </div>
       )}
