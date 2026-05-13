@@ -302,6 +302,7 @@ function getStyles(config: ConvoConfig): string {
     }
     .convo-input-area input {
       flex: 1;
+      min-width: 0;
       padding: 10px 14px;
       border: 1px solid #e2e8f0;
       border-radius: 24px;
@@ -364,10 +365,55 @@ function getStyles(config: ConvoConfig): string {
       
       .convo-close {
         display: flex;
+        width: 36px;
+        height: 36px;
+        top: 4px;
+        right: 4px;
+      }
+      
+      .convo-close svg {
+        width: 16px;
+        height: 16px;
       }
       
       .convo-header {
-        padding: 16px 56px 16px 20px;
+        padding: 10px 52px 10px 16px;
+        height: 44px;
+        box-sizing: border-box;
+      }
+      
+      .convo-header-text h3 {
+        font-size: 14px;
+      }
+      
+      .convo-header-text p {
+        display: none;
+      }
+      
+      .convo-msg {
+        padding: 8px 12px;
+      }
+      
+      .convo-input-area {
+        padding: 8px 12px;
+      }
+      
+      .convo-input-area input {
+        padding: 8px 12px;
+      }
+      
+      .convo-input-area button {
+        width: 32px;
+        height: 32px;
+      }
+      
+      .convo-input-area button svg {
+        width: 16px;
+        height: 16px;
+      }
+      
+      .convo-powered.keyboard-open {
+        display: none;
       }
     }
   `;
@@ -616,6 +662,19 @@ class ConvoWidget {
         
         this.panel.style.top = `${top}px`;
         this.panel.style.height = `${height}px`;
+        
+        // Toggle keyboard-open class on powered-by footer
+        const poweredEl = this.panel.querySelector('.convo-powered') as HTMLElement | null;
+        if (poweredEl) {
+          // Keyboard is "open" if visualViewport height is significantly less than window.innerHeight
+          const keyboardOpen = window.innerWidth <= 640 && vv.height < window.innerHeight * 0.75;
+          poweredEl.classList.toggle('keyboard-open', keyboardOpen);
+          
+          // Auto-scroll messages to bottom when keyboard opens
+          if (keyboardOpen && this.messagesEl) {
+            this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+          }
+        }
       });
     };
 
