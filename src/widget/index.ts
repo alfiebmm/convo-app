@@ -169,9 +169,6 @@ function getStyles(config: ConvoConfig): string {
       position: relative;
     }
     .convo-close {
-      position: absolute;
-      top: 8px;
-      right: 8px;
       width: 44px;
       height: 44px;
       border: none;
@@ -185,6 +182,7 @@ function getStyles(config: ConvoConfig): string {
       transition: background 0.15s ease;
       padding: 0;
       flex-shrink: 0;
+      margin-left: auto;
     }
     .convo-close:hover {
       background: rgba(255, 255, 255, 0.3);
@@ -353,31 +351,30 @@ function getStyles(config: ConvoConfig): string {
     @media (max-width: 640px) {
       .convo-panel {
         position: fixed;
-        width: calc(100vw - 24px);
-        ${config.position === "left" ? "left: 12px;" : "right: 12px;"}
         border-radius: 12px;
-        /* top + height are set by JS via setupViewportHandler() */
-        /* Fallback if JS hasn't run yet or visualViewport unavailable */
+        /* All four edges set by JS via setupViewportHandler() */
+        /* Fallbacks if JS hasn't run yet or visualViewport unavailable */
         top: 12px;
         bottom: 12px;
+        left: 12px;
+        right: 12px;
+        width: auto;
         height: auto;
       }
       
       .convo-close {
         display: flex;
-        width: 36px;
-        height: 36px;
-        top: 4px;
-        right: 4px;
+        width: 28px;
+        height: 28px;
       }
       
       .convo-close svg {
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
       }
       
       .convo-header {
-        padding: 10px 52px 10px 16px;
+        padding: 10px 12px;
         height: 44px;
         box-sizing: border-box;
       }
@@ -653,15 +650,23 @@ class ConvoWidget {
           // Desktop: clear any mobile overrides
           this.panel.style.top = "";
           this.panel.style.height = "";
+          this.panel.style.left = "";
+          this.panel.style.width = "";
+          this.panel.style.right = "";
           return;
         }
         
         const vv = window.visualViewport;
         const top = vv.offsetTop + MARGIN;
         const height = vv.height - (MARGIN * 2);
+        const left = vv.offsetLeft + MARGIN;
+        const width = vv.width - (MARGIN * 2);
         
         this.panel.style.top = `${top}px`;
         this.panel.style.height = `${height}px`;
+        this.panel.style.left = `${left}px`;
+        this.panel.style.width = `${width}px`;
+        this.panel.style.right = "auto";
         
         // Toggle keyboard-open class on powered-by footer
         const poweredEl = this.panel.querySelector('.convo-powered') as HTMLElement | null;
