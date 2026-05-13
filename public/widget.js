@@ -279,6 +279,11 @@
         height: auto;
       }
       
+      /* Hide the floating bubble when the panel is open on mobile \u2014 the in-header close button takes over. */
+      .convo-bubble.open {
+        display: none;
+      }
+      
       .convo-close {
         display: flex;
         width: 28px;
