@@ -351,22 +351,15 @@ function getStyles(config: ConvoConfig): string {
     /* Mobile */
     @media (max-width: 640px) {
       .convo-panel {
+        position: fixed;
         width: calc(100vw - 24px);
         ${config.position === "left" ? "left: 12px;" : "right: 12px;"}
-        bottom: 12px;
-        top: auto;
         border-radius: 12px;
-        /* Use JS-driven --convo-vh for keyboard-aware sizing on iOS */
-        height: calc(var(--convo-vh, 100svh) - 24px);
-        max-height: calc(var(--convo-vh, 100svh) - 24px);
-      }
-      
-      /* Fallback for browsers without dvh/svh or visualViewport */
-      @supports not (height: 100dvh) {
-        .convo-panel {
-          height: calc(var(--convo-vh, 100vh) - 24px);
-          max-height: calc(var(--convo-vh, 100vh) - 24px);
-        }
+        /* top + height are set by JS via setupViewportHandler() */
+        /* Fallback if JS hasn't run yet or visualViewport unavailable */
+        top: 12px;
+        bottom: 12px;
+        height: auto;
       }
       
       .convo-close {
@@ -587,39 +580,50 @@ class ConvoWidget {
 
   /**
    * Handle iOS Safari keyboard via window.visualViewport API.
-   * iOS Safari's 100dvh/100svh don't shrink when the keyboard appears,
-   * only when the URL bar collapses. visualViewport.height DOES shrink
-   * with the keyboard, so we use it to drive a CSS custom property.
+   * iOS Safari's position: fixed is measured relative to the layout viewport,
+   * not the visual viewport. When the keyboard opens, the visual viewport
+   * shrinks but the layout viewport does not, causing fixed-bottom elements
+   * to be obscured by the keyboard. We position the panel directly via JS
+   * using visualViewport.offsetTop and visualViewport.height.
    */
   private setupViewportHandler() {
     if (
       typeof window === "undefined" ||
-      !window.visualViewport ||
-      window.innerWidth > 640
+      !window.visualViewport
     ) {
       return;
     }
 
-    const updateVh = () => {
+    const MARGIN = 12;
+
+    const updatePanelPosition = () => {
       if (this.viewportRafId !== null) return;
       this.viewportRafId = requestAnimationFrame(() => {
         this.viewportRafId = null;
-        if (window.visualViewport) {
-          document.documentElement.style.setProperty(
-            "--convo-vh",
-            `${window.visualViewport.height}px`
-          );
+        if (!window.visualViewport) return;
+        
+        // Only apply visual-viewport positioning on mobile
+        if (window.innerWidth > 640) {
+          // Desktop: clear any mobile overrides
+          this.panel.style.top = "";
+          this.panel.style.height = "";
+          return;
         }
+        
+        const vv = window.visualViewport;
+        const top = vv.offsetTop + MARGIN;
+        const height = vv.height - (MARGIN * 2);
+        
+        this.panel.style.top = `${top}px`;
+        this.panel.style.height = `${height}px`;
       });
     };
 
-    // Set initial value
-    updateVh();
-
-    // Listen to viewport changes (keyboard show/hide, orientation)
-    window.visualViewport.addEventListener("resize", updateVh);
-    window.visualViewport.addEventListener("scroll", updateVh);
-    window.addEventListener("orientationchange", updateVh);
+    updatePanelPosition();
+    window.visualViewport.addEventListener("resize", updatePanelPosition);
+    window.visualViewport.addEventListener("scroll", updatePanelPosition);
+    window.addEventListener("orientationchange", updatePanelPosition);
+    window.addEventListener("resize", updatePanelPosition); // catch desktop ↔ mobile transitions
   }
 
   private toggle() {
