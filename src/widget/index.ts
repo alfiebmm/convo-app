@@ -362,6 +362,11 @@ function getStyles(config: ConvoConfig): string {
         height: auto;
       }
       
+      /* Hide the floating bubble when the panel is open on mobile — the in-header close button takes over. */
+      .convo-bubble.open {
+        display: none;
+      }
+      
       .convo-close {
         display: flex;
         width: 28px;
