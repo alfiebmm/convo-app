@@ -354,18 +354,18 @@ function getStyles(config: ConvoConfig): string {
         width: calc(100vw - 24px);
         ${config.position === "left" ? "left: 12px;" : "right: 12px;"}
         bottom: 12px;
-        top: 12px;
-        height: auto;
+        top: auto;
         border-radius: 12px;
-        /* Use dynamic viewport height for max-height to handle keyboard */
-        max-height: calc(100dvh - 24px);
-        max-height: calc(100svh - 24px);
+        /* Use JS-driven --convo-vh for keyboard-aware sizing on iOS */
+        height: calc(var(--convo-vh, 100svh) - 24px);
+        max-height: calc(var(--convo-vh, 100svh) - 24px);
       }
       
-      /* Fallback for older browsers */
+      /* Fallback for browsers without dvh/svh or visualViewport */
       @supports not (height: 100dvh) {
         .convo-panel {
-          max-height: calc(100vh - 24px);
+          height: calc(var(--convo-vh, 100vh) - 24px);
+          max-height: calc(var(--convo-vh, 100vh) - 24px);
         }
       }
       
@@ -401,6 +401,7 @@ class ConvoWidget {
   private sessionTracked = false;
   private pipelineTriggered = false;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private viewportRafId: number | null = null;
   private static IDLE_TIMEOUT_MS = 120000; // 2 minutes
 
   // DOM refs (inside Shadow DOM)
@@ -479,6 +480,7 @@ class ConvoWidget {
 
     this.render();
     this.attachEvents();
+    this.setupViewportHandler();
     this.trackSession();
   }
 
@@ -574,6 +576,50 @@ class ConvoWidget {
         this.send();
       }
     });
+
+    // iOS Safari: scroll input into view when keyboard appears
+    this.inputEl.addEventListener("focus", () => {
+      setTimeout(() => {
+        this.inputEl.scrollIntoView({ block: "end", behavior: "smooth" });
+      }, 200);
+    });
+  }
+
+  /**
+   * Handle iOS Safari keyboard via window.visualViewport API.
+   * iOS Safari's 100dvh/100svh don't shrink when the keyboard appears,
+   * only when the URL bar collapses. visualViewport.height DOES shrink
+   * with the keyboard, so we use it to drive a CSS custom property.
+   */
+  private setupViewportHandler() {
+    if (
+      typeof window === "undefined" ||
+      !window.visualViewport ||
+      window.innerWidth > 640
+    ) {
+      return;
+    }
+
+    const updateVh = () => {
+      if (this.viewportRafId !== null) return;
+      this.viewportRafId = requestAnimationFrame(() => {
+        this.viewportRafId = null;
+        if (window.visualViewport) {
+          document.documentElement.style.setProperty(
+            "--convo-vh",
+            `${window.visualViewport.height}px`
+          );
+        }
+      });
+    };
+
+    // Set initial value
+    updateVh();
+
+    // Listen to viewport changes (keyboard show/hide, orientation)
+    window.visualViewport.addEventListener("resize", updateVh);
+    window.visualViewport.addEventListener("scroll", updateVh);
+    window.addEventListener("orientationchange", updateVh);
   }
 
   private toggle() {
