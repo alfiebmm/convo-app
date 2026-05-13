@@ -166,6 +166,32 @@ function getStyles(config: ConvoConfig): string {
       align-items: center;
       gap: 10px;
       flex-shrink: 0;
+      position: relative;
+    }
+    .convo-close {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 44px;
+      height: 44px;
+      border: none;
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .convo-close:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    .convo-close svg {
+      width: 20px;
+      height: 20px;
     }
     .convo-header-dot {
       width: 10px;
@@ -323,13 +349,32 @@ function getStyles(config: ConvoConfig): string {
     }
 
     /* Mobile */
-    @media (max-width: 440px) {
+    @media (max-width: 640px) {
       .convo-panel {
-        width: calc(100vw - 16px);
-        ${config.position === "left" ? "left: 8px;" : "right: 8px;"}
-        height: calc(100vh - 100px);
-        bottom: 80px;
+        width: calc(100vw - 24px);
+        ${config.position === "left" ? "left: 12px;" : "right: 12px;"}
+        bottom: 12px;
+        top: 12px;
+        height: auto;
         border-radius: 12px;
+        /* Use dynamic viewport height for max-height to handle keyboard */
+        max-height: calc(100dvh - 24px);
+        max-height: calc(100svh - 24px);
+      }
+      
+      /* Fallback for older browsers */
+      @supports not (height: 100dvh) {
+        .convo-panel {
+          max-height: calc(100vh - 24px);
+        }
+      }
+      
+      .convo-close {
+        display: flex;
+      }
+      
+      .convo-header {
+        padding: 16px 56px 16px 20px;
       }
     }
   `;
@@ -341,6 +386,7 @@ function getStyles(config: ConvoConfig): string {
 const CHAT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
 const CLOSE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 const SEND_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+const CLOSE_ICON_SM = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 
 // ---------------------------------------------------------------------------
 // Widget class
@@ -364,6 +410,7 @@ class ConvoWidget {
   private messagesEl!: HTMLDivElement;
   private inputEl!: HTMLInputElement;
   private sendBtn!: HTMLButtonElement;
+  private closeBtn!: HTMLButtonElement;
 
   constructor() {
     this.config = getConfig();
@@ -486,6 +533,7 @@ class ConvoWidget {
           <h3>${this.escapeHtml(this.config.name)}</h3>
           <p>Usually replies instantly</p>
         </div>
+        <button class="convo-close" aria-label="Close chat">${CLOSE_ICON_SM}</button>
       </div>
       <div class="convo-messages"></div>
       <div class="convo-input-area">
@@ -498,6 +546,7 @@ class ConvoWidget {
     this.messagesEl = this.panel.querySelector(".convo-messages")!;
     this.inputEl = this.panel.querySelector("input")!;
     this.sendBtn = this.panel.querySelector(".convo-input-area button")!;
+    this.closeBtn = this.panel.querySelector(".convo-close")!;
 
     this.shadow.appendChild(style);
     this.shadow.appendChild(this.panel);
@@ -515,6 +564,7 @@ class ConvoWidget {
 
   private attachEvents() {
     this.bubble.addEventListener("click", () => this.toggle());
+    this.closeBtn.addEventListener("click", () => this.close());
 
     this.sendBtn.addEventListener("click", () => this.send());
 
@@ -542,6 +592,17 @@ class ConvoWidget {
       // Widget closed — trigger pipeline if conversation happened
       this.triggerPipeline();
     }
+  }
+
+  private close() {
+    if (!this.isOpen) return;
+    this.isOpen = false;
+    this.panel.classList.remove("visible");
+    this.bubble.classList.remove("open");
+    this.bubble.innerHTML = CHAT_ICON;
+    this.bubble.setAttribute("aria-label", "Open chat");
+    // Widget closed — trigger pipeline if conversation happened
+    this.triggerPipeline();
   }
 
   private async send() {
