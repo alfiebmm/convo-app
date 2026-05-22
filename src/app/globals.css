@@ -4,24 +4,31 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --convo-orange: #ff6b2c;
+  --convo-orange-hover: #ff8f5c;
+  --convo-orange-pressed: #e85a1e;
+  --convo-black: #09090b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-outfit);
+  --font-logo: var(--font-fredoka);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: rgba(255, 107, 44, 0.2);
+  color: var(--convo-black);
 }
