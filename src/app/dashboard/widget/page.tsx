@@ -3,11 +3,32 @@
 import { useState, useEffect } from "react";
 import { APP_CONFIG } from "@/config/app";
 
+type WidgetPosition = "bottom-left" | "bottom-right";
+type WidgetSize = "sm" | "md" | "lg";
+
+const WIDGET_POSITIONS: ReadonlyArray<{
+  value: WidgetPosition;
+  label: string;
+}> = [
+  { value: "bottom-right", label: "Bottom right" },
+  { value: "bottom-left", label: "Bottom left" },
+];
+
+const WIDGET_SIZES: ReadonlyArray<{ value: WidgetSize; label: string }> = [
+  { value: "sm", label: "Small" },
+  { value: "md", label: "Medium" },
+  { value: "lg", label: "Large" },
+];
+
+const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/;
+
 interface WidgetConfig {
   chatbotName: string;
   welcomeMessage: string;
   systemPrompt: string;
   primaryColor: string;
+  position: WidgetPosition;
+  size: WidgetSize;
 }
 
 interface TenantInfo {
@@ -23,7 +44,19 @@ const DEFAULT_WIDGET: WidgetConfig = {
   systemPrompt:
     "You are a helpful assistant for this website. Answer questions based on the site content. Be friendly and concise.",
   primaryColor: APP_CONFIG.branding.primary,
+  position: "bottom-right",
+  size: "md",
 };
+
+function normalisePosition(v: unknown): WidgetPosition {
+  return v === "bottom-left" || v === "bottom-right"
+    ? v
+    : DEFAULT_WIDGET.position;
+}
+
+function normaliseSize(v: unknown): WidgetSize {
+  return v === "sm" || v === "md" || v === "lg" ? v : DEFAULT_WIDGET.size;
+}
 
 export default function WidgetPage() {
   const [config, setConfig] = useState<WidgetConfig>(DEFAULT_WIDGET);
@@ -44,6 +77,8 @@ export default function WidgetPage() {
             welcomeMessage: w.welcomeMessage ?? DEFAULT_WIDGET.welcomeMessage,
             systemPrompt: w.systemPrompt ?? DEFAULT_WIDGET.systemPrompt,
             primaryColor: w.primaryColor ?? DEFAULT_WIDGET.primaryColor,
+            position: normalisePosition(w.position),
+            size: normaliseSize(w.size),
           });
         }
         setLoading(false);
@@ -70,6 +105,8 @@ export default function WidgetPage() {
           welcomeMessage: w.welcomeMessage ?? DEFAULT_WIDGET.welcomeMessage,
           systemPrompt: w.systemPrompt ?? DEFAULT_WIDGET.systemPrompt,
           primaryColor: w.primaryColor ?? DEFAULT_WIDGET.primaryColor,
+          position: normalisePosition(w.position),
+          size: normaliseSize(w.size),
         });
       }
       setSaved(true);
@@ -195,19 +232,96 @@ export default function WidgetPage() {
             <label className="block text-sm font-medium text-slate-700">
               Primary Colour
             </label>
-            <div className="mt-1 flex items-center gap-3">
+            <div className="mt-1 flex flex-wrap items-center gap-3">
               <input
                 type="color"
+                value={
+                  HEX_COLOUR_RE.test(config.primaryColor)
+                    ? config.primaryColor
+                    : DEFAULT_WIDGET.primaryColor
+                }
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, primaryColor: e.target.value }))
+                }
+                aria-label="Pick widget primary colour"
+                className="h-10 w-16 rounded border border-slate-200"
+              />
+              <input
+                type="text"
                 value={config.primaryColor}
                 onChange={(e) =>
                   setConfig((c) => ({ ...c, primaryColor: e.target.value }))
                 }
-                className="h-10 w-16 rounded border border-slate-200"
+                placeholder="#FF6B2C"
+                aria-label="Widget primary colour hex value"
+                className="w-32 rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono"
               />
-              <span className="text-sm text-slate-500 font-mono">
-                {config.primaryColor}
-              </span>
+              {!HEX_COLOUR_RE.test(config.primaryColor) && (
+                <span className="text-xs text-amber-600">
+                  Use a 6-digit hex like #FF6B2C
+                </span>
+              )}
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">
+              Position
+            </label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {WIDGET_POSITIONS.map((opt) => {
+                const active = config.position === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, position: opt.value }))
+                    }
+                    aria-pressed={active}
+                    className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                      active
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">
+              Where the chat bubble sits on the visitor’s screen.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">
+              Size
+            </label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {WIDGET_SIZES.map((opt) => {
+                const active = config.size === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, size: opt.value }))
+                    }
+                    aria-pressed={active}
+                    className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                      active
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">
+              Controls the bubble dimensions. Medium suits most sites.
+            </p>
           </div>
           <p className="text-xs text-slate-400">
             Looking for topic restrictions, deflect rules, or audience
