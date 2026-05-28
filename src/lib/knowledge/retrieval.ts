@@ -146,6 +146,12 @@ export async function retrieveRelevantChunks(
  * Format retrieved chunks as a system-prompt snippet. The format leans on
  * clear delimiters and explicit URL exposure so the LLM can cite them
  * directly in answers.
+ *
+ * CON-98: the formatted block is fence-wrapped by the caller via
+ * `wrapRagContext()` so the model treats chunk contents as DATA (never
+ * instructions). The wrapping is intentionally NOT done here so callers
+ * that genuinely want the raw block (debugging, evals, system-prompt
+ * diffs) can still get it.
  */
 export function formatChunksForPrompt(chunks: RetrievedChunk[]): string {
   if (chunks.length === 0) return "";

@@ -102,6 +102,9 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 255 }),
   image: text("image"), // NextAuth adapter field (avatar URL)
   avatarUrl: text("avatar_url"), // Legacy alias
+  // CON-98: Convo-staff gate for the platform-admin injection-events page.
+  // Nullable boolean default false — additive, no impact on auth flow.
+  isPlatformStaff: boolean("is_platform_staff").default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -488,5 +491,50 @@ export const siteSyncUrls = pgTable(
   (table) => [
     index("site_sync_urls_job_status_idx").on(table.jobId, table.status),
     index("site_sync_urls_job_position_idx").on(table.jobId, table.position),
+  ]
+);
+
+// ============================================================
+// PLATFORM INJECTION EVENTS (CON-98)
+// ============================================================
+//
+// Audit log for prompt-injection-defence triggers. Convo-platform-internal
+// only — NO tenant-role read policy on this table. The migration enables
+// RLS with no SELECT policy for `authenticated`, so tenant users cannot
+// query it. Service-role reads only (future platform-admin dashboard).
+//
+// One row per detection event (regex pre-filter match OR output guard hit).
+// References tenant + (optionally) conversation/message for triage context.
+// `raw_message_redacted` is truncated + PII-light (see redactForAudit).
+
+export const platformInjectionEvents = pgTable(
+  "platform_injection_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id").references(
+      () => conversations.id,
+      { onDelete: "set null" }
+    ),
+    messageId: uuid("message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
+    visitorId: varchar("visitor_id", { length: 255 }),
+    // e.g. "regex:ignore_previous", "output_guard:section_header"
+    patternMatched: text("pattern_matched").notNull(),
+    // Truncated to 500 chars + light PII redaction (emails / long digit runs).
+    rawMessageRedacted: text("raw_message_redacted").notNull(),
+    detectedAt: timestamp("detected_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("platform_injection_events_tenant_idx").on(
+      table.tenantId,
+      table.detectedAt
+    ),
+    index("platform_injection_events_detected_idx").on(table.detectedAt),
   ]
 );

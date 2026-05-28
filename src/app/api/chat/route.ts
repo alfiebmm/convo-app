@@ -6,12 +6,23 @@ import {
   getConversationMessages,
   addMessage,
 } from "@/lib/conversations";
-import { buildSystemPrompt } from "@/lib/guardrails";
+import { buildSystemPrompt, GLOBAL_RULES } from "@/lib/guardrails";
 import { sendAdminNotification } from "@/lib/notifications";
 import {
   retrieveRelevantChunks,
   formatChunksForPrompt,
 } from "@/lib/knowledge/retrieval";
+import {
+  detectInjection,
+  isInjectionDefenceEnabled,
+  scanOutputForLeakage,
+  wrapVisitorMessage,
+  wrapRagContext,
+  redactForAudit,
+  OUTPUT_GUARD_FALLBACK,
+} from "@/lib/guardrails/injection";
+import { db } from "@/lib/db";
+import { platformInjectionEvents } from "@/lib/db/schema";
 
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -19,6 +30,33 @@ function getOpenAI() {
     throw new Error("OPENAI_API_KEY environment variable is not set");
   }
   return new OpenAI({ apiKey });
+}
+
+/**
+ * Best-effort write to `platform_injection_events`. Never throws — the
+ * chat path must keep working even if the audit table is unavailable.
+ */
+async function logInjectionEvent(params: {
+  tenantId: string;
+  conversationId: string | null;
+  messageId: string | null;
+  visitorId: string | null;
+  patternMatched: string;
+  rawMessage: string;
+}): Promise<void> {
+  try {
+    await db.insert(platformInjectionEvents).values({
+      tenantId: params.tenantId,
+      conversationId: params.conversationId ?? undefined,
+      messageId: params.messageId ?? undefined,
+      visitorId: params.visitorId ?? undefined,
+      patternMatched: params.patternMatched,
+      rawMessageRedacted: redactForAudit(params.rawMessage),
+    });
+  } catch (err) {
+    // Do not fail the chat request on audit-log failures.
+    console.error("[CON-98] failed to log injection event (non-fatal):", err);
+  }
 }
 
 /**
@@ -53,9 +91,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // CON-98: feature flag — default ON. Panic off-switch via
+    // settings.guardrails.injectionDefence.enabled = false.
+    const tenantSettings = tenant.settings as Record<string, unknown> | null;
+    const injectionDefenceOn = isInjectionDefenceEnabled(tenantSettings);
+
+    // CON-98 layer 1: regex pre-filter. Pure flag-and-log; the message
+    // still goes to the model unchanged (wrapped on layer 2 below).
+    // Behaviour is silent to the visitor — they get a normal response.
+    const injectionFlag = injectionDefenceOn
+      ? detectInjection(message)
+      : { flagged: false, pattern: null };
+
     // Resolve or create conversation
     let convoId = conversationId;
-    const isNewConversation = !convoId;
     if (!convoId) {
       const convo = await createConversation(tenantId, visitorId, metadata);
       convoId = convo.id;
@@ -77,8 +126,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Persist user message
-    await addMessage(convoId, "user", message);
+    // Persist user message (raw — we don't mutate stored content; the
+    // CON-98 wrapping is applied only to what we send to OpenAI).
+    const persistedUser = await addMessage(convoId, "user", message);
+
+    // CON-98 audit: log the regex hit (if any) now that we have a
+    // conversation + message id to associate it with. Non-blocking.
+    if (injectionFlag.flagged && injectionFlag.pattern) {
+      void logInjectionEvent({
+        tenantId: tenant.id,
+        conversationId: convoId,
+        messageId: persistedUser?.id ?? null,
+        visitorId,
+        patternMatched: injectionFlag.pattern,
+        rawMessage: message,
+      });
+    }
 
     // Load recent history for context (oldest first)
     const recentMessages = await getConversationMessages(convoId, 20);
@@ -89,6 +152,17 @@ export async function POST(req: NextRequest) {
 
     // Count user turns (for CTA timing)
     const userTurnCount = history.filter((m) => m.role === "user").length;
+
+    // CON-98 layer 2: wrap the LATEST user turn so the model can tell
+    // visitor input apart from system instructions. Older history is left
+    // un-wrapped intentionally — re-wrapping in-flight conversations would
+    // change model behaviour for benign visitors mid-conversation.
+    if (injectionDefenceOn && history.length > 0) {
+      const last = history[history.length - 1];
+      if (last.role === "user") {
+        last.content = wrapVisitorMessage(last.content);
+      }
+    }
 
     // Build system prompt via guardrails
     const systemPrompt = buildSystemPrompt(
@@ -115,7 +189,14 @@ export async function POST(req: NextRequest) {
         limit: 6,
         maxDistance: 0.7,
       });
-      retrievalContext = formatChunksForPrompt(chunks);
+      const formatted = formatChunksForPrompt(chunks);
+      // CON-98 layer 2 (cont.): fence-wrap RAG chunks as DATA so the
+      // model can't be tricked by a chunk containing "ignore previous
+      // instructions" (indirect injection — the threat that matters
+      // most for CON-143 + CON-89).
+      retrievalContext = injectionDefenceOn
+        ? wrapRagContext(formatted)
+        : formatted;
       if (chunks.length > 0) {
         console.log(
           `[Chat] retrieved ${chunks.length} chunks in ${Date.now() - retrievalStart}ms ` +
@@ -155,11 +236,14 @@ export async function POST(req: NextRequest) {
           )
         );
 
+        let tokensEmittedToVisitor = false;
+
         try {
           for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content;
             if (content) {
               fullResponse += content;
+              tokensEmittedToVisitor = true;
               controller.enqueue(
                 encoder.encode(
                   `data: ${JSON.stringify({ type: "token", content })}\n\n`
@@ -168,8 +252,46 @@ export async function POST(req: NextRequest) {
             }
           }
 
+          // CON-98 layer 4: best-effort output guard.
+          //
+          // IMPORTANT: by the time we get here we have ALREADY streamed
+          // tokens to the visitor over SSE. We can't unsend them. So:
+          //   - We ALWAYS scan and log.
+          //   - We swap `fullResponse` (the persisted copy) ONLY when no
+          //     tokens were emitted (defensive — should be rare since
+          //     tokens stream as they arrive). In all other cases we log
+          //     the event and let the response stand. The real defence
+          //     is layers 1–3; this is detection-only after the fact.
+          let persistedContent = fullResponse;
+          if (injectionDefenceOn) {
+            const leak = scanOutputForLeakage(fullResponse, GLOBAL_RULES);
+            if (leak.leaked && leak.marker) {
+              void logInjectionEvent({
+                tenantId: tenant.id,
+                conversationId: convoId,
+                messageId: null,
+                visitorId,
+                patternMatched: leak.marker,
+                rawMessage: fullResponse,
+              });
+              if (!tokensEmittedToVisitor) {
+                // Safe to substitute — visitor hasn't seen anything yet.
+                persistedContent = OUTPUT_GUARD_FALLBACK;
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      type: "token",
+                      content: OUTPUT_GUARD_FALLBACK,
+                    })}\n\n`
+                  )
+                );
+              }
+              // else: tokens already sent. Logged. Let it stand.
+            }
+          }
+
           // Persist assistant message after stream complete
-          await addMessage(convoId, "assistant", fullResponse);
+          await addMessage(convoId, "assistant", persistedContent);
 
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`)
