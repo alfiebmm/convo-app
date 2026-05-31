@@ -1,0 +1,47 @@
+{
+  "name": "AgPages: contractor offers harvest capacity",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I'm a harvest contractor based in WA \u2014 looking to take on east-coast jobs this season. Can I list with AgPages?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "supplier"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "supplier",
+      "intent": "offer_service",
+      "topic": "harvest contractor",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "supply",
+      "location": "WA",
+      "product_or_service": "harvest",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.83,
+      "reason": "contractor seeking listing"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "refer_to_approved_contact_method",
+    "case_type": "lead",
+    "rule_id": "contractor_availability_signal",
+    "routing_key": "contractor_supply"
+  }
+}

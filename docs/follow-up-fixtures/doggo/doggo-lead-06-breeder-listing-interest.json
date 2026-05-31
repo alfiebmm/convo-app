@@ -1,0 +1,51 @@
+{
+  "name": "Doggo: breeder wants to list their kennel on Doggo",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I run a registered French bulldog kennel in Brisbane \u2014 how do I get my litters listed on your platform?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "partner"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "partner",
+      "intent": "offer_service",
+      "topic": "breeder listing",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "supply",
+      "location": "Brisbane",
+      "product_or_service": "French bulldog",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.85,
+      "reason": "supply-side breeder partnership intent"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "refer_to_approved_contact_method",
+    "case_type": "lead",
+    "rule_id": "breeder_listing_interest",
+    "routing_key": "breeder_supply",
+    "attributes": {
+      "persona": "partner",
+      "intent": "offer_service"
+    }
+  }
+}

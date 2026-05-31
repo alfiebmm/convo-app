@@ -1,0 +1,42 @@
+{
+  "name": "Doggo: off-topic (cat care)",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Quick question — how often should I trim my cat's claws?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "unknown",
+      "intent": "general_research",
+      "topic": "cat care",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.7
+  },
+  "expected": {
+    "action": "continue_helping",
+    "case_type": null
+  }
+}

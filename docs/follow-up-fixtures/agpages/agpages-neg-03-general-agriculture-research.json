@@ -1,0 +1,43 @@
+{
+  "name": "AgPages: general agriculture research (low intent)",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Roughly what's the typical wheat yield per hectare in southern NSW?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "general_research",
+      "topic": "wheat yield",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": "southern NSW",
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0.2,
+      "reason": "informational, no contractor or quote intent"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.8
+  },
+  "expected": {
+    "action": "continue_helping",
+    "case_type": null
+  },
+  "notes": "farmer_service_request excludes topic=general_research; commercial_intent < 0.75; no support escalation. \u2192 default."
+}

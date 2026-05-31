@@ -1,0 +1,61 @@
+{
+  "name": "AgPages: visitor stuck looping search filters",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "How do I search by region?"
+    },
+    {
+      "role": "assistant",
+      "content": "Use the region filter on the Find a Contractor page."
+    },
+    {
+      "role": "user",
+      "content": "I can't see that page."
+    },
+    {
+      "role": "assistant",
+      "content": "It's in the main nav under 'Contractors'."
+    },
+    {
+      "role": "user",
+      "content": "I don't see it."
+    }
+  ],
+  "page_url": "https://agpages.com.au/contractors",
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "site_navigation",
+      "topic": "site navigation",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.6,
+      "reason": "repeated navigation question"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 3,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "flag_for_staff_review_without_interrupting_visitor",
+    "case_type": "cx_support",
+    "rule_id": "marketplace_navigation_silent_flag",
+    "routing_key": "cx_research"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "name": "AgPages: contractor reports listing showing in wrong region",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "My listing is being shown in the wrong region \u2014 I'm in Tassie but it's appearing under Victoria. Help?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "supplier"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "supplier",
+      "intent": "general_research",
+      "topic": "listing region",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": "Tasmania",
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.65,
+      "reason": "data correctness issue on listing"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.3
+  },
+  "expected": {
+    "action": "offer_follow_up",
+    "case_type": "cx_support",
+    "rule_id": "low_confidence_unanswered",
+    "routing_key": "cx_default"
+  }
+}

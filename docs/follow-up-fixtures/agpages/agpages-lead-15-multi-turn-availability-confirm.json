@@ -1,0 +1,55 @@
+{
+  "name": "AgPages: visitor browses then confirms intent to quote",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Just checking out AgPages."
+    },
+    {
+      "role": "assistant",
+      "content": "Welcome \u2014 let me know if you'd like help finding a contractor or listing your business."
+    },
+    {
+      "role": "user",
+      "content": "Actually yes \u2014 we're after a quote for hay baling on 150 ha near Cowra in December."
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "customer"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "hay baling",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Cowra",
+      "product_or_service": "hay baling",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.87,
+      "reason": "turn 2 unlocks concrete quote intent"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "farmer_service_request",
+    "routing_key": "marketplace_demand"
+  }
+}

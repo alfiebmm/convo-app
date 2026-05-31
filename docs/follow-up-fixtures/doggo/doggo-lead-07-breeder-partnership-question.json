@@ -1,0 +1,51 @@
+{
+  "name": "Doggo: breeder asks about partnership terms",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "We're a small ethical breeder of Cavalier King Charles spaniels \u2014 interested in partnering with Doggo. What's involved?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "partner"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "partner",
+      "intent": "become_partner",
+      "topic": "breeder partnership",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "supply",
+      "location": null,
+      "product_or_service": "Cavalier King Charles spaniel",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.8,
+      "reason": "breeder partnership intent"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "refer_to_approved_contact_method",
+    "case_type": "lead",
+    "rule_id": "breeder_listing_interest",
+    "routing_key": "breeder_supply",
+    "attributes": {
+      "persona": "partner",
+      "intent": "become_partner"
+    }
+  }
+}

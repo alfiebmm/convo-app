@@ -1,0 +1,45 @@
+{
+  "name": "Doggo: buyer volunteers phone/email in their pricing question",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Looking for a poodle puppy \u2014 my email is jane@example.com and number is 0400 000 000 if you want to follow up. What's a fair price?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "poodle pricing",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": null,
+      "product_or_service": "poodle puppy",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.94,
+      "reason": "explicit pricing intent with contact info volunteered"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.55
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "buyer_pricing_or_availability",
+    "routing_key": "buyer_demand"
+  },
+  "notes": "Edge: contact info shared in the message body. Resolver behaviour is unchanged \u2014 same rule fires; downstream surfaces handle pre-fill."
+}

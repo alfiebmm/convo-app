@@ -1,0 +1,53 @@
+{
+  "name": "Doggo: visitor researches breeds then asks for pricing (turn 2 fires)",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hey, I'm trying to figure out which dog breed is best for a family with two young kids."
+    },
+    {
+      "role": "assistant",
+      "content": "Great question. A few common family-friendly options are labradors, golden retrievers, and cavoodles \u2014 all known for being gentle with kids. Want me to compare them in more detail?"
+    },
+    {
+      "role": "user",
+      "content": "Yes please \u2014 and what's a fair price for a cavoodle puppy from a vetted Doggo breeder?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "cavoodle pricing",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": null,
+      "product_or_service": "cavoodle puppy",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.87,
+      "reason": "narrowed to cavoodle + pricing in turn 2"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.6
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "buyer_pricing_or_availability",
+    "routing_key": "buyer_demand"
+  },
+  "notes": "Turn 1 alone is general_research (would be continue_helping); turn 2 unlocks the request_quote intent."
+}

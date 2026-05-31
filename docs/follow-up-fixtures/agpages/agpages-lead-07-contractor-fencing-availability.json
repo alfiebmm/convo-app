@@ -1,0 +1,47 @@
+{
+  "name": "AgPages: fencing contractor wants to list",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I'm a fencing contractor in northern Victoria. Keen to list my services \u2014 what's the process?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "supplier"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "supplier",
+      "intent": "offer_service",
+      "topic": "fencing contractor",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "supply",
+      "location": "northern Victoria",
+      "product_or_service": "fencing",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.82,
+      "reason": "supply-side fencing contractor onboarding"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "refer_to_approved_contact_method",
+    "case_type": "lead",
+    "rule_id": "contractor_availability_signal",
+    "routing_key": "contractor_supply"
+  }
+}

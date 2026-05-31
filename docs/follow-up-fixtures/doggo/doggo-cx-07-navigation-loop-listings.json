@@ -1,0 +1,61 @@
+{
+  "name": "Doggo: visitor stuck looping the listings page",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Where do I see the filtered listings page again?"
+    },
+    {
+      "role": "assistant",
+      "content": "You can use the breed and location filters on the Browse page."
+    },
+    {
+      "role": "user",
+      "content": "I can't find browse \u2014 where is it?"
+    },
+    {
+      "role": "assistant",
+      "content": "The Browse link is in the top navigation, second from the left."
+    },
+    {
+      "role": "user",
+      "content": "Still can't find it."
+    }
+  ],
+  "page_url": "https://doggo.com.au/browse",
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "site_navigation",
+      "topic": "site navigation",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.62,
+      "reason": "repeated navigation question"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 3,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "flag_for_staff_review_without_interrupting_visitor",
+    "case_type": "cx_support",
+    "rule_id": "repeated_listing_navigation_silent",
+    "routing_key": "cx_default"
+  }
+}

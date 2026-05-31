@@ -1,0 +1,45 @@
+{
+  "name": "Doggo: frustrated visitor \u2014 fallback through low-confidence path",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "This is the third time I've searched and I can't find any cocker spaniels. Why does this site even exist?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "general_research",
+      "topic": "site search frustration",
+      "sentiment": "frustrated",
+      "urgency": "high",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.7,
+      "reason": "frustration + unmet search expectation"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.3
+  },
+  "expected": {
+    "action": "offer_follow_up",
+    "case_type": "cx_support",
+    "rule_id": "low_confidence_unanswered",
+    "routing_key": "cx_default"
+  },
+  "notes": "Doggo seed lacks a frustrated_visitor rule. The bot's low confidence (\u22640.4 unanswered) routes the case through low_confidence_unanswered. Add frustrated_visitor rule in V1.1 (see PR description backlog)."
+}
