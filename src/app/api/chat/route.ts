@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { getTenantById } from "@/lib/tenant";
 import {
   createConversation,
+  getConversation,
   getConversationMessages,
   addMessage,
 } from "@/lib/conversations";
@@ -24,6 +25,8 @@ import {
   OUTPUT_GUARD_FALLBACK,
 } from "@/lib/guardrails/injection";
 import { resolveCta } from "@/lib/cta/resolve";
+import { readQualifying } from "@/lib/qualifying/types";
+import { formatPersonaForPrompt } from "@/lib/qualifying/resolve";
 import { db } from "@/lib/db";
 import { platformInjectionEvents } from "@/lib/db/schema";
 
@@ -146,6 +149,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // CON-94: load resolved persona from this conversation's qualifying
+    // state (if any). The model receives the persona as a structured
+    // context block — it never sees the menu or option labels.
+    const conversationRow = await getConversation(convoId);
+    const qualifyingState = readQualifying(
+      conversationRow?.metadata as Record<string, unknown> | null
+    );
+    const personaContext = formatPersonaForPrompt(qualifyingState);
+
     // Load recent history for context (oldest first)
     const recentMessages = await getConversationMessages(convoId, 20);
     const history = recentMessages.reverse().map((m) => ({
@@ -217,12 +229,16 @@ export async function POST(req: NextRequest) {
       tenant.settings as Record<string, unknown> | null,
     );
 
-    // System prompt gets the retrieved chunks appended (when any), then
-    // the CON-90 response-engine addendum (3-part structure + locale).
-    // Empty addendum when all CON-90 flags are off — preserves prior
-    // behaviour for tenants who explicitly opt out.
+    // System prompt assembly:
+    //   - base systemPrompt (tenant config + global rules)
+    //   - CON-94 personaContext (resolved qualifying state, when any)
+    //   - retrievalContext (RAG chunks for this turn)
+    //   - CON-90 response-engine addendum (3-part structure + locale)
+    // Empty strings are filtered — no behaviour change for tenants
+    // without qualifying / RAG / response-engine config.
     const fullSystemPrompt = [
       systemPrompt,
+      personaContext,
       retrievalContext,
       responseEngine.promptAddendum,
     ]

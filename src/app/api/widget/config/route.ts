@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { tenants } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { pickStreamingOverrides } from "@/lib/widget/streaming-config";
+import { getConfiguredQuestions } from "@/lib/qualifying/resolve";
 
 /**
  * GET /api/widget/config?tenant=<tenantId>
@@ -92,6 +93,11 @@ export async function GET(req: NextRequest) {
     const streamingPayload =
       Object.keys(streamingOverrides).length > 0 ? streamingOverrides : null;
 
+    // CON-94: surface qualifying questions to the widget so it can render
+    // them as quick-reply buttons. The model never sees this menu — answers
+    // come back via POST /api/conversations/qualifying, server-validated.
+    const qualifyingQuestions = getConfiguredQuestions(settings);
+
     return NextResponse.json(
       {
         name,
@@ -100,6 +106,7 @@ export async function GET(req: NextRequest) {
         position,
         size,
         streaming: streamingPayload,
+        qualifyingQuestions,
       },
       { headers: CORS_HEADERS }
     );

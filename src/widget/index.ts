@@ -78,6 +78,18 @@ interface Message {
   content: string;
 }
 
+// CON-94: qualifying questions surfaced from /api/widget/config.
+// Tenant-configured, validated server-side on submit.
+interface QualifyingOption {
+  label: string;
+  value: string;
+}
+interface QualifyingPrompt {
+  field: string;
+  question: string;
+  options: QualifyingOption[];
+}
+
 // ---------------------------------------------------------------------------
 // Config from script tag
 // ---------------------------------------------------------------------------
@@ -323,6 +335,70 @@ function getStyles(config: ConvoConfig): string {
       }
     }
 
+    /* Qualifying-question quick-reply card (CON-94) */
+    .convo-qualifying {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 14px;
+      animation: convo-msg-in 0.25s ease;
+    }
+    .convo-qualifying-question {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #1e293b;
+      font-weight: 500;
+      margin: 0 0 4px 0;
+    }
+    .convo-qualifying-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .convo-qualifying-options button {
+      flex: 0 1 auto;
+      padding: 8px 14px;
+      border: 1.5px solid ${config.color};
+      border-radius: 999px;
+      background: #fff;
+      color: ${config.color};
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    }
+    .convo-qualifying-options button:hover {
+      background: ${config.color};
+      color: #fff;
+    }
+    .convo-qualifying-options button:active {
+      transform: scale(0.97);
+    }
+    .convo-qualifying-options button:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+    .convo-qualifying-skip {
+      align-self: flex-start;
+      margin-top: 4px;
+      background: none;
+      border: none;
+      color: #64748b;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 2px 0;
+      font-family: inherit;
+    }
+    .convo-qualifying-skip:hover {
+      color: #1e293b;
+    }
+
     /* Typing indicator */
     .convo-typing {
       align-self: flex-start;
@@ -559,6 +635,17 @@ class ConvoWidget {
   private viewportRafId: number | null = null;
   private static IDLE_TIMEOUT_MS = 120000; // 2 minutes
 
+  // CON-94: qualifying-question state.
+  // `qualifyingQuestions` is the FULL ordered list configured by the tenant.
+  // `qualifyingAnsweredFields` is the set of fields already answered on this
+  // conversation (post-rehydrate). `qualifyingComplete` short-circuits the
+  // flow when the visitor has finished or skipped. `qualifyingPending`
+  // prevents double-submits while a button click is in flight.
+  private qualifyingQuestions: QualifyingPrompt[] = [];
+  private qualifyingAnsweredFields = new Set<string>();
+  private qualifyingComplete = false;
+  private qualifyingPending = false;
+
   // DOM refs (inside Shadow DOM)
   private shadow!: ShadowRoot;
   private bubble!: HTMLButtonElement;
@@ -661,6 +748,7 @@ class ConvoWidget {
           thinkingMinMs?: number;
           tokensPerSecond?: number;
         } | null;
+        qualifyingQuestions?: QualifyingPrompt[];
       };
       if (typeof data.name === "string" && data.name.trim()) {
         this.config.name = data.name;
@@ -696,8 +784,238 @@ class ConvoWidget {
           );
         }
       }
+      // CON-94: qualifying questions are config-driven. Server returns them
+      // alongside the public widget config; we just render what we're told.
+      if (Array.isArray(data.qualifyingQuestions)) {
+        this.qualifyingQuestions = data.qualifyingQuestions.filter(
+          (q): q is QualifyingPrompt =>
+            !!q &&
+            typeof q.field === "string" &&
+            typeof q.question === "string" &&
+            Array.isArray(q.options) &&
+            q.options.length > 0
+        );
+      }
     } catch {
       // Offline, CORS, or API down — silently fall back to script-tag values
+    }
+
+    // CON-94: if we rehydrated a conversation, ask the server which
+    // qualifying fields are already answered so we don't re-prompt.
+    if (this.conversationId && this.qualifyingQuestions.length > 0) {
+      try {
+        const stateRes = await fetch(
+          `${this.config.apiBase}/api/conversations/qualifying/state?conversation=${encodeURIComponent(this.conversationId)}`,
+          { method: "GET", credentials: "omit" }
+        );
+        if (stateRes.ok) {
+          const state = (await stateRes.json()) as {
+            answeredFields?: string[];
+            completedAt?: string | null;
+            skipped?: boolean;
+          };
+          if (Array.isArray(state.answeredFields)) {
+            this.qualifyingAnsweredFields = new Set(state.answeredFields);
+          }
+          if (state.completedAt || state.skipped) {
+            this.qualifyingComplete = true;
+          }
+        }
+      } catch {
+        // Non-critical — worst case we render the first question again.
+        // Server rejects duplicate answers via field/value validation.
+      }
+    }
+  }
+
+  /**
+   * Decide the next unanswered question for this conversation.
+   * Mirrors `getNextQuestion` on the server but operates on the cached
+   * client-side state. Server is the trust boundary; this is purely UX.
+   */
+  private nextQualifyingPrompt(): QualifyingPrompt | null {
+    if (this.qualifyingComplete) return null;
+    if (this.qualifyingQuestions.length === 0) return null;
+    for (const q of this.qualifyingQuestions) {
+      if (!this.qualifyingAnsweredFields.has(q.field)) return q;
+    }
+    return null;
+  }
+
+  /**
+   * Render a qualifying-question quick-reply card into the messages area.
+   * Disables the free-text input until the visitor picks an option (or skips).
+   */
+  private renderQualifyingPrompt(prompt: QualifyingPrompt): void {
+    // Lock the input while a qualifying card is open.
+    this.setInputLocked(true);
+
+    const card = document.createElement("div");
+    card.className = "convo-qualifying";
+    card.setAttribute("data-field", prompt.field);
+
+    const questionEl = document.createElement("p");
+    questionEl.className = "convo-qualifying-question";
+    questionEl.textContent = prompt.question;
+    card.appendChild(questionEl);
+
+    const optionsEl = document.createElement("div");
+    optionsEl.className = "convo-qualifying-options";
+    for (const opt of prompt.options) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = opt.label;
+      btn.setAttribute("data-value", opt.value);
+      btn.addEventListener("click", () => {
+        void this.submitQualifyingAnswer(prompt, opt, card);
+      });
+      optionsEl.appendChild(btn);
+    }
+    card.appendChild(optionsEl);
+
+    // "Skip" only appears on the FIRST unanswered question. After the visitor
+    // has answered one, we honour that signal rather than letting them bail.
+    if (this.qualifyingAnsweredFields.size === 0) {
+      const skipBtn = document.createElement("button");
+      skipBtn.type = "button";
+      skipBtn.className = "convo-qualifying-skip";
+      skipBtn.textContent = "Skip for now";
+      skipBtn.addEventListener("click", () => {
+        void this.skipQualifying(card);
+      });
+      card.appendChild(skipBtn);
+    }
+
+    this.messagesEl.appendChild(card);
+    this.scrollToBottom();
+  }
+
+  private setInputLocked(locked: boolean): void {
+    if (!this.inputEl || !this.sendBtn) return;
+    this.inputEl.disabled = locked;
+    this.sendBtn.disabled = locked;
+    this.inputEl.placeholder = locked
+      ? "Pick an option above to continue…"
+      : "Type a message...";
+  }
+
+  /**
+   * Submit a qualifying answer to the server and either render the next
+   * question or unlock free-text chat.
+   */
+  private async submitQualifyingAnswer(
+    prompt: QualifyingPrompt,
+    option: QualifyingOption,
+    cardEl: HTMLDivElement
+  ): Promise<void> {
+    if (this.qualifyingPending) return;
+    this.qualifyingPending = true;
+
+    // Disable all buttons inside the card while the request is in flight.
+    const buttons = cardEl.querySelectorAll("button");
+    buttons.forEach((b) => ((b as HTMLButtonElement).disabled = true));
+
+    try {
+      const res = await fetch(
+        `${this.config.apiBase}/api/conversations/qualifying`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId: this.config.tenantId,
+            conversationId: this.conversationId,
+            visitorId: this.visitorId,
+            field: prompt.field,
+            value: option.value,
+            question: prompt.question,
+            metadata: {
+              pageUrl: window.location.href,
+              referrer: document.referrer || null,
+            },
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        conversationId: string;
+        persona: Record<string, string>;
+        next: QualifyingPrompt | null;
+        completedAt: string | null;
+      };
+
+      // Lock in conversation ID (server creates lazily on first answer).
+      if (data.conversationId) {
+        this.conversationId = data.conversationId;
+      }
+      this.qualifyingAnsweredFields.add(prompt.field);
+
+      // Remove the card and show the visitor's selection as a normal user
+      // bubble so the transcript reads naturally.
+      cardEl.remove();
+      this.addMessageToUI("user", option.label);
+      this.messages.push({ role: "user", content: option.label });
+      this.persistSession();
+
+      if (data.next) {
+        this.renderQualifyingPrompt(data.next);
+      } else {
+        this.qualifyingComplete = true;
+        this.setInputLocked(false);
+        setTimeout(() => this.inputEl.focus(), 100);
+      }
+    } catch (err) {
+      console.warn("[Convo] Qualifying submit failed:", err);
+      // Re-enable buttons so the visitor can retry.
+      buttons.forEach((b) => ((b as HTMLButtonElement).disabled = false));
+    } finally {
+      this.qualifyingPending = false;
+    }
+  }
+
+  /**
+   * Visitor dismissed the qualifying flow. Persist the skip so it doesn't
+   * resurface, and unlock free-text.
+   */
+  private async skipQualifying(cardEl: HTMLDivElement): Promise<void> {
+    if (this.qualifyingPending) return;
+    this.qualifyingPending = true;
+
+    cardEl.querySelectorAll("button").forEach(
+      (b) => ((b as HTMLButtonElement).disabled = true)
+    );
+
+    try {
+      const res = await fetch(
+        `${this.config.apiBase}/api/conversations/qualifying`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId: this.config.tenantId,
+            conversationId: this.conversationId,
+            visitorId: this.visitorId,
+            skip: true,
+            metadata: {
+              pageUrl: window.location.href,
+              referrer: document.referrer || null,
+            },
+          }),
+        }
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          conversationId: string;
+        };
+        if (data.conversationId) this.conversationId = data.conversationId;
+      }
+    } catch {
+      // Non-blocking — still close the flow client-side.
+    } finally {
+      this.qualifyingPending = false;
+      this.qualifyingComplete = true;
+      cardEl.remove();
+      this.setInputLocked(false);
+      setTimeout(() => this.inputEl.focus(), 100);
     }
   }
 
@@ -747,6 +1065,14 @@ class ConvoWidget {
       }
     } else {
       this.addMessageToUI("assistant", this.config.welcome);
+    }
+
+    // CON-94: after the welcome (or replayed history), surface the next
+    // unanswered qualifying question. If the flow is already complete or
+    // no questions are configured, this is a no-op and free-text stays open.
+    const nextPrompt = this.nextQualifyingPrompt();
+    if (nextPrompt) {
+      this.renderQualifyingPrompt(nextPrompt);
     }
   }
 
