@@ -1,0 +1,145 @@
+{
+  "enabled": true,
+  "default_sensitivity": "balanced",
+  "allow_staff_review_flags_without_visitor_interruption": true,
+  "persona_source": "qualifying",
+  "contact_methods": [
+    {
+      "id": "support_email",
+      "type": "email",
+      "label": "Doggo support email",
+      "value": "support@doggo.com.au",
+      "available_for": ["cx_support"]
+    },
+    {
+      "id": "breeder_application",
+      "type": "url",
+      "label": "List your litter on Doggo",
+      "url": "https://doggo.com.au/list-your-litter",
+      "available_for": ["lead"]
+    }
+  ],
+  "capture_policies": [
+    {
+      "id": "buyer_lead",
+      "case_type": "lead",
+      "required_fields": ["name", "mobile"],
+      "optional_fields": ["email", "postcode", "free_text_note"],
+      "privacy_notice": "We'll share these details with the breeder so they can respond to your enquiry.",
+      "privacy_policy_url": "https://doggo.com.au/privacy"
+    },
+    {
+      "id": "cx_email_only",
+      "case_type": "cx_support",
+      "required_fields": ["email"],
+      "optional_fields": ["free_text_note"],
+      "privacy_notice": "We'll use these details to follow up on your enquiry.",
+      "privacy_policy_url": "https://doggo.com.au/privacy"
+    }
+  ],
+  "rules": [
+    {
+      "id": "buyer_pricing_or_availability",
+      "name": "Buyer asking about pricing or litter availability",
+      "case_type": "lead",
+      "enabled": true,
+      "priority": "normal",
+      "confidence_threshold": 0.75,
+      "when": {
+        "intent_in": ["request_quote", "check_availability"]
+      },
+      "action": "capture_details_then_flag",
+      "capture_policy_id": "buyer_lead",
+      "routing_key": "buyer_demand"
+    },
+    {
+      "id": "breeder_listing_interest",
+      "name": "Breeder wants to list their litter",
+      "case_type": "lead",
+      "enabled": true,
+      "priority": "normal",
+      "confidence_threshold": 0.70,
+      "when": {
+        "persona_in": ["breeder"],
+        "intent_in": ["become_partner", "list_litter"]
+      },
+      "action": "refer_to_approved_contact_method",
+      "contact_method_id": "breeder_application",
+      "routing_key": "breeder_supply"
+    },
+    {
+      "id": "direct_human_request_cx",
+      "name": "Visitor asks to speak with a human",
+      "case_type": "cx_support",
+      "enabled": true,
+      "priority": "high",
+      "confidence_threshold": 0.90,
+      "when": {
+        "direct_human_request": true
+      },
+      "action": "immediate_escalation",
+      "capture_policy_id": "cx_email_only",
+      "routing_key": "cx_default"
+    },
+    {
+      "id": "low_confidence_unanswered",
+      "name": "Bot cannot confidently answer",
+      "case_type": "cx_support",
+      "enabled": true,
+      "priority": "normal",
+      "confidence_threshold": 0.0,
+      "when": {
+        "unanswered_confidence_lte": 0.4
+      },
+      "action": "offer_follow_up",
+      "capture_policy_id": "cx_email_only",
+      "routing_key": "cx_default"
+    },
+    {
+      "id": "repeated_listing_navigation_silent",
+      "name": "Visitor stuck navigating the listings",
+      "case_type": "cx_support",
+      "enabled": true,
+      "priority": "low",
+      "confidence_threshold": 0.50,
+      "when": {
+        "intent_in": ["site_navigation"],
+        "repeated_loop_count_gte": 2
+      },
+      "action": "flag_for_staff_review_without_interrupting_visitor",
+      "routing_key": "cx_default"
+    }
+  ],
+  "destinations": [
+    {
+      "id": "doggo_buyer_webhook",
+      "case_type": "lead",
+      "connector": "webhook",
+      "routing_key": "buyer_demand",
+      "config": {
+        "url": "https://hooks.doggo.com.au/convo/buyer-demand",
+        "notes": "Buyer-side demand leads. Doggo backend routes to the relevant breeder based on breed and postcode."
+      }
+    },
+    {
+      "id": "doggo_breeder_webhook",
+      "case_type": "lead",
+      "connector": "webhook",
+      "routing_key": "breeder_supply",
+      "config": {
+        "url": "https://hooks.doggo.com.au/convo/breeder-supply",
+        "notes": "Breeder-side supply leads. Routed to the Doggo onboarding queue for breeder verification."
+      }
+    },
+    {
+      "id": "doggo_cx_webhook",
+      "case_type": "cx_support",
+      "connector": "webhook",
+      "routing_key": "cx_default",
+      "config": {
+        "url": "https://hooks.doggo.com.au/convo/cx",
+        "notes": "Default CX inbox. Direct-human requests, low-confidence fallbacks, navigation-loop silent flags."
+      }
+    }
+  ]
+}
