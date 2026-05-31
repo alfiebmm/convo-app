@@ -1,0 +1,187 @@
+{
+  "enabled": true,
+  "default_sensitivity": "balanced",
+  "allow_staff_review_flags_without_visitor_interruption": true,
+  "persona_source": "qualifying",
+  "contact_methods": [
+    {
+      "id": "support_email",
+      "type": "email",
+      "label": "AgPages support email",
+      "value": "support@agpages.com.au",
+      "available_for": ["cx_support"]
+    },
+    {
+      "id": "sales_callback",
+      "type": "callback",
+      "label": "AgPages sales callback request",
+      "url": "https://agpages.com.au/contact",
+      "available_for": ["lead"]
+    },
+    {
+      "id": "contractor_application",
+      "type": "url",
+      "label": "Become a contractor on AgPages",
+      "url": "https://agpages.com.au/become-a-contractor",
+      "available_for": ["lead"]
+    }
+  ],
+  "capture_policies": [
+    {
+      "id": "marketplace_demand_lead",
+      "case_type": "lead",
+      "required_fields": ["name", "mobile", "postcode"],
+      "optional_fields": ["free_text_note"],
+      "privacy_notice": "We'll share these details with AgPages so a relevant contractor can respond to your enquiry.",
+      "privacy_policy_url": "https://agpages.com.au/privacy"
+    },
+    {
+      "id": "contractor_supply_lead",
+      "case_type": "lead",
+      "required_fields": ["name", "email", "company"],
+      "optional_fields": ["mobile", "free_text_note"],
+      "privacy_notice": "We'll use these details to qualify your application as a contractor on AgPages.",
+      "privacy_policy_url": "https://agpages.com.au/privacy"
+    },
+    {
+      "id": "cx_email_only",
+      "case_type": "cx_support",
+      "required_fields": ["email"],
+      "optional_fields": ["free_text_note"],
+      "privacy_notice": "We'll use these details to follow up on your enquiry.",
+      "privacy_policy_url": "https://agpages.com.au/privacy"
+    }
+  ],
+  "rules": [
+    {
+      "id": "farmer_service_request",
+      "name": "Farmer requesting a contractor or quote",
+      "case_type": "lead",
+      "enabled": true,
+      "priority": "normal",
+      "confidence_threshold": 0.75,
+      "when": {
+        "persona_in": ["farmer"],
+        "intent_in": ["find_contractor", "request_quote"],
+        "exclude_topics": ["general_research"]
+      },
+      "action": "capture_details_then_flag",
+      "capture_policy_id": "marketplace_demand_lead",
+      "routing_key": "marketplace_demand"
+    },
+    {
+      "id": "contractor_availability_signal",
+      "name": "Contractor offering availability",
+      "case_type": "lead",
+      "enabled": true,
+      "priority": "normal",
+      "confidence_threshold": 0.70,
+      "when": {
+        "persona_in": ["contractor"],
+        "intent_in": ["offer_availability"]
+      },
+      "action": "refer_to_approved_contact_method",
+      "contact_method_id": "contractor_application",
+      "routing_key": "contractor_supply"
+    },
+    {
+      "id": "direct_human_request_cx",
+      "name": "Visitor asks to speak with a human",
+      "case_type": "cx_support",
+      "enabled": true,
+      "priority": "high",
+      "confidence_threshold": 0.90,
+      "when": {
+        "direct_human_request": true
+      },
+      "action": "immediate_escalation",
+      "capture_policy_id": "cx_email_only",
+      "routing_key": "cx_default"
+    },
+    {
+      "id": "low_confidence_unanswered",
+      "name": "Bot cannot confidently answer",
+      "case_type": "cx_support",
+      "enabled": true,
+      "priority": "normal",
+      "confidence_threshold": 0.0,
+      "when": {
+        "unanswered_confidence_lte": 0.4
+      },
+      "action": "offer_follow_up",
+      "capture_policy_id": "cx_email_only",
+      "routing_key": "cx_default"
+    },
+    {
+      "id": "frustrated_visitor",
+      "name": "Visitor showing frustration or anger",
+      "case_type": "cx_support",
+      "enabled": true,
+      "priority": "high",
+      "confidence_threshold": 0.65,
+      "when": {
+        "sentiment_in": ["frustrated", "angry"],
+        "urgency_in": ["high"]
+      },
+      "action": "offer_follow_up",
+      "capture_policy_id": "cx_email_only",
+      "routing_key": "cx_default"
+    },
+    {
+      "id": "marketplace_navigation_silent_flag",
+      "name": "Visitor stuck navigating the marketplace",
+      "case_type": "cx_support",
+      "enabled": true,
+      "priority": "low",
+      "confidence_threshold": 0.50,
+      "when": {
+        "intent_in": ["site_navigation"],
+        "repeated_loop_count_gte": 2
+      },
+      "action": "flag_for_staff_review_without_interrupting_visitor",
+      "routing_key": "cx_research"
+    }
+  ],
+  "destinations": [
+    {
+      "id": "agpages_marketplace_webhook",
+      "case_type": "lead",
+      "connector": "webhook",
+      "routing_key": "marketplace_demand",
+      "config": {
+        "url": "https://hooks.agpages.com.au/convo/marketplace-demand",
+        "notes": "Farmer-side demand leads. AgPages backend dispatches to relevant contractors based on postcode."
+      }
+    },
+    {
+      "id": "agpages_contractor_supply_webhook",
+      "case_type": "lead",
+      "connector": "webhook",
+      "routing_key": "contractor_supply",
+      "config": {
+        "url": "https://hooks.agpages.com.au/convo/contractor-supply",
+        "notes": "Contractor-side supply leads. Routed to AgPages onboarding queue."
+      }
+    },
+    {
+      "id": "agpages_cx_webhook",
+      "case_type": "cx_support",
+      "connector": "webhook",
+      "routing_key": "cx_default",
+      "config": {
+        "url": "https://hooks.agpages.com.au/convo/cx",
+        "notes": "Default CX inbox. Direct-human requests, low-confidence fallbacks, frustration signals."
+      }
+    },
+    {
+      "id": "agpages_cx_research_webhook",
+      "case_type": "cx_support",
+      "connector": "webhook",
+      "routing_key": "cx_research",
+      "config": {
+        "url": "https://hooks.agpages.com.au/convo/cx-research",
+        "notes": "Silent staff-review flags from marketplace-navigation loops. Lower-priority research queue — no visitor interruption."
+      }
+    }
+  ]
+}
