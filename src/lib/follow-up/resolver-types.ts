@@ -67,6 +67,10 @@ export type ResolvedAction =
       case_type: CaseType;
       confidence: number;
       evidence: Evidence;
+      // CON-169 (Epic D1): optional visitor-facing title pulled from
+      // `FollowUpRule.offer_title`. Surfaced to the widget via the `case`
+      // SSE event; widget falls back to a default if undefined.
+      offer_title?: string;
     }
   | {
       type: "refer_to_approved_contact_method";

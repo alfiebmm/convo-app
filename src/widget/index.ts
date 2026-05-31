@@ -335,6 +335,60 @@ function getStyles(config: ConvoConfig): string {
       }
     }
 
+    /* Offer card (CON-169 — follow-up Yes/No) */
+    .convo-offer-block {
+      align-self: stretch;
+      padding: 12px 14px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      border-bottom-left-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      animation: convo-msg-in 0.25s ease;
+    }
+    .convo-offer-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1e293b;
+      line-height: 1.4;
+    }
+    .convo-offer-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    .convo-offer-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s ease, background 0.15s ease;
+    }
+    .convo-offer-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .convo-offer-btn.primary {
+      background: ${config.color};
+      color: #fff;
+      border: 1px solid ${config.color};
+    }
+    .convo-offer-btn.secondary {
+      background: #fff;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+    .convo-offer-btn.primary:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .convo-offer-btn.secondary:hover:not(:disabled) {
+      background: #f8fafc;
+    }
+
     /* Qualifying-question quick-reply card (CON-94) */
     .convo-qualifying {
       align-self: stretch;
@@ -1326,6 +1380,11 @@ class ConvoWidget {
                 followUp:
                   typeof event.followUp === "string" ? event.followUp : null,
               };
+            } else if (event.type === "case" && event.case) {
+              // CON-169 (Epic D1): server signalled a follow-up action.
+              // Render visitor-facing UI for the variants we support;
+              // ignore other case variants (capture/escalation — D2+).
+              this.renderOffer(event);
             } else if (event.type === "error") {
               streamErrored = true;
             }
@@ -1459,6 +1518,109 @@ class ConvoWidget {
   private hideTyping() {
     const el = this.shadow.getElementById("convo-typing-indicator");
     if (el) el.remove();
+  }
+
+  /**
+   * Render the follow-up offer card (CON-169 — Epic D1).
+   * Only activates when the SSE `case` event's action is
+   * `offer_follow_up`. Yes/No buttons post to `/api/conversations/case-events`
+   * and the card is replaced with a transient ack message.
+   *
+   * The full progressive-capture flow (Yes-path expansion) is D2 (CON-170);
+   * for this ticket the Yes-path is stubbed.
+   */
+  private renderOffer(event: {
+    case?: {
+      action?: string;
+      offer_title?: string;
+      rule_id?: string;
+      confidence?: number;
+    };
+  }): void {
+    const caseInfo = event.case;
+    if (!caseInfo || caseInfo.action !== "offer_follow_up") return;
+
+    const title =
+      typeof caseInfo.offer_title === "string" && caseInfo.offer_title.trim()
+        ? caseInfo.offer_title
+        : "Would you like our team to follow up?";
+
+    const block = document.createElement("div");
+    block.className = "convo-offer-block";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "convo-offer-title";
+    titleEl.textContent = title;
+
+    const buttonsEl = document.createElement("div");
+    buttonsEl.className = "convo-offer-buttons";
+
+    const yesBtn = document.createElement("button");
+    yesBtn.type = "button";
+    yesBtn.className = "convo-offer-btn primary";
+    yesBtn.textContent = "Yes, please";
+
+    const noBtn = document.createElement("button");
+    noBtn.type = "button";
+    noBtn.className = "convo-offer-btn secondary";
+    noBtn.textContent = "No, thanks";
+
+    buttonsEl.appendChild(yesBtn);
+    buttonsEl.appendChild(noBtn);
+    block.appendChild(titleEl);
+    block.appendChild(buttonsEl);
+    this.messagesEl.appendChild(block);
+    this.scrollToBottom();
+
+    const metadata: Record<string, unknown> = {};
+    if (caseInfo.rule_id) metadata.rule_id = caseInfo.rule_id;
+    if (typeof caseInfo.confidence === "number") {
+      metadata.confidence = caseInfo.confidence;
+    }
+
+    const respond = async (
+      eventType: "offer_accepted" | "offer_declined",
+      ack: string,
+    ) => {
+      yesBtn.disabled = true;
+      noBtn.disabled = true;
+      try {
+        await fetch(
+          `${this.config.apiBase}/api/conversations/case-events`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tenantId: this.config.tenantId,
+              conversationId: this.conversationId,
+              caseEventType: eventType,
+              metadata,
+            }),
+          },
+        );
+      } catch {
+        // Non-critical — visitor already saw the click.
+      }
+      block.replaceChildren();
+      const ackEl = document.createElement("div");
+      ackEl.className = "convo-offer-title";
+      ackEl.textContent = ack;
+      block.appendChild(ackEl);
+      this.scrollToBottom();
+    };
+
+    yesBtn.addEventListener("click", () => {
+      respond(
+        "offer_accepted",
+        "Great \u2014 please share a few details so we can follow up.",
+      );
+    });
+    noBtn.addEventListener("click", () => {
+      respond(
+        "offer_declined",
+        "No worries, let me know if you change your mind.",
+      );
+    });
   }
 
   private scrollToBottom() {

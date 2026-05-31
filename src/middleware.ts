@@ -13,6 +13,7 @@
  *   - /api/conversations/qualifying/* (widget qualifying-question flow, CON-94)
  *   - /api/pipeline/* (pipeline webhooks)
  *   - /api/billing/webhook (Stripe webhook — raw body needed, no auth)
+ *   - /api/conversations/case-events (widget follow-up Yes/No POSTs — CON-169)
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -35,6 +36,6 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
-    "/api/((?!auth|chat|widget|conversations/qualifying|pipeline|billing/webhook).*)",
+    "/api/((?!auth|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook).*)",
   ],
 };

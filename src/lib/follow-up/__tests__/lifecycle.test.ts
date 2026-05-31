@@ -351,6 +351,47 @@ await test("immediate_escalation without optional ids omits those fields", () =>
   );
 });
 
+// CON-169 (Epic D1): the `case` SSE event must surface the rule-configured
+// visitor-facing title when `action: "offer_follow_up"` carries it. Widget
+// owns the fallback when omitted.
+await test("offer_follow_up with offer_title → buildCaseEvent includes it", () => {
+  const action: ResolvedAction = {
+    type: "offer_follow_up",
+    capture_policy_id: "cp1",
+    rule_id: "r1",
+    routing_key: "rk",
+    case_type: "cx_support",
+    confidence: 0.8,
+    evidence: fakeEvidence,
+    offer_title: "Would you like our team to follow up?",
+  };
+  const evt = buildCaseEvent(action);
+  assert(evt !== null, "event built");
+  assertEq(
+    evt.case.offer_title,
+    "Would you like our team to follow up?",
+    "offer_title forwarded",
+  );
+});
+
+await test("offer_follow_up WITHOUT offer_title → buildCaseEvent omits the field", () => {
+  const action: ResolvedAction = {
+    type: "offer_follow_up",
+    capture_policy_id: "cp1",
+    rule_id: "r1",
+    routing_key: "rk",
+    case_type: "cx_support",
+    confidence: 0.8,
+    evidence: fakeEvidence,
+  };
+  const evt = buildCaseEvent(action);
+  assert(evt !== null, "event built");
+  assert(
+    !("offer_title" in evt.case),
+    "offer_title absent when action omitted it",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Tests — runReEvaluation orchestration
 // ---------------------------------------------------------------------------
