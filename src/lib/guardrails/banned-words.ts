@@ -55,10 +55,15 @@ export function collectBannedTerms(
  * "see medical advice now" but not "biomedicaladvicey".
  */
 export function buildBannedRegex(terms: readonly string[]): RegExp | null {
-  if (!terms.length) return null;
+  // Filter empty / whitespace-only terms defensively so a stray "" in
+  // tenant config never produces a regex that matches every
+  // word-boundary in the stream (which would be catastrophic for the
+  // tail-buffered filter built on top of this).
+  const cleaned = terms.filter((t) => typeof t === "string" && t.trim().length > 0);
+  if (!cleaned.length) return null;
   // Sort longest-first so multi-word phrases win over their substrings
   // when terms overlap (e.g. "medical advice" beats "medical").
-  const sorted = [...terms].sort((a, b) => b.length - a.length);
+  const sorted = [...cleaned].sort((a, b) => b.length - a.length);
   const alternation = sorted.map(escapeRegex).join("|");
   return new RegExp(`\\b(?:${alternation})\\b`, "gi");
 }
@@ -104,7 +109,11 @@ export interface StreamingFilter {
  * and "buffered". Tail size = longest banned term length + a small
  * safety margin.
  *
- * If no banned terms are configured, the filter is a passthrough.
+ * If no banned terms are configured (post-merge, post-trim), the
+ * filter is a pure passthrough — zero buffering, zero overhead. This
+ * guarantee is enforced at the `buildBannedRegex` boundary: an empty
+ * or all-whitespace terms list returns `null`, which short-circuits
+ * here before any buffering state is allocated.
  */
 export function createStreamingFilter(
   terms: readonly string[],
@@ -126,9 +135,32 @@ export function createStreamingFilter(
   // with leading word-boundary char) fits entirely. +8 covers
   // surrounding whitespace / punctuation needed for `\b`.
   const tailSize = maxTermLen + 8;
+  // Matches any Unicode whitespace — used to pick the safe/tail cut
+  // point. Previously this was a bare ASCII space, which meant streams
+  // separated only by newlines (paragraph breaks, lists, code blocks)
+  // could buffer indefinitely until end-of-stream flush.
+  const WS_RE = /\s/g;
 
   let buffer = "";
   let count = 0;
+
+  /**
+   * Find the last whitespace position at or before `before` (exclusive
+   * upper bound). Returns -1 when there is no whitespace in that range.
+   * Mirrors `String.prototype.lastIndexOf` semantics but for any
+   * whitespace character, not just ASCII space.
+   */
+  function lastWhitespaceBefore(s: string, before: number): number {
+    for (let i = before - 1; i >= 0; i--) {
+      const c = s.charCodeAt(i);
+      // Fast path for the common ASCII whitespace cases.
+      if (c === 0x20 || c === 0x0a || c === 0x0d || c === 0x09) return i;
+      // Fall through to the full Unicode test for everything else.
+      WS_RE.lastIndex = 0;
+      if (WS_RE.test(s[i])) return i;
+    }
+    return -1;
+  }
 
   function scanAndStrip(): string {
     // We scan everything BEFORE the last `tailSize` characters — BUT we
@@ -141,7 +173,7 @@ export function createStreamingFilter(
     // Pull back to the last whitespace at or before `safeLen`. If no
     // whitespace exists in the safe region, buffer everything until we
     // see one (or until flush()).
-    const lastWs = buffer.lastIndexOf(" ", safeLen - 1);
+    const lastWs = lastWhitespaceBefore(buffer, safeLen);
     if (lastWs < 0) return "";
     safeLen = lastWs;
     if (safeLen <= 0) return "";

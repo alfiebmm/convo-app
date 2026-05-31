@@ -208,6 +208,128 @@ check(
   eq("streamingFilter: clean stream identity", out, text);
 }
 
+// ─── Regression: CON-90 PR #16 buffer-flush bug ──────────────
+//
+// Surface: live smoke against Doggo (default exclusion_list active)
+// returned an orphan-prefix sentence — "...vet visits. your home by
+// puppy-proofing..." — suggesting the tail buffer was dropping a
+// leading verb across a paragraph boundary. Root cause turned out to
+// be the safe/tail cut point only recognising ASCII space; when the
+// safe region contained newlines (paragraph breaks) but no spaces,
+// the boundary couldn't advance and content stayed buffered. These
+// tests lock in the fix.
+
+{
+  // Test A — empty banned-words list: stream tokens including a
+  // sentence boundary; every token must arrive byte-identical.
+  const f = createStreamingFilter([]);
+  const tokens = ["Hello", " world.", " Preparing", " your", " home."];
+  let out = "";
+  for (const t of tokens) out += f.push(t);
+  out += f.flush();
+  eq("regression A: empty list streams identically", out, tokens.join(""));
+  eq("regression A: redaction count 0", f.redactionCount(), 0);
+}
+
+{
+  // Test B — banned list does NOT contain any of the streamed words.
+  // Mirrors the live smoke failure shape: leading verb ("Consider")
+  // must not be eaten even though the filter is active.
+  const f = createStreamingFilter(["badword"]);
+  const tokens = ["Consider", " your", " home", " by", " preparing"];
+  let out = "";
+  for (const t of tokens) out += f.push(t);
+  out += f.flush();
+  eq("regression B: non-matching stream preserved verbatim", out, tokens.join(""));
+  eq("regression B: redaction count 0", f.redactionCount(), 0);
+}
+
+{
+  // Test C — banned term is present and surrounded by non-banned
+  // text: banned term is redacted, every other token survives intact.
+  const f = createStreamingFilter(["badword"]);
+  const tokens = ["this", " is", " a", " badword", " test"];
+  let out = "";
+  for (const t of tokens) out += f.push(t);
+  out += f.flush();
+  eq(
+    "regression C: banned term redacted, rest intact",
+    out,
+    `this is a ${REDACTION} test`,
+  );
+  eq("regression C: redaction count 1", f.redactionCount(), 1);
+}
+
+{
+  // Test D — newline-only whitespace: previously the safe/tail cut
+  // point only recognised ASCII space, so a stream punctuated only by
+  // `\n` would buffer indefinitely. Stream must arrive verbatim and
+  // should NOT all be deferred to flush().
+  const f = createStreamingFilter(["badword"]);
+  // Long enough to force a buffer flush mid-stream (tailSize = 7 + 8 = 15).
+  const chunks = [
+    "first-line-here\n",
+    "second-line-here\n",
+    "third-line-here\n",
+    "fourth-line-here\n",
+    "fifth-line-here",
+  ];
+  let mid = "";
+  for (const c of chunks) mid += f.push(c);
+  const tail = f.flush();
+  eq(
+    "regression D: newline-separated stream survives intact",
+    mid + tail,
+    chunks.join(""),
+  );
+  check(
+    "regression D: emitted progressively (not all deferred to flush)",
+    mid.length > 0,
+    `expected progressive emission, got mid=${JSON.stringify(mid)}`,
+  );
+}
+
+{
+  // Test E — paragraph-break shape from the live smoke: chunk
+  // contains a leading space + `\n\n` + the new sentence's first
+  // token. The leading verb of the new sentence must survive.
+  const f = createStreamingFilter([
+    "medical advice",
+    "legal advice",
+    "financial advice",
+    "regulated advice",
+  ]);
+  const chunks = [
+    "food and vet visits.",
+    " \n\nPreparing",
+    " your home",
+    " by puppy-proofing",
+    " and gathering necessary",
+    " supplies is also essential.",
+  ];
+  let out = "";
+  for (const c of chunks) out += f.push(c);
+  out += f.flush();
+  eq(
+    "regression E: paragraph-break preserves leading verb",
+    out,
+    chunks.join(""),
+  );
+  eq("regression E: no false-positive redactions", f.redactionCount(), 0);
+}
+
+{
+  // Test F — defensive guard: empty-string entries in the terms list
+  // must NOT produce an everything-matches regex.
+  const f = createStreamingFilter(["", "   ", "badword"]);
+  const chunks = ["perfectly", " fine", " text", " here"];
+  let out = "";
+  for (const c of chunks) out += f.push(c);
+  out += f.flush();
+  eq("regression F: empty terms ignored, text preserved", out, chunks.join(""));
+  eq("regression F: no spurious redactions", f.redactionCount(), 0);
+}
+
 // ─── resolveForumConfig ──────────────────────────────────────
 
 eq(
