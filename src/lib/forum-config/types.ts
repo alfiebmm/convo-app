@@ -22,4 +22,5 @@ export type {
   SeoDefaults,
   Connectors,
   Limits,
+  LeadCapture,
 } from "./schema";

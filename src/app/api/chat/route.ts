@@ -10,7 +10,7 @@ import {
 import { buildSystemPrompt, GLOBAL_RULES } from "@/lib/guardrails";
 import { resolveResponseEngine } from "@/lib/guardrails/response-engine";
 import { createStreamingFilter } from "@/lib/guardrails/banned-words";
-import { sendAdminNotification } from "@/lib/notifications";
+import { sendAdminNotification, sendLeadNotification } from "@/lib/notifications";
 import {
   retrieveRelevantChunks,
   formatChunksForPrompt,
@@ -27,6 +27,9 @@ import {
 import { resolveCta } from "@/lib/cta/resolve";
 import { readQualifying } from "@/lib/qualifying/types";
 import { formatPersonaForPrompt } from "@/lib/qualifying/resolve";
+import { maybeCaptureLead } from "@/lib/leads/capture";
+import { fireAndForgetLeadSummary } from "@/lib/leads/summary";
+import type { KeywordOverrides } from "@/lib/leads/intent";
 import { db } from "@/lib/db";
 import { platformInjectionEvents } from "@/lib/db/schema";
 
@@ -157,6 +160,33 @@ export async function POST(req: NextRequest) {
       conversationRow?.metadata as Record<string, unknown> | null
     );
     const personaContext = formatPersonaForPrompt(qualifyingState);
+
+    // ── CON-95: Lead capture & detection ────────────────────────────
+    // Run BEFORE we kick off OpenAI. Pure regex + keyword scan; no
+    // network calls in the hot path. The capture update is awaited
+    // (single UPDATE) but the admin notification + AI summary are
+    // fire-and-forget after the SSE stream closes so chat latency is
+    // unaffected. Failures here must never break the chat response.
+    // CON-98 already pulled `tenantSettings` above; reuse it here.
+    const tenantSettingsForLead = (tenantSettings as Record<string, unknown> | null) ?? {};
+    const leadConfig = (tenantSettingsForLead.lead_capture ??
+      (tenantSettingsForLead as Record<string, unknown>).leadCapture) as
+      | { enabled?: boolean; detection?: { keywords?: KeywordOverrides } }
+      | undefined;
+    const leadEnabled = leadConfig?.enabled !== false;
+    const keywordOverrides = leadConfig?.detection?.keywords;
+
+    let leadOutcome: Awaited<ReturnType<typeof maybeCaptureLead>> | null = null;
+    try {
+      leadOutcome = await maybeCaptureLead({
+        conversationId: convoId,
+        message,
+        keywordOverrides,
+        enabled: leadEnabled,
+      });
+    } catch (err) {
+      console.error("[Chat] lead capture failed (non-fatal):", err);
+    }
 
     // Load recent history for context (oldest first)
     const recentMessages = await getConversationMessages(convoId, 20);
@@ -389,6 +419,57 @@ export async function POST(req: NextRequest) {
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`)
           );
+
+          // CON-95: post-stream lead notification + AI summary.
+          // Strictly after the visitor's response is delivered so chat
+          // latency is untouched. Both calls are internally fire-and-
+          // forget; errors are caught + logged.
+          if (
+            leadOutcome &&
+            (leadOutcome.kind === "captured" || leadOutcome.kind === "updated") &&
+            (leadOutcome.newDetections.length > 0 ||
+              leadOutcome.newIntents.length > 0)
+          ) {
+            try {
+              sendLeadNotification(
+                {
+                  id: tenant.id,
+                  name: tenant.name,
+                  slug: tenant.slug,
+                  settings: tenant.settings as Record<string, unknown> | null,
+                },
+                {
+                  id: convoId,
+                  visitorId,
+                  metadata: metadata as Record<string, unknown> | undefined,
+                },
+                leadOutcome.lead,
+                {
+                  newDetections: leadOutcome.newDetections,
+                  newIntents: leadOutcome.newIntents,
+                  firstCapture: leadOutcome.kind === "captured",
+                }
+              );
+            } catch (err) {
+              console.error("[Chat] lead notification dispatch failed:", err);
+            }
+
+            try {
+              fireAndForgetLeadSummary({
+                conversationId: convoId,
+                tenantName: tenant.name,
+                history: [
+                  ...history,
+                  { role: "user", content: message },
+                  { role: "assistant", content: fullResponse },
+                ],
+                lead: leadOutcome.lead,
+                metadata: (metadata as Record<string, unknown> | null) ?? null,
+              });
+            } catch (err) {
+              console.error("[Chat] lead summary dispatch failed:", err);
+            }
+          }
         } catch (err) {
           const errorMessage =
             err instanceof Error ? err.message : "Stream error";

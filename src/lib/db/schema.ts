@@ -199,6 +199,9 @@ export const conversations = pgTable(
     // Human triage flags — independent of conversation lifecycle status.
     // A conversation can be `active` AND `needsFollowup`; resolving clears the flag.
     needsFollowup: boolean("needs_followup").default(false).notNull(),
+    // CON-95: classifies the *kind* of follow-up. NULL when no follow-up needed.
+    // 'lead' = a Lead was captured (see `metadata.lead`). 'manual' reserved.
+    followUpType: varchar("follow_up_type", { length: 20 }),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedBy: uuid("resolved_by").references(() => users.id, {
       onDelete: "set null",
