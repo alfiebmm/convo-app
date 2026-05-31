@@ -7,6 +7,8 @@ import {
   addMessage,
 } from "@/lib/conversations";
 import { buildSystemPrompt, GLOBAL_RULES } from "@/lib/guardrails";
+import { resolveResponseEngine } from "@/lib/guardrails/response-engine";
+import { createStreamingFilter } from "@/lib/guardrails/banned-words";
 import { sendAdminNotification } from "@/lib/notifications";
 import {
   retrieveRelevantChunks,
@@ -207,13 +209,27 @@ export async function POST(req: NextRequest) {
       console.error("[Chat] retrieval failed (non-fatal):", err);
     }
 
-    // System prompt gets the retrieved chunks appended (when any). Empty
-    // string when retrieval yields nothing — effectively no behaviour change.
-    const fullSystemPrompt = retrievalContext
-      ? `${systemPrompt}\n\n${retrievalContext}`
-      : systemPrompt;
+    // CON-90: resolve forum.config.json driven response-engine settings
+    // (3-part structure, locale, banned-word filter, max_output_tokens).
+    // Falls back to schema defaults when tenant has no `forumConfig`.
+    const responseEngine = resolveResponseEngine(
+      tenant.settings as Record<string, unknown> | null,
+    );
 
-    // Stream from OpenAI
+    // System prompt gets the retrieved chunks appended (when any), then
+    // the CON-90 response-engine addendum (3-part structure + locale).
+    // Empty addendum when all CON-90 flags are off — preserves prior
+    // behaviour for tenants who explicitly opt out.
+    const fullSystemPrompt = [
+      systemPrompt,
+      retrievalContext,
+      responseEngine.promptAddendum,
+    ]
+      .filter((s) => s && s.length > 0)
+      .join("\n\n");
+
+    // Stream from OpenAI — CON-90 enforces max_output_tokens from the
+    // tenant's forum config (default 1500, schema-enforced positive int).
     const stream = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       stream: true,
@@ -221,11 +237,19 @@ export async function POST(req: NextRequest) {
         { role: "system", content: fullSystemPrompt },
         ...history,
       ],
+      ...(responseEngine.maxTokens !== undefined
+        ? { max_tokens: responseEngine.maxTokens }
+        : {}),
     });
 
     // Build SSE response
     const encoder = new TextEncoder();
     let fullResponse = "";
+
+    // CON-90: banned-word / exclusion-list streaming filter. Tail-
+    // buffered so we never emit a partial banned term mid-stream.
+    // Becomes a passthrough when no terms are configured.
+    const bannedFilter = createStreamingFilter(responseEngine.bannedTerms);
 
     const readable = new ReadableStream({
       async start(controller) {
@@ -242,14 +266,40 @@ export async function POST(req: NextRequest) {
           for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content;
             if (content) {
-              fullResponse += content;
-              tokensEmittedToVisitor = true;
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: "token", content })}\n\n`
-                )
-              );
+              // CON-90: pass each chunk through the banned-word streaming
+              // filter first. It tail-buffers so partial banned terms
+              // can't slip out mid-stream; passthrough when no terms.
+              const safe = bannedFilter.push(content);
+              if (safe) {
+                fullResponse += safe;
+                tokensEmittedToVisitor = true;
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({ type: "token", content: safe })}\n\n`
+                  )
+                );
+              }
             }
+          }
+
+          // CON-90: drain the banned-word filter's tail buffer at
+          // end-of-stream so any residual safe text reaches the visitor.
+          const tail = bannedFilter.flush();
+          if (tail) {
+            fullResponse += tail;
+            tokensEmittedToVisitor = true;
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "token", content: tail })}\n\n`
+              )
+            );
+          }
+
+          if (bannedFilter.redactionCount() > 0) {
+            console.log(
+              `[Chat] CON-90 banned-word filter redacted ` +
+                `${bannedFilter.redactionCount()} term(s) for tenant ${tenant.id}`,
+            );
           }
 
           // CON-98 layer 4: best-effort output guard.
