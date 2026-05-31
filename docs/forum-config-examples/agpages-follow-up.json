@@ -61,8 +61,8 @@
       "priority": "normal",
       "confidence_threshold": 0.75,
       "when": {
-        "persona_in": ["farmer"],
-        "intent_in": ["find_contractor", "request_quote"],
+        "persona_in": ["customer"],
+        "intent_in": ["enquire", "request_quote"],
         "exclude_topics": ["general_research"]
       },
       "action": "capture_details_then_flag",
@@ -77,8 +77,8 @@
       "priority": "normal",
       "confidence_threshold": 0.70,
       "when": {
-        "persona_in": ["contractor"],
-        "intent_in": ["offer_availability"]
+        "persona_in": ["supplier"],
+        "intent_in": ["offer_service"]
       },
       "action": "refer_to_approved_contact_method",
       "contact_method_id": "contractor_application",

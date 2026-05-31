@@ -60,8 +60,8 @@
       "priority": "normal",
       "confidence_threshold": 0.70,
       "when": {
-        "persona_in": ["breeder"],
-        "intent_in": ["become_partner", "list_litter"]
+        "persona_in": ["partner"],
+        "intent_in": ["become_partner", "offer_service"]
       },
       "action": "refer_to_approved_contact_method",
       "contact_method_id": "breeder_application",
