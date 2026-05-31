@@ -99,4 +99,15 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
     max_history_turns: 10,
     rate_limit_per_minute: 60,
   },
+
+  follow_up: {
+    enabled: true,
+    default_sensitivity: "balanced",
+    allow_staff_review_flags_without_visitor_interruption: true,
+    persona_source: "qualifying",
+    contact_methods: [],
+    capture_policies: [],
+    rules: [],
+    destinations: [],
+  },
 };
