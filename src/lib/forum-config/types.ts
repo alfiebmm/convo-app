@@ -23,4 +23,18 @@ export type {
   Connectors,
   Limits,
   LeadCapture,
+  // Follow-up (CON-157)
+  CaseType,
+  Sensitivity,
+  ActionMode,
+  ContactMethodType,
+  RulePriority,
+  FollowUpConnector,
+  FieldKey,
+  ContactMethod,
+  CapturePolicy,
+  RuleCondition,
+  FollowUpRule,
+  Destination,
+  FollowUp,
 } from "./schema";
