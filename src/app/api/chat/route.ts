@@ -30,6 +30,17 @@ import { formatPersonaForPrompt } from "@/lib/qualifying/resolve";
 import { maybeCaptureLead } from "@/lib/leads/capture";
 import { fireAndForgetLeadSummary } from "@/lib/leads/summary";
 import type { KeywordOverrides } from "@/lib/leads/intent";
+import {
+  aiPersonaSchema,
+  allowedTopicsSchema,
+  followUpSchema,
+  qualifyingQuestionsSchema,
+} from "@/lib/forum-config/schema";
+import {
+  runReEvaluation,
+  buildCaseEvent,
+  emitCaseEvent,
+} from "@/lib/follow-up/lifecycle";
 import { db } from "@/lib/db";
 import { platformInjectionEvents } from "@/lib/db/schema";
 
@@ -414,6 +425,101 @@ export async function POST(req: NextRequest) {
             // CTA resolution failures must never break the reply. Log and
             // continue — the user still gets a clean answer, just no button.
             console.error("[Chat] CTA resolution failed (non-fatal):", ctaErr);
+          }
+
+          // Follow-up re-evaluation lifecycle (CON-167, Epic C3).
+          // Runs AFTER the token stream completes and the assistant message
+          // is persisted, BEFORE the `done` event. Re-eval failure MUST NOT
+          // break the chat response — `runReEvaluation` is non-throwing by
+          // contract, and the surrounding try/catch is belt-and-braces.
+          try {
+            const settings = (tenant.settings ?? {}) as Record<string, unknown>;
+            const forumConfigRaw = (settings.forumConfig ?? {}) as Record<
+              string,
+              unknown
+            >;
+            const followUpRaw = forumConfigRaw.follow_up;
+            const parsedFollowUp =
+              followUpRaw !== undefined
+                ? followUpSchema.safeParse(followUpRaw)
+                : null;
+            const parsedPersona = aiPersonaSchema.safeParse(
+              forumConfigRaw.ai_persona,
+            );
+            const parsedQualifying = qualifyingQuestionsSchema.safeParse(
+              forumConfigRaw.qualifying_questions ?? {},
+            );
+            const parsedTopics = allowedTopicsSchema.safeParse(
+              forumConfigRaw.allowed_topics ?? [],
+            );
+
+            // Re-eval requires a valid follow_up block (enabled) AND a
+            // schema-valid ai_persona slice for the classifier. If the
+            // tenant has follow_up but no persona, we silently skip —
+            // there's nothing meaningful to classify against.
+            if (
+              parsedFollowUp?.success &&
+              parsedFollowUp.data.enabled &&
+              parsedPersona.success &&
+              parsedQualifying.success &&
+              parsedTopics.success
+            ) {
+              const followUp = parsedFollowUp.data;
+              const tenantClassifierConfig = {
+                ai_persona: parsedPersona.data,
+                qualifying_questions: parsedQualifying.data,
+                allowed_topics: parsedTopics.data,
+              };
+
+              const qualifying = (
+                metadata as Record<string, unknown> | undefined
+              )?.qualifying as Record<string, string> | undefined;
+
+              const lifecycleResult = await runReEvaluation({
+                tenantId: tenant.id,
+                conversationId: convoId,
+                visitorMessage: message,
+                history: [
+                  ...history,
+                  { role: "assistant", content: fullResponse },
+                ],
+                followUpConfig: followUp,
+                tenantConfig: tenantClassifierConfig,
+                conversationContext: {
+                  tenantId: tenant.id,
+                  conversationId: convoId,
+                  pageUrl: (metadata as Record<string, unknown>)?.pageUrl as
+                    | string
+                    | undefined,
+                  qualifyingPersona: qualifying,
+                },
+              });
+
+              if (lifecycleResult) {
+                // TODO(B5): persist `follow_up_cases` row keyed
+                // (tenant_id, conversation_id) when action is one of
+                // offer_follow_up / capture_details_then_flag /
+                // flag_for_staff_review_without_interrupting_visitor /
+                // immediate_escalation; upsert `follow_up_case_attributes`;
+                // append `follow_up_events` with action.evidence +
+                // classifierResult.output + CLASSIFIER_VERSION. Epic B / B5.
+
+                const caseEvent = buildCaseEvent(lifecycleResult.action);
+                if (caseEvent) {
+                  emitCaseEvent(controller, encoder, caseEvent);
+                }
+              }
+            }
+          } catch (reevalErr) {
+            // Re-eval failure MUST NOT break the chat response. Log + carry on.
+            console.error("[follow-up] re-eval failed (non-fatal):", {
+              tenantId: tenant.id,
+              conversationId: convoId,
+              err:
+                reevalErr instanceof Error
+                  ? reevalErr.message
+                  : String(reevalErr),
+            });
           }
 
           controller.enqueue(
