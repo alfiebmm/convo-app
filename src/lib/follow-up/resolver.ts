@@ -346,6 +346,11 @@ function buildResolvedAction(
         case_type: rule.case_type,
         confidence,
         evidence,
+        // CON-169 (Epic D1): pass through optional visitor-facing title so
+        // the widget can render the rule-configured prompt.
+        ...(rule.offer_title !== undefined
+          ? { offer_title: rule.offer_title }
+          : {}),
       };
     case "refer_to_approved_contact_method":
       // Schema guarantees `contact_method_id` is set for this action.

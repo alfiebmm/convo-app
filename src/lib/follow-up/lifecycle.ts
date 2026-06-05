@@ -110,6 +110,9 @@ export type CaseSseEvent = {
     confidence?: number;
     capture_policy_id?: string;
     contact_method_id?: string;
+    // CON-169 (Epic D1): visitor-facing title for the `offer_follow_up`
+    // card. Only populated when the matched rule sets `offer_title`.
+    offer_title?: string;
   };
 };
 
@@ -153,6 +156,21 @@ export function buildCaseEvent(action: ResolvedAction): CaseSseEvent | null {
 
   switch (action.type) {
     case "offer_follow_up":
+      return {
+        type: "case",
+        case: {
+          action: action.type,
+          rule_id: action.rule_id,
+          routing_key: action.routing_key,
+          case_type: action.case_type,
+          confidence: action.confidence,
+          capture_policy_id: action.capture_policy_id,
+          // CON-169 (Epic D1): surface rule-configured title to the widget.
+          ...(action.offer_title !== undefined
+            ? { offer_title: action.offer_title }
+            : {}),
+        },
+      };
     case "capture_details_then_flag":
       return {
         type: "case",

@@ -992,6 +992,152 @@ test("safeDefaultClassifierOutput → continue_helping when low_confidence_unans
 });
 
 // ---------------------------------------------------------------------------
+// CON-169 (Epic D1) — offer_title propagation
+// ---------------------------------------------------------------------------
+
+test("offer_follow_up rule with offer_title → ResolvedAction carries it through", () => {
+  // Synthesise a minimal config with a single `offer_follow_up` rule that
+  // sets `offer_title`. The classifier output is rigged so the rule fires.
+  const customTitle = "Custom title";
+  const config: FollowUp = followUpSchema.parse({
+    enabled: true,
+    default_sensitivity: "balanced",
+    allow_staff_review_flags_without_visitor_interruption: true,
+    persona_source: "qualifying",
+    contact_methods: [
+      {
+        id: "support_email",
+        type: "email",
+        label: "Email",
+        value: "support@example.com",
+        available_for: ["cx_support"],
+      },
+    ],
+    capture_policies: [
+      {
+        id: "cx_email_only",
+        case_type: "cx_support",
+        required_fields: ["email"],
+        optional_fields: [],
+        privacy_notice: "We will follow up.",
+        privacy_policy_url: "https://example.com/privacy",
+      },
+    ],
+    rules: [
+      {
+        id: "low_confidence_unanswered",
+        name: "Low confidence",
+        case_type: "cx_support",
+        enabled: true,
+        priority: "normal",
+        confidence_threshold: 0,
+        when: { unanswered_confidence_lte: 0.4 },
+        action: "offer_follow_up",
+        capture_policy_id: "cx_email_only",
+        routing_key: "cx_default",
+        offer_title: customTitle,
+      },
+    ],
+    destinations: [
+      {
+        id: "cx_webhook",
+        case_type: "cx_support",
+        connector: "webhook",
+        routing_key: "cx_default",
+      },
+    ],
+  });
+
+  const out: ClassifierOutput = classifier({
+    unanswered_confidence: 0.2,
+    support_need: { detected: true, confidence: 0.8 },
+  });
+
+  const action = resolveAction({
+    classifierOutput: out,
+    followUpConfig: config,
+    conversationContext: ctx(),
+  });
+  expectType(action, "offer_follow_up");
+  assert(
+    action.type === "offer_follow_up",
+    "action is offer_follow_up",
+  );
+  assertEq(action.offer_title, customTitle, "offer_title propagated");
+});
+
+test("offer_follow_up rule WITHOUT offer_title → ResolvedAction omits the field", () => {
+  // Same shape as above but no offer_title — the resolver must not
+  // synthesise a value; the widget owns the fallback.
+  const config: FollowUp = followUpSchema.parse({
+    enabled: true,
+    default_sensitivity: "balanced",
+    allow_staff_review_flags_without_visitor_interruption: true,
+    persona_source: "qualifying",
+    contact_methods: [
+      {
+        id: "support_email",
+        type: "email",
+        label: "Email",
+        value: "support@example.com",
+        available_for: ["cx_support"],
+      },
+    ],
+    capture_policies: [
+      {
+        id: "cx_email_only",
+        case_type: "cx_support",
+        required_fields: ["email"],
+        optional_fields: [],
+        privacy_notice: "We will follow up.",
+        privacy_policy_url: "https://example.com/privacy",
+      },
+    ],
+    rules: [
+      {
+        id: "low_confidence_unanswered",
+        name: "Low confidence",
+        case_type: "cx_support",
+        enabled: true,
+        priority: "normal",
+        confidence_threshold: 0,
+        when: { unanswered_confidence_lte: 0.4 },
+        action: "offer_follow_up",
+        capture_policy_id: "cx_email_only",
+        routing_key: "cx_default",
+      },
+    ],
+    destinations: [
+      {
+        id: "cx_webhook",
+        case_type: "cx_support",
+        connector: "webhook",
+        routing_key: "cx_default",
+      },
+    ],
+  });
+
+  const out: ClassifierOutput = classifier({
+    unanswered_confidence: 0.2,
+    support_need: { detected: true, confidence: 0.8 },
+  });
+
+  const action = resolveAction({
+    classifierOutput: out,
+    followUpConfig: config,
+    conversationContext: ctx(),
+  });
+  assert(
+    action.type === "offer_follow_up",
+    "action is offer_follow_up",
+  );
+  assert(
+    !("offer_title" in action) || action.offer_title === undefined,
+    "offer_title absent when rule did not set it",
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 

@@ -312,6 +312,10 @@ export const followUpRuleSchema = z
     capture_policy_id: z.string().optional(),
     contact_method_id: z.string().optional(),
     routing_key: z.string().min(1),
+    // CON-169 (Epic D1): visitor-facing title surfaced to the widget when
+    // `action: "offer_follow_up"` triggers. Optional — widget falls back to
+    // a sensible default if omitted.
+    offer_title: z.string().optional(),
   })
   .superRefine((rule, ctx) => {
     const req = RULE_ACTION_REQUIREMENTS[rule.action];
