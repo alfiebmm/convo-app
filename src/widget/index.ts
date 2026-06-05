@@ -481,6 +481,57 @@ function getStyles(config: ConvoConfig): string {
         display: none;
       }
     }
+
+    /* CON-93 — CTA block (button-style call-to-action below an assistant message). */
+    .convo-cta-block {
+      margin: 8px 0 4px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      animation: convo-cta-fade-in 200ms ease-out;
+    }
+
+    .convo-cta-button {
+      display: inline-block;
+      padding: 10px 16px;
+      background: ${config.color};
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 8px;
+      line-height: 1.2;
+      cursor: pointer;
+      transition: filter 120ms ease, transform 120ms ease;
+      max-width: 100%;
+      min-height: 36px;
+      box-sizing: border-box;
+    }
+
+    .convo-cta-button:hover,
+    .convo-cta-button:focus-visible {
+      filter: brightness(0.95);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .convo-cta-button:active {
+      filter: brightness(0.9);
+      transform: translateY(0);
+    }
+
+    .convo-cta-followup {
+      margin: 6px 0 2px 0;
+      font-size: 13px;
+      font-style: italic;
+      color: #6b7280;
+      line-height: 1.4;
+    }
+
+    @keyframes convo-cta-fade-in {
+      from { opacity: 0; transform: translateY(2px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   `;
 }
 
@@ -849,6 +900,11 @@ class ConvoWidget {
     let assistantEl = null as HTMLDivElement | null;
     let renderedContent = "";
     let typingHidden = false;
+    // CON-93 — CTA may arrive over SSE before paced rendering finishes.
+    // Hold it here and render after the drain loop completes so the
+    // assistant bubble is guaranteed to exist.
+    type CtaPayload = { text?: string; url?: string; tag?: string } | null;
+    let pendingCta: { cta: CtaPayload; followUp: string | null } | null = null;
     const tokenIntervalMs = Math.max(
       1,
       Math.round(1000 / this.config.streaming.tokensPerSecond)
@@ -935,6 +991,15 @@ class ConvoWidget {
               this.trackEngagement();
             } else if (event.type === "token" && event.content) {
               tokenQueue.push(event.content);
+            } else if (event.type === "cta") {
+              // CON-93 — structured CTA emitted after the assistant turn.
+              // Defer render until paced streaming has flushed so the
+              // bubble exists (it's created on first token by drainLoop).
+              pendingCta = {
+                cta: (event.cta ?? null) as CtaPayload,
+                followUp:
+                  typeof event.followUp === "string" ? event.followUp : null,
+              };
             } else if (event.type === "error") {
               streamErrored = true;
             }
@@ -951,6 +1016,14 @@ class ConvoWidget {
       if (streamErrored && assistantEl) {
         assistantEl.textContent =
           "Sorry, something went wrong. Please try again.";
+      }
+
+      // CON-93 — render deferred CTA now that the assistant bubble is
+      // populated. If no tokens streamed (assistantEl null), skip —
+      // there's nothing to attach the CTA to.
+      if (pendingCta && assistantEl) {
+        this.renderCta(assistantEl, pendingCta.cta, pendingCta.followUp);
+        this.scrollToBottom();
       }
 
       // Persist what the user actually saw (post-drain).
@@ -985,6 +1058,67 @@ class ConvoWidget {
     this.messagesEl.appendChild(el);
     this.scrollToBottom();
     return el;
+  }
+
+  /**
+   * Render a CON-93 structured CTA below the just-completed assistant
+   * message. Either a tappable button (when `cta` is provided) or a soft
+   * italic follow-up prompt (when `cta` is null and `followUp` is set).
+   *
+   * URL safety: the URL is sourced from the server's validated `cta_rules`
+   * config only — the model never produces it. We additionally require an
+   * http/https scheme client-side as a defence in depth; anything else is
+   * silently dropped.
+   */
+  private renderCta(
+    assistantEl: HTMLDivElement,
+    cta: { text?: string; url?: string; tag?: string } | null,
+    followUp: string | null
+  ): void {
+    // Guard: don't double-render if a CTA block already exists for this message.
+    if (assistantEl.nextElementSibling?.classList.contains("convo-cta-block")) {
+      return;
+    }
+
+    if (cta && typeof cta.url === "string" && typeof cta.text === "string") {
+      // Defence-in-depth URL scheme check.
+      let safeUrl: string | null = null;
+      try {
+        const parsed = new URL(cta.url);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          safeUrl = parsed.toString();
+        }
+      } catch {
+        safeUrl = null;
+      }
+      if (!safeUrl) return;
+
+      const block = document.createElement("div");
+      block.className = "convo-cta-block";
+
+      const link = document.createElement("a");
+      link.className = "convo-cta-button";
+      link.textContent = cta.text;
+      link.href = safeUrl;
+      // Internal vs external link handling mirrors renderMarkdown (CON-18).
+      const isInternal = this.isInternalLink(safeUrl);
+      if (isInternal) {
+        link.setAttribute("rel", "noopener");
+      } else {
+        link.setAttribute("target", "_blank");
+        link.setAttribute("rel", "noopener noreferrer");
+      }
+      block.appendChild(link);
+      assistantEl.insertAdjacentElement("afterend", block);
+      return;
+    }
+
+    if (typeof followUp === "string" && followUp.trim()) {
+      const prompt = document.createElement("div");
+      prompt.className = "convo-cta-followup";
+      prompt.textContent = followUp;
+      assistantEl.insertAdjacentElement("afterend", prompt);
+    }
   }
 
   private showTyping() {

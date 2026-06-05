@@ -289,8 +289,19 @@ export function buildSystemPrompt(
   }
 
   // 5. CTA rules
+  //
+  // CON-93: when the K-01 `forumConfig.cta_rules` array has entries, CTAs are
+  // rendered as structured buttons by the widget (via the `cta` SSE event)
+  // and the model must NOT also weave a CTA into prose — doing both would
+  // breach AC #3 ("only one CTA per response"). We therefore silence the
+  // legacy `audience.ctaMessages` prompt addendum whenever `cta_rules` is
+  // non-empty. Legacy tenants without `cta_rules` keep the existing prose
+  // CTA behaviour so this change is non-breaking.
+  const forumConfig = settings.forumConfig as { cta_rules?: unknown[] } | undefined;
+  const hasStructuredCtas = Array.isArray(forumConfig?.cta_rules) && forumConfig!.cta_rules!.length > 0;
+
   const ctaThreshold = audience.ctaAfterTurns ?? limits?.maxTurnsBeforeCTA ?? 5;
-  if (audience.ctaMessages?.length) {
+  if (audience.ctaMessages?.length && !hasStructuredCtas) {
     if (turnCount >= ctaThreshold) {
       sections.push(
         `# Call to Action\nThe conversation has reached ${turnCount} exchanges. ` +

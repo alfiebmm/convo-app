@@ -23,6 +23,7 @@ import {
   redactForAudit,
   OUTPUT_GUARD_FALLBACK,
 } from "@/lib/guardrails/injection";
+import { resolveCta } from "@/lib/cta/resolve";
 import { db } from "@/lib/db";
 import { platformInjectionEvents } from "@/lib/db/schema";
 
@@ -342,6 +343,32 @@ export async function POST(req: NextRequest) {
 
           // Persist assistant message after stream complete
           await addMessage(convoId, "assistant", persistedContent);
+
+          // CON-93 — resolve structured CTA from tenant config and emit as
+          // its own SSE event. URLs come from `cta_rules` only; the model
+          // never sees them, so it cannot invent one.
+          try {
+            const ctaResult = resolveCta({
+              settings: tenant.settings as Record<string, unknown> | null,
+              messages: [...history, { role: "assistant", content: fullResponse }],
+              assistantResponse: fullResponse,
+            });
+            if (ctaResult.shouldEmit) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "cta",
+                    cta: ctaResult.cta,
+                    followUp: ctaResult.followUp,
+                  })}\n\n`
+                )
+              );
+            }
+          } catch (ctaErr) {
+            // CTA resolution failures must never break the reply. Log and
+            // continue — the user still gets a clean answer, just no button.
+            console.error("[Chat] CTA resolution failed (non-fatal):", ctaErr);
+          }
 
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`)
