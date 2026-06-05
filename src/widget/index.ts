@@ -5,23 +5,52 @@
  *   <script
  *     src="https://your-domain.com/widget.js"
  *     data-tenant="tenant-uuid"
- *     data-color="#3B82F6"
+ *     data-color="#FF6B2C"
  *     data-welcome="Hi there! How can I help?"
  *     data-name="Convo"
- *     data-position="right"
+ *     data-position="bottom-right"
+ *     data-size="md"
  *   ></script>
+ *
+ * Appearance (colour, position, size) is also pulled live from
+ * /api/widget/config so dashboard edits reflect without re-embedding.
  */
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+type WidgetPosition = "bottom-left" | "bottom-right";
+type WidgetSize = "sm" | "md" | "lg";
+
 interface ConvoConfig {
   tenantId: string;
   color: string;
   welcome: string;
   name: string;
-  position: "left" | "right";
+  position: WidgetPosition;
+  size: WidgetSize;
   apiBase: string;
+}
+
+// Bubble dimensions per size. Panel width stays constant — we only resize
+// the launcher bubble so a larger setting doesn't dominate the page.
+const SIZE_DIMENSIONS: Record<
+  WidgetSize,
+  { bubble: number; icon: number; offset: number }
+> = {
+  sm: { bubble: 48, icon: 20, offset: 16 },
+  md: { bubble: 56, icon: 24, offset: 20 },
+  lg: { bubble: 64, icon: 28, offset: 24 },
+};
+
+function normalisePosition(v: string | null | undefined): WidgetPosition {
+  // Backward-compat: legacy embeds may use "left" / "right".
+  if (v === "bottom-left" || v === "left") return "bottom-left";
+  return "bottom-right";
+}
+
+function normaliseSize(v: string | null | undefined): WidgetSize {
+  return v === "sm" || v === "lg" ? v : "md";
 }
 
 interface Message {
@@ -53,10 +82,11 @@ function getConfig(): ConvoConfig {
 
   return {
     tenantId: get("tenant", ""),
-    color: get("color", "#3B82F6"),
+    color: get("color", "#FF6B2C"),
     welcome: get("welcome", "Hi there! How can I help you today?"),
     name: get("name", "Convo"),
-    position: get("position", "right") as "left" | "right",
+    position: normalisePosition(get("position", "bottom-right")),
+    size: normaliseSize(get("size", "md")),
     apiBase,
   };
 }
@@ -78,10 +108,22 @@ function getVisitorId(): string {
 // Styles (injected into Shadow DOM)
 // ---------------------------------------------------------------------------
 function getStyles(config: ConvoConfig): string {
-  const pos = config.position === "left" ? "left: 20px;" : "right: 20px;";
-  const panelPos = config.position === "left" ? "left: 20px;" : "right: 20px;";
+  const dims = SIZE_DIMENSIONS[config.size];
+  const side = config.position === "bottom-left" ? "left" : "right";
+  const pos = `${side}: ${dims.offset}px;`;
+  // Panel keeps a consistent inset regardless of bubble size for visual stability.
+  const panelPos = `${side}: 20px;`;
+  // Stack the panel above the bubble with a small gap.
+  const panelBottom = dims.bubble + dims.offset + 12;
 
   return `
+    :host {
+      --convo-color: ${config.color};
+      --convo-bubble-size: ${dims.bubble}px;
+      --convo-bubble-icon: ${dims.icon}px;
+      --convo-bubble-offset: ${dims.offset}px;
+    }
+
     *,
     *::before,
     *::after {
@@ -101,12 +143,12 @@ function getStyles(config: ConvoConfig): string {
     /* Bubble */
     .convo-bubble {
       position: fixed;
-      bottom: 20px;
+      bottom: ${dims.offset}px;
       ${pos}
-      width: 56px;
-      height: 56px;
+      width: ${dims.bubble}px;
+      height: ${dims.bubble}px;
       border-radius: 50%;
-      background: ${config.color};
+      background: var(--convo-color);
       color: #fff;
       border: none;
       cursor: pointer;
@@ -122,8 +164,8 @@ function getStyles(config: ConvoConfig): string {
       box-shadow: 0 6px 20px rgba(0,0,0,0.2);
     }
     .convo-bubble svg {
-      width: 24px;
-      height: 24px;
+      width: ${dims.icon}px;
+      height: ${dims.icon}px;
       transition: transform 0.3s ease;
     }
     .convo-bubble.open svg {
@@ -133,7 +175,7 @@ function getStyles(config: ConvoConfig): string {
     /* Panel */
     .convo-panel {
       position: fixed;
-      bottom: 88px;
+      bottom: ${panelBottom}px;
       ${panelPos}
       width: 380px;
       max-width: calc(100vw - 24px);
@@ -160,7 +202,7 @@ function getStyles(config: ConvoConfig): string {
     /* Header */
     .convo-header {
       padding: 16px 20px;
-      background: ${config.color};
+      background: var(--convo-color);
       color: #fff;
       display: flex;
       align-items: center;
@@ -238,7 +280,7 @@ function getStyles(config: ConvoConfig): string {
     }
     .convo-msg.user {
       align-self: flex-end;
-      background: ${config.color};
+      background: var(--convo-color);
       color: #fff;
       border-bottom-right-radius: 4px;
     }
@@ -310,7 +352,7 @@ function getStyles(config: ConvoConfig): string {
       transition: border-color 0.15s ease;
     }
     .convo-input-area input:focus {
-      border-color: ${config.color};
+      border-color: var(--convo-color);
     }
     .convo-input-area input::placeholder {
       color: #94a3b8;
@@ -319,7 +361,7 @@ function getStyles(config: ConvoConfig): string {
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      background: ${config.color};
+      background: var(--convo-color);
       color: #fff;
       border: none;
       cursor: pointer;
@@ -541,6 +583,8 @@ class ConvoWidget {
         name?: string | null;
         welcome?: string | null;
         color?: string | null;
+        position?: string | null;
+        size?: string | null;
       };
       if (typeof data.name === "string" && data.name.trim()) {
         this.config.name = data.name;
@@ -550,6 +594,12 @@ class ConvoWidget {
       }
       if (typeof data.color === "string" && data.color.trim()) {
         this.config.color = data.color;
+      }
+      if (data.position === "bottom-left" || data.position === "bottom-right") {
+        this.config.position = data.position;
+      }
+      if (data.size === "sm" || data.size === "md" || data.size === "lg") {
+        this.config.size = data.size;
       }
     } catch {
       // Offline, CORS, or API down — silently fall back to script-tag values

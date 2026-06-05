@@ -71,11 +71,26 @@ export async function GET(req: NextRequest) {
       (typeof widget.primaryColor === "string" && widget.primaryColor.trim()) ||
       null;
 
+    // Visual appearance (CON-100). Only emit when the saved value is one of
+    // the supported enums — otherwise return null and let the widget runtime
+    // fall back to its built-in defaults.
+    const position =
+      widget.position === "bottom-left" || widget.position === "bottom-right"
+        ? widget.position
+        : null;
+
+    const size =
+      widget.size === "sm" || widget.size === "md" || widget.size === "lg"
+        ? widget.size
+        : null;
+
     return NextResponse.json(
       {
         name,
         welcome,
         color,
+        position,
+        size,
       },
       { headers: CORS_HEADERS }
     );
