@@ -1015,7 +1015,12 @@ class ConvoWidget {
       } else {
         this.qualifyingComplete = true;
         this.setInputLocked(false);
+        // Hidden assistant turn so the bot acknowledges the visitor
+        // instead of leaving them staring at a silent input.
+        // Fire-and-forget: focus the input first, kick off the greeting
+        // stream after. `triggerGreeting` is a no-op if `isStreaming`.
         setTimeout(() => this.inputEl.focus(), 100);
+        void this.triggerGreeting({ skipped: false });
       }
     } catch (err) {
       console.warn("[Convo] Qualifying submit failed:", err);
@@ -1070,6 +1075,10 @@ class ConvoWidget {
       cardEl.remove();
       this.setInputLocked(false);
       setTimeout(() => this.inputEl.focus(), 100);
+      // Hidden assistant turn so the bot acknowledges the visitor.
+      // The server uses `skipped: true` to soften the greeting
+      // (no persona reference, since we don't have one).
+      void this.triggerGreeting({ skipped: true });
     }
   }
 
@@ -1258,6 +1267,52 @@ class ConvoWidget {
     this.messages.push({ role: "user", content: text });
     this.persistSession(); // CON-40: save user turn immediately
 
+    await this.streamAssistantTurn({
+      tenantId: this.config.tenantId,
+      conversationId: this.conversationId,
+      visitorId: this.visitorId,
+      message: text,
+      metadata: {
+        pageUrl: window.location.href,
+        referrer: document.referrer || null,
+      },
+    });
+  }
+
+  /**
+   * CON-XXX (qualifying greeting trigger):
+   * Kick off a hidden assistant turn with no visitor message — used
+   * when the visitor has just completed (or skipped) the qualifying
+   * flow so the bot acknowledges them instead of leaving the input
+   * sitting silently. The server detects `triggerGreeting: true` and
+   * runs a single-sentence greeting turn without the 3-part response
+   * structure.
+   */
+  private async triggerGreeting(opts: { skipped: boolean }): Promise<void> {
+    if (this.isStreaming) return;
+    await this.streamAssistantTurn({
+      tenantId: this.config.tenantId,
+      conversationId: this.conversationId,
+      visitorId: this.visitorId,
+      triggerGreeting: true,
+      skipped: opts.skipped,
+      metadata: {
+        pageUrl: window.location.href,
+        referrer: document.referrer || null,
+      },
+    });
+  }
+
+  /**
+   * Shared SSE-streaming pipeline for any assistant turn (visitor-sent
+   * message OR a hidden trigger-greeting turn). Owns the streaming UI
+   * state, paced rendering, CTA / follow-up case handling, and final
+   * persistence. Callers are responsible for adding any visitor-side
+   * UI (the user bubble for `send()`) before invoking.
+   */
+  private async streamAssistantTurn(
+    requestBody: Record<string, unknown>
+  ): Promise<void> {
     this.isStreaming = true;
     this.sendBtn.disabled = true;
     this.showTyping();
@@ -1329,16 +1384,7 @@ class ConvoWidget {
       const res = await fetch(`${this.config.apiBase}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tenantId: this.config.tenantId,
-          conversationId: this.conversationId,
-          visitorId: this.visitorId,
-          message: text,
-          metadata: {
-            pageUrl: window.location.href,
-            referrer: document.referrer || null,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!res.ok || !res.body) {
