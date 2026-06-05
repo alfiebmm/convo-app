@@ -10,6 +10,7 @@
  *   - /api/auth/* (NextAuth routes)
  *   - /api/chat (widget chat endpoint)
  *   - /api/widget/* (widget tracking etc.)
+ *   - /api/conversations/qualifying/* (widget qualifying-question flow, CON-94)
  *   - /api/pipeline/* (pipeline webhooks)
  *   - /api/billing/webhook (Stripe webhook — raw body needed, no auth)
  */
@@ -34,6 +35,6 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
-    "/api/((?!auth|chat|widget|pipeline|billing/webhook).*)",
+    "/api/((?!auth|chat|widget|conversations/qualifying|pipeline|billing/webhook).*)",
   ],
 };
