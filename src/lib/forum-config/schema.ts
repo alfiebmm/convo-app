@@ -78,6 +78,33 @@ export const seoDefaultsSchema = z.object({
 });
 
 // ============================================================
+// Lead Capture Configuration (CON-95 / C-06)
+// ============================================================
+
+export const leadCaptureKeywordsSchema = z
+  .object({
+    pricing: z.array(z.string()).optional(),
+    booking: z.array(z.string()).optional(),
+    project: z.array(z.string()).optional(),
+    contact_request: z.array(z.string()).optional(),
+  })
+  .partial();
+
+export const leadCaptureSchema = z.object({
+  enabled: z.boolean().default(true),
+  detection: z
+    .object({
+      keywords: leadCaptureKeywordsSchema.prefault({}),
+    })
+    .prefault({}),
+  notify: z
+    .object({
+      onCapture: z.boolean().default(true),
+    })
+    .prefault({}),
+});
+
+// ============================================================
 // Connector Configurations
 // ============================================================
 
@@ -128,6 +155,7 @@ export const forumConfigSchema = z.object({
   ai_persona: aiPersonaSchema,
   cta_rules: ctaRulesSchema,
   qualifying_questions: qualifyingQuestionsSchema.prefault({}),
+  lead_capture: leadCaptureSchema.prefault({}),
   allowed_topics: allowedTopicsSchema,
   exclusion_list: exclusionListSchema,
   seo_defaults: seoDefaultsSchema,
@@ -146,3 +174,4 @@ export type QualifyingQuestion = z.infer<typeof qualifyingQuestionSchema>;
 export type SeoDefaults = z.infer<typeof seoDefaultsSchema>;
 export type Connectors = z.infer<typeof connectorsSchema>;
 export type Limits = z.infer<typeof limitsSchema>;
+export type LeadCapture = z.infer<typeof leadCaptureSchema>;

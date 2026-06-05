@@ -49,6 +49,16 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
     additional: [],
   },
 
+  lead_capture: {
+    enabled: true,
+    detection: {
+      keywords: {},
+    },
+    notify: {
+      onCapture: true,
+    },
+  },
+
   allowed_topics: [
     "general enquiries",
     "product information",
