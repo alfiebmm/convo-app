@@ -1,0 +1,44 @@
+{
+  "name": "Doggo: visitor escalates after unsatisfying bot answer",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I asked about my refund earlier and the answer wasn't helpful — can someone from your team please get in touch?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "unknown",
+      "intent": "unknown",
+      "topic": "refund follow-up",
+      "sentiment": "negative",
+      "urgency": "normal",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.88,
+      "reason": "explicit team-contact request after dissatisfaction"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": true,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.4
+  },
+  "expected": {
+    "action": "immediate_escalation",
+    "case_type": "cx_support",
+    "rule_id": "direct_human_request_cx",
+    "routing_key": "cx_default"
+  }
+}

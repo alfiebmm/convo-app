@@ -1,0 +1,42 @@
+{
+  "name": "Doggo: thanks/acknowledgement",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Thanks, that's helpful!"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "unknown",
+      "topic": "acknowledgement",
+      "sentiment": "positive",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.9
+  },
+  "expected": {
+    "action": "continue_helping",
+    "case_type": null
+  }
+}

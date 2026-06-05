@@ -1,0 +1,45 @@
+{
+  "name": "Doggo: buyer explicitly asks to speak to a human about a litter",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I want to speak to a real person \u2014 is there someone I can talk to about the labradoodle litter listed on your site?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "labradoodle litter",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": null,
+      "product_or_service": "labradoodle puppy",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.78,
+      "reason": "explicit human escalation"
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.82,
+      "reason": "litter-specific lead intent under the surface"
+    },
+    "missing_fields": [],
+    "direct_human_request": true,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "immediate_escalation",
+    "case_type": "cx_support",
+    "rule_id": "direct_human_request_cx",
+    "routing_key": "cx_default"
+  },
+  "notes": "direct_human_request_cx is high priority \u2014 fires before buyer_pricing_or_availability even though the underlying intent is a lead."
+}

@@ -1,0 +1,45 @@
+{
+  "name": "Doggo: buyer requests a callback to discuss a litter",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Can someone call me back to chat about an upcoming border collie litter? Happy with anytime after 5pm weekdays."
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "border collie callback",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": null,
+      "product_or_service": "border collie puppy",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.86,
+      "reason": "buyer asking for a callback about a specific breed/litter"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "buyer_pricing_or_availability",
+    "routing_key": "buyer_demand"
+  },
+  "notes": "Callback framed as a buyer-side quote enquiry (intent=request_quote) \u2014 matches buyer_pricing_or_availability before direct_human_request_cx because the latter requires direct_human_request=true (explicit 'speak to a human')."
+}

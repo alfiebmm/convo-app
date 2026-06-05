@@ -1,0 +1,47 @@
+{
+  "name": "Doggo: buyer asks about golden retriever puppy cost",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's the typical going rate for a golden retriever from a registered breeder in Victoria?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "golden retriever pricing",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Victoria",
+      "product_or_service": "golden retriever puppy",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.9,
+      "reason": "pricing enquiry on specific breed + location"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.6
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "buyer_pricing_or_availability",
+    "routing_key": "buyer_demand",
+    "attributes": {
+      "intent": "request_quote"
+    }
+  }
+}

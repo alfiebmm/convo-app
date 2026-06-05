@@ -1,0 +1,43 @@
+{
+  "name": "Doggo: ambiguous question the bot CAN answer confidently",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Are puppies on Doggo all vaccinated?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "general_research",
+      "topic": "vaccination policy",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0.3,
+      "reason": "policy question but bot answered"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.75
+  },
+  "expected": {
+    "action": "continue_helping",
+    "case_type": null
+  },
+  "notes": "support_need 0.3 < 0.5 threshold so no rule matches; unanswered_confidence 0.75 > 0.4 so low_confidence_unanswered won't fire."
+}

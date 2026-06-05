@@ -1,0 +1,48 @@
+{
+  "name": "Doggo: breeder reports their listing isn't appearing in search",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I published our spring litter yesterday but it's not showing up in search results \u2014 what's going on?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "partner"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "partner",
+      "intent": "general_research",
+      "topic": "listing visibility",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.6,
+      "reason": "listing not appearing \u2014 needs investigation"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.3
+  },
+  "expected": {
+    "action": "offer_follow_up",
+    "case_type": "cx_support",
+    "rule_id": "low_confidence_unanswered",
+    "routing_key": "cx_default"
+  },
+  "notes": "No explicit human request, low unanswered confidence \u2192 low_confidence_unanswered path offers follow-up."
+}

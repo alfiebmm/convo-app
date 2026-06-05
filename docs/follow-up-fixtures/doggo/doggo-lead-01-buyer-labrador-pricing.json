@@ -1,0 +1,49 @@
+{
+  "name": "Doggo: buyer asks for labrador pricing",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi, looking for a labrador puppy \u2014 how much does a quality breeder usually charge?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "labrador pricing",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": null,
+      "product_or_service": "labrador puppy",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.92,
+      "reason": "explicit price enquiry on specific breed"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.6
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "buyer_pricing_or_availability",
+    "routing_key": "buyer_demand",
+    "attributes": {
+      "intent": "request_quote"
+    },
+    "min_confidence": 0.75
+  },
+  "notes": "Canonical high-intent pricing enquiry."
+}

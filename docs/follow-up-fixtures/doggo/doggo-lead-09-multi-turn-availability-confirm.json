@@ -1,0 +1,55 @@
+{
+  "name": "Doggo: visitor browses then asks if any breeders nearby have litters",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi, just looking around your site."
+    },
+    {
+      "role": "assistant",
+      "content": "No worries \u2014 let me know if you'd like recommendations on breeds, breeders, or how Doggo works."
+    },
+    {
+      "role": "user",
+      "content": "Actually \u2014 do any breeders in the Hunter Valley have schnauzer puppies available this month?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "check_availability",
+      "topic": "schnauzer availability",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Hunter Valley",
+      "product_or_service": "schnauzer puppy",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.84,
+      "reason": "breed + location + immediate timeframe"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.55
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "buyer_pricing_or_availability",
+    "routing_key": "buyer_demand",
+    "attributes": {
+      "intent": "check_availability"
+    }
+  }
+}

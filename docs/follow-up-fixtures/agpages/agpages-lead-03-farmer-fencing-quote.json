@@ -1,0 +1,50 @@
+{
+  "name": "AgPages: farmer asks for a fencing quote",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Looking for a quote on 3 km of post-and-wire fencing on a property near Tamworth."
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "customer"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "fencing",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Tamworth",
+      "product_or_service": "post-and-wire fencing",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.88,
+      "reason": "specific quote with measurable scope"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "farmer_service_request",
+    "routing_key": "marketplace_demand",
+    "attributes": {
+      "intent": "request_quote"
+    }
+  }
+}

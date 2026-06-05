@@ -1,0 +1,51 @@
+{
+  "name": "AgPages: contractor offers spraying availability",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I run a contracting business in central NSW \u2014 we've got capacity for boom spraying and fertiliser spreading next month. How do I get on AgPages?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "supplier"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "supplier",
+      "intent": "offer_service",
+      "topic": "contractor onboarding",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "supply",
+      "location": "central NSW",
+      "product_or_service": "boom spraying",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.85,
+      "reason": "supply-side contractor signup intent"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "refer_to_approved_contact_method",
+    "case_type": "lead",
+    "rule_id": "contractor_availability_signal",
+    "routing_key": "contractor_supply",
+    "attributes": {
+      "persona": "supplier",
+      "intent": "offer_service"
+    }
+  }
+}

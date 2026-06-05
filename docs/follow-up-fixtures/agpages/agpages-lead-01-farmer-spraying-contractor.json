@@ -1,0 +1,52 @@
+{
+  "name": "AgPages: farmer requests a spraying contractor",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I'm a farmer in Wagga and need a contractor for boom spraying on 800 ha of wheat \u2014 can you connect me with someone?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "customer"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "enquire",
+      "topic": "boom spraying",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Wagga",
+      "product_or_service": "boom spraying",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.92,
+      "reason": "clear contractor request with crop, area, location"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "farmer_service_request",
+    "routing_key": "marketplace_demand",
+    "attributes": {
+      "persona": "customer",
+      "intent": "enquire"
+    },
+    "min_confidence": 0.75
+  }
+}

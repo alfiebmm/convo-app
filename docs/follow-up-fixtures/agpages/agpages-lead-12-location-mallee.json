@@ -1,0 +1,47 @@
+{
+  "name": "AgPages: farmer asks for contractors in the Mallee",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi \u2014 looking for a chemical-spraying contractor that operates in the Mallee region. Got anyone?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "customer"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "enquire",
+      "topic": "chemical spraying",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Mallee",
+      "product_or_service": "chemical spraying",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.84,
+      "reason": "location-specific contractor demand"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "farmer_service_request",
+    "routing_key": "marketplace_demand"
+  }
+}

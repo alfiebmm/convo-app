@@ -1,0 +1,47 @@
+{
+  "name": "AgPages: farmer requests grain silo quote",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Looking to install two 100 t grain silos at our property near Parkes \u2014 can you connect me with suppliers for quotes?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "customer"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "request_quote",
+      "topic": "grain silos",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Parkes",
+      "product_or_service": "grain silos",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.9,
+      "reason": "concrete equipment quote enquiry"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "farmer_service_request",
+    "routing_key": "marketplace_demand"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "name": "AgPages: visitor researches contractors then asks for a quote",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "How do I find a reliable cropping contractor in NSW?"
+    },
+    {
+      "role": "assistant",
+      "content": "AgPages lets you browse verified contractors by region and service type. Want me to walk you through the steps or focus on a specific service?"
+    },
+    {
+      "role": "user",
+      "content": "Focus on seeding \u2014 we need someone for 600 ha of wheat near Forbes, mid-May. Can you connect us?"
+    }
+  ],
+  "qualifying_persona": {
+    "persona": "customer"
+  },
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "enquire",
+      "topic": "seeding contractor",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "demand",
+      "location": "Forbes",
+      "product_or_service": "wheat seeding",
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "commercial_intent": {
+      "detected": true,
+      "confidence": 0.88,
+      "reason": "turn 2 narrows to concrete contractor demand"
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "capture_details_then_flag",
+    "case_type": "lead",
+    "rule_id": "farmer_service_request",
+    "routing_key": "marketplace_demand"
+  }
+}

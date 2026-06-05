@@ -1,0 +1,44 @@
+{
+  "name": "Doggo: visitor asks niche question the bot can't confidently answer",
+  "tenant": "doggo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Do Doggo-listed breeders need to follow the NSW DPI puppy vaccination schedule or the ANKC one?"
+    }
+  ],
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "customer",
+      "intent": "general_research",
+      "topic": "vaccination policy",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.55,
+      "reason": "specific policy question"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 0,
+    "unanswered_confidence": 0.25
+  },
+  "expected": {
+    "action": "offer_follow_up",
+    "case_type": "cx_support",
+    "rule_id": "low_confidence_unanswered",
+    "routing_key": "cx_default"
+  }
+}

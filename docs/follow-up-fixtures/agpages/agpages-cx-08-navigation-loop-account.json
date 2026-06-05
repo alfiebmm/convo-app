@@ -1,0 +1,61 @@
+{
+  "name": "AgPages: visitor stuck finding their account page",
+  "tenant": "agpages",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Where do I update my account details?"
+    },
+    {
+      "role": "assistant",
+      "content": "Click your profile icon in the top-right, then 'Account Settings'."
+    },
+    {
+      "role": "user",
+      "content": "There's no profile icon for me."
+    },
+    {
+      "role": "assistant",
+      "content": "Are you logged in? You should see it once signed in."
+    },
+    {
+      "role": "user",
+      "content": "Still nothing \u2014 what do I do?"
+    }
+  ],
+  "page_url": "https://agpages.com.au/account",
+  "mock_classifier_output": {
+    "classifier_version": "v1",
+    "attributes": {
+      "persona": "supplier",
+      "intent": "site_navigation",
+      "topic": "account settings",
+      "sentiment": "neutral",
+      "urgency": "low",
+      "marketplace_side": "unknown",
+      "location": null,
+      "product_or_service": null,
+      "spam_risk": "low"
+    },
+    "support_need": {
+      "detected": true,
+      "confidence": 0.6,
+      "reason": "navigation loop on account settings"
+    },
+    "commercial_intent": {
+      "detected": false,
+      "confidence": 0,
+      "reason": null
+    },
+    "missing_fields": [],
+    "direct_human_request": false,
+    "repeated_loop_count": 2,
+    "unanswered_confidence": 0.5
+  },
+  "expected": {
+    "action": "flag_for_staff_review_without_interrupting_visitor",
+    "case_type": "cx_support",
+    "rule_id": "marketplace_navigation_silent_flag",
+    "routing_key": "cx_research"
+  }
+}
