@@ -104,6 +104,26 @@ function loadCtaSettings(
 }
 
 /**
+ * Defence-in-depth: treat any rule whose URL points at the schema example
+ * domains as a placeholder. We never want to ship `example.com` /
+ * `example.com.au` URLs to a live visitor.
+ */
+function isPlaceholderRule(rule: CtaRule): boolean {
+  const url = (rule.url ?? "").toLowerCase();
+  if (!url) return true;
+  try {
+    const host = new URL(url).hostname;
+    return host === "example.com" ||
+      host === "example.com.au" ||
+      host.endsWith(".example.com") ||
+      host.endsWith(".example.com.au");
+  } catch {
+    // Unparseable URL — treat as placeholder so we don't render junk.
+    return true;
+  }
+}
+
+/**
  * Pick the default CTA rule from the rules array.
  * If multiple rules are marked default, the FIRST one wins (tenant-specified
  * order, deterministic).
@@ -183,6 +203,21 @@ export function resolveCta(input: ResolveCtaInput): CtaResolveResult {
 
   const forumConfig = loadForumConfig(settings);
   const rules = forumConfig.cta_rules ?? [];
+
+  // Fast-path: no rules, or every rule URL is an `example.com`/`example.com.au`
+  // placeholder. Skip CTA emission entirely — do not surface a button or a
+  // soft follow-up prompt to the widget. (2026-06-05) The chatbot now weaves
+  // contextual links into its reply prose, which is the preferred UX. This
+  // guard is also defence-in-depth against future tenants pasting schema
+  // example URLs into their dashboard config.
+  if (rules.length === 0 || rules.every(isPlaceholderRule)) {
+    return {
+      cta: null,
+      followUp: null,
+      shouldEmit: false,
+      primaryTag: null,
+    };
+  }
 
   // Candidate tags = every rule tag (the only space we can act on).
   const candidateTags = rules.map((r) => r.tag);

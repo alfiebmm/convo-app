@@ -20,20 +20,12 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
       "A helpful, friendly Australian expert who provides clear, practical advice in plain language.",
   },
 
-  cta_rules: [
-    {
-      tag: "pricing",
-      text: "Get a Custom Quote",
-      url: "https://example.com.au/contact",
-      default: false,
-    },
-    {
-      tag: "general",
-      text: "Learn More",
-      url: "https://example.com.au/learn-more",
-      default: true,
-    },
-  ],
+  // CTA buttons are disabled by default — the chatbot weaves contextual
+  // links into its response text, which is the better UX. Tenants can
+  // opt in by configuring `cta_rules` in their forum config.
+  // Historic placeholder rules pointing at example.com.au were stripped
+  // (2026-06-05) after they leaked to live tenants who had no overrides.
+  cta_rules: [],
 
   qualifying_questions: {
     preset: {
