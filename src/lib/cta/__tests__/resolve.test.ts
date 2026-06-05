@@ -44,11 +44,12 @@ console.log("resolve — no forumConfig falls back to DEFAULT_FORUM_CONFIG");
     messages: [{ role: "user", content: "what's pricing like?" }],
     assistantResponse: longAnswer,
   });
-  // DEFAULT_FORUM_CONFIG has a 'pricing' rule, so a 'pricing'-mentioning user
-  // message should match it.
+  // DEFAULT_FORUM_CONFIG now ships with `cta_rules: []` (2026-06-05) so the
+  // fast-path suppresses CTA emission entirely. Tenants opt in by configuring
+  // their own rules; the chatbot weaves contextual links into its prose.
   assert(
-    "matches the default 'pricing' rule from DEFAULT_FORUM_CONFIG",
-    r.shouldEmit && r.cta !== null && r.cta?.tag === "pricing",
+    "DEFAULT_FORUM_CONFIG suppresses CTA emission (empty cta_rules)",
+    r.shouldEmit === false && r.cta === null && r.followUp === null,
     `result: ${JSON.stringify(r)}`
   );
 }
@@ -62,13 +63,13 @@ console.log("resolve — tag-match with custom forumConfig");
         {
           tag: "demo",
           text: "Book a Demo",
-          url: "https://example.com/demo",
+          url: "https://tenant.test/demo",
           default: false,
         },
         {
           tag: "general",
           text: "Learn More",
-          url: "https://example.com/learn",
+          url: "https://tenant.test/learn",
           default: true,
         },
       ],
@@ -81,7 +82,7 @@ console.log("resolve — tag-match with custom forumConfig");
   });
   assert(
     "picks the 'demo' rule when the user mentions a demo",
-    r.cta?.text === "Book a Demo" && r.cta?.url === "https://example.com/demo"
+    r.cta?.text === "Book a Demo" && r.cta?.url === "https://tenant.test/demo"
   );
   assert(
     "primaryTag is surfaced for logging",
@@ -98,13 +99,13 @@ console.log("resolve — falls back to the default rule when no tag matches");
         {
           tag: "pricing",
           text: "Get a Quote",
-          url: "https://example.com/quote",
+          url: "https://tenant.test/quote",
           default: false,
         },
         {
           tag: "general",
           text: "Learn More",
-          url: "https://example.com/learn",
+          url: "https://tenant.test/learn",
           default: true,
         },
       ],
@@ -117,7 +118,7 @@ console.log("resolve — falls back to the default rule when no tag matches");
   });
   assert(
     "uses the default rule when no tag matches",
-    r.cta?.text === "Learn More" && r.cta?.url === "https://example.com/learn"
+    r.cta?.text === "Learn More" && r.cta?.url === "https://tenant.test/learn"
   );
   assert(
     "tag is marked __default__ when fallback fired",
@@ -134,7 +135,7 @@ console.log("resolve — null + soft follow-up when no rule and no default");
         {
           tag: "pricing",
           text: "Get a Quote",
-          url: "https://example.com/quote",
+          url: "https://tenant.test/quote",
           default: false,
         },
       ],
@@ -159,7 +160,7 @@ console.log("resolve — null + soft follow-up when no rule and no default");
   );
 }
 
-console.log("resolve — empty cta_rules + no default → null cta + follow-up");
+console.log("resolve — empty cta_rules suppresses CTA emission entirely");
 {
   const settings = {
     forumConfig: {
@@ -172,9 +173,82 @@ console.log("resolve — empty cta_rules + no default → null cta + follow-up")
     messages: [{ role: "user", content: "tell me everything please" }],
     assistantResponse: longAnswer,
   });
+  // 2026-06-05: empty cta_rules now short-circuits to shouldEmit:false so the
+  // widget receives no CTA event at all — no button, no follow-up prompt.
   assert(
-    "no cta when there are no rules at all",
-    r.cta === null && r.followUp !== null
+    "empty cta_rules → no CTA event emitted",
+    r.shouldEmit === false && r.cta === null && r.followUp === null
+  );
+}
+
+console.log("resolve — placeholder example.com URLs are treated as no-rules");
+{
+  const settings = {
+    forumConfig: {
+      ...DEFAULT_FORUM_CONFIG,
+      cta_rules: [
+        {
+          tag: "general",
+          text: "Learn More",
+          url: "https://example.com.au/learn-more",
+          default: true,
+        },
+        {
+          tag: "pricing",
+          text: "Get a Quote",
+          url: "https://www.example.com/contact",
+          default: false,
+        },
+      ],
+    },
+  };
+  const r = resolveCta({
+    settings,
+    messages: [{ role: "user", content: "what's pricing like?" }],
+    assistantResponse: longAnswer,
+  });
+  // Defence-in-depth (2026-06-05): if every rule URL points at the schema
+  // example domains we suppress emission so live visitors never see a
+  // placeholder button.
+  assert(
+    "all-placeholder cta_rules are suppressed",
+    r.shouldEmit === false && r.cta === null && r.followUp === null
+  );
+}
+
+console.log("resolve — mixed real + placeholder rules still resolves the real one");
+{
+  const settings = {
+    forumConfig: {
+      ...DEFAULT_FORUM_CONFIG,
+      cta_rules: [
+        {
+          tag: "general",
+          text: "Learn More",
+          url: "https://example.com.au/learn-more",
+          default: true,
+        },
+        {
+          tag: "pricing",
+          text: "Get a Quote",
+          url: "https://doggo.com.au/quote",
+          default: false,
+        },
+      ],
+    },
+  };
+  const r = resolveCta({
+    settings,
+    messages: [{ role: "user", content: "what's pricing like?" }],
+    assistantResponse: longAnswer,
+  });
+  // The placeholder guard only short-circuits when EVERY rule is a
+  // placeholder. A real rule still resolves normally.
+  assert(
+    "real rule still matches when only some rules are placeholders",
+    r.shouldEmit === true &&
+      r.cta?.url === "https://doggo.com.au/quote" &&
+      r.cta?.tag === "pricing"
   );
 }
 
@@ -187,7 +261,7 @@ console.log("resolve — URL provenance (never from message content)");
         {
           tag: "pricing",
           text: "Get a Quote",
-          url: "https://example.com/quote",
+          url: "https://tenant.test/quote",
           default: true,
         },
       ],
@@ -204,7 +278,7 @@ console.log("resolve — URL provenance (never from message content)");
   });
   assert(
     "url is sourced from cta_rules only, never from message content",
-    r.cta?.url === "https://example.com/quote"
+    r.cta?.url === "https://tenant.test/quote"
   );
 }
 
@@ -218,7 +292,7 @@ console.log("resolve — hard disable");
         {
           tag: "general",
           text: "Learn More",
-          url: "https://example.com/learn",
+          url: "https://tenant.test/learn",
           default: true,
         },
       ],
@@ -246,19 +320,19 @@ console.log("resolve — only one CTA per response (AC #3)");
         {
           tag: "pricing",
           text: "Get a Quote",
-          url: "https://example.com/quote",
+          url: "https://tenant.test/quote",
           default: false,
         },
         {
           tag: "demo",
           text: "Book a Demo",
-          url: "https://example.com/demo",
+          url: "https://tenant.test/demo",
           default: false,
         },
         {
           tag: "general",
           text: "Learn More",
-          url: "https://example.com/learn",
+          url: "https://tenant.test/learn",
           default: true,
         },
       ],
@@ -278,13 +352,23 @@ console.log("resolve — only one CTA per response (AC #3)");
   assert("only one CTA emitted (deterministic, 5x runs)", true);
 }
 
-console.log("resolve — custom follow-up text");
+console.log("resolve — custom follow-up text is honoured when at least one real rule exists");
 {
+  // 2026-06-05: empty cta_rules now suppress emission entirely (no button,
+  // no follow-up prompt). The custom `followUpPrompt` only fires when there
+  // are real rules but classification produces no match AND no default.
   const settings = {
     cta: { followUpPrompt: "Anything else on your mind?" },
     forumConfig: {
       ...DEFAULT_FORUM_CONFIG,
-      cta_rules: [],
+      cta_rules: [
+        {
+          tag: "demo",
+          text: "Book a Demo",
+          url: "https://doggo.com.au/demo",
+          default: false,
+        },
+      ],
     },
   };
   const r = resolveCta({
@@ -293,8 +377,9 @@ console.log("resolve — custom follow-up text");
     assistantResponse: longAnswer,
   });
   assert(
-    "custom follow-up text is honoured",
-    r.followUp === "Anything else on your mind?"
+    "custom follow-up text is honoured when no rule matches and no default exists",
+    r.shouldEmit === true && r.cta === null &&
+      r.followUp === "Anything else on your mind?"
   );
 }
 
@@ -308,7 +393,7 @@ console.log("resolve — custom minResponseChars");
         {
           tag: "general",
           text: "Learn More",
-          url: "https://example.com/learn",
+          url: "https://tenant.test/learn",
           default: true,
         },
       ],
