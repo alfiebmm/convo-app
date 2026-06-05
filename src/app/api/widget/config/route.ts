@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tenants } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { pickStreamingOverrides } from "@/lib/widget/streaming-config";
 
 /**
  * GET /api/widget/config?tenant=<tenantId>
@@ -84,6 +85,13 @@ export async function GET(req: NextRequest) {
         ? widget.size
         : null;
 
+    // CON-92 — surface streaming tuning so the widget can honour
+    // tenant-specific pacing without a script-tag edit. Clamped to safe
+    // ranges (also re-clamped client-side as a defence in depth).
+    const streamingOverrides = pickStreamingOverrides(settings.streaming);
+    const streamingPayload =
+      Object.keys(streamingOverrides).length > 0 ? streamingOverrides : null;
+
     return NextResponse.json(
       {
         name,
@@ -91,6 +99,7 @@ export async function GET(req: NextRequest) {
         color,
         position,
         size,
+        streaming: streamingPayload,
       },
       { headers: CORS_HEADERS }
     );

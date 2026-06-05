@@ -22,6 +22,17 @@
 type WidgetPosition = "bottom-left" | "bottom-right";
 type WidgetSize = "sm" | "md" | "lg";
 
+interface StreamingConfig {
+  /** Minimum time the thinking indicator stays on screen before the first
+   *  token renders, in ms. CON-92 AC: "at least 1.5s". */
+  thinkingMinMs: number;
+  /** Target client-side render rate (tokens/second). CON-92 tech note:
+   *  "throttle token delivery client-side to simulate natural reading
+   *  pace even if inference is faster". 40-60 tps is the spec window;
+   *  50 is the midpoint default. */
+  tokensPerSecond: number;
+}
+
 interface ConvoConfig {
   tenantId: string;
   color: string;
@@ -30,6 +41,7 @@ interface ConvoConfig {
   position: WidgetPosition;
   size: WidgetSize;
   apiBase: string;
+  streaming: StreamingConfig;
 }
 
 // Bubble dimensions per size. Panel width stays constant — we only resize
@@ -52,6 +64,14 @@ function normalisePosition(v: string | null | undefined): WidgetPosition {
 function normaliseSize(v: string | null | undefined): WidgetSize {
   return v === "sm" || v === "lg" ? v : "md";
 }
+
+// CON-92 — defaults. Overridable per-tenant via
+// tenants.settings.streaming.{thinkingMinMs,tokensPerSecond} and surfaced
+// through /api/widget/config.
+const STREAMING_DEFAULTS: StreamingConfig = {
+  thinkingMinMs: 1500,
+  tokensPerSecond: 50,
+};
 
 interface Message {
   role: "user" | "assistant";
@@ -88,6 +108,7 @@ function getConfig(): ConvoConfig {
     position: normalisePosition(get("position", "bottom-right")),
     size: normaliseSize(get("size", "md")),
     apiBase,
+    streaming: { ...STREAMING_DEFAULTS },
   };
 }
 
@@ -585,6 +606,10 @@ class ConvoWidget {
         color?: string | null;
         position?: string | null;
         size?: string | null;
+        streaming?: {
+          thinkingMinMs?: number;
+          tokensPerSecond?: number;
+        } | null;
       };
       if (typeof data.name === "string" && data.name.trim()) {
         this.config.name = data.name;
@@ -600,6 +625,25 @@ class ConvoWidget {
       }
       if (data.size === "sm" || data.size === "md" || data.size === "lg") {
         this.config.size = data.size;
+      }
+      // CON-92 — tenant streaming overrides. Clamp to safe ranges so a bad
+      // dashboard value can't break the widget. thinkingMinMs: 0–6s,
+      // tokensPerSecond: 10–200.
+      if (data.streaming) {
+        if (typeof data.streaming.thinkingMinMs === "number" &&
+            isFinite(data.streaming.thinkingMinMs)) {
+          this.config.streaming.thinkingMinMs = Math.max(
+            0,
+            Math.min(6000, data.streaming.thinkingMinMs)
+          );
+        }
+        if (typeof data.streaming.tokensPerSecond === "number" &&
+            isFinite(data.streaming.tokensPerSecond)) {
+          this.config.streaming.tokensPerSecond = Math.max(
+            10,
+            Math.min(200, data.streaming.tokensPerSecond)
+          );
+        }
       }
     } catch {
       // Offline, CORS, or API down — silently fall back to script-tag values
@@ -787,6 +831,64 @@ class ConvoWidget {
     this.sendBtn.disabled = true;
     this.showTyping();
 
+    // CON-92 — streaming UX state.
+    //  • tokenQueue: tokens received from the server, awaiting paced render.
+    //  • thinkingMinMs gate: the typing indicator stays for at least this
+    //    long from send() entry before the first token is rendered.
+    //  • tokensPerSecond throttle: tokens are flushed from the queue at a
+    //    fixed cadence (one token per `1000/tps` ms), regardless of how
+    //    fast the server pushes them, to simulate a natural reading pace.
+    //    This continues after the network `done` event until the queue is
+    //    drained, then the final state is persisted.
+    const sendStart = Date.now();
+    const tokenQueue: string[] = [];
+    let serverDone = false;
+    let streamErrored = false;
+    // Typed loosely so TS doesn't narrow to `never` after the async drain
+    // loop assigns it via closure (control-flow analysis can't see that).
+    let assistantEl = null as HTMLDivElement | null;
+    let renderedContent = "";
+    let typingHidden = false;
+    const tokenIntervalMs = Math.max(
+      1,
+      Math.round(1000 / this.config.streaming.tokensPerSecond)
+    );
+
+    // The drain loop owns the assistant bubble + typing indicator. It is
+    // started once, before the first token is flushed, and resolves only
+    // when the queue is empty AND the server has signalled `done` (or the
+    // stream errored out at the network level).
+    const drainLoop = (async () => {
+      // Wait for the thinking-indicator minimum window.
+      const elapsed = Date.now() - sendStart;
+      const wait = this.config.streaming.thinkingMinMs - elapsed;
+      if (wait > 0) {
+        await new Promise((r) => setTimeout(r, wait));
+      }
+
+      while (true) {
+        if (tokenQueue.length > 0) {
+          // First token — swap indicator for the assistant bubble now.
+          if (!typingHidden) {
+            this.hideTyping();
+            typingHidden = true;
+            assistantEl = this.addMessageToUI("assistant", "");
+          }
+          const next = tokenQueue.shift()!;
+          renderedContent += next;
+          if (assistantEl) {
+            assistantEl.innerHTML = this.renderMarkdown(renderedContent);
+            this.scrollToBottom();
+          }
+          await new Promise((r) => setTimeout(r, tokenIntervalMs));
+          continue;
+        }
+        if (serverDone || streamErrored) break;
+        // Queue empty, server still streaming — brief wait then re-check.
+        await new Promise((r) => setTimeout(r, tokenIntervalMs));
+      }
+    })();
+
     try {
       const res = await fetch(`${this.config.apiBase}/api/chat`, {
         method: "POST",
@@ -806,10 +908,6 @@ class ConvoWidget {
       if (!res.ok || !res.body) {
         throw new Error(`HTTP ${res.status}`);
       }
-
-      this.hideTyping();
-      const assistantEl = this.addMessageToUI("assistant", "");
-      let fullContent = "";
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -836,12 +934,9 @@ class ConvoWidget {
               // Track engagement
               this.trackEngagement();
             } else if (event.type === "token" && event.content) {
-              fullContent += event.content;
-              assistantEl.innerHTML = this.renderMarkdown(fullContent);
-              this.scrollToBottom();
+              tokenQueue.push(event.content);
             } else if (event.type === "error") {
-              assistantEl.textContent =
-                "Sorry, something went wrong. Please try again.";
+              streamErrored = true;
             }
           } catch {
             // skip malformed JSON
@@ -849,11 +944,26 @@ class ConvoWidget {
         }
       }
 
-      this.messages.push({ role: "assistant", content: fullContent });
+      // Signal the drain loop that no more tokens are coming.
+      serverDone = true;
+      await drainLoop;
+
+      if (streamErrored && assistantEl) {
+        assistantEl.textContent =
+          "Sorry, something went wrong. Please try again.";
+      }
+
+      // Persist what the user actually saw (post-drain).
+      this.messages.push({ role: "assistant", content: renderedContent });
       this.persistSession(); // CON-40
       this.resetIdleTimer();
     } catch {
-      this.hideTyping();
+      // Network-level failure. Unblock the drain loop then show the
+      // generic connection error.
+      streamErrored = true;
+      serverDone = true;
+      await drainLoop;
+      if (!typingHidden) this.hideTyping();
       this.addMessageToUI(
         "assistant",
         "Sorry, I'm having trouble connecting. Please try again in a moment."
