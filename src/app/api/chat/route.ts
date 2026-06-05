@@ -27,6 +27,7 @@ import {
 import { resolveCta } from "@/lib/cta/resolve";
 import { readQualifying } from "@/lib/qualifying/types";
 import { formatPersonaForPrompt } from "@/lib/qualifying/resolve";
+import { buildGreetingAddendum } from "@/lib/qualifying/greeting";
 import { maybeCaptureLead } from "@/lib/leads/capture";
 import { fireAndForgetLeadSummary } from "@/lib/leads/summary";
 import type { KeywordOverrides } from "@/lib/leads/intent";
@@ -93,11 +94,31 @@ async function logInjectionEvent(params: {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { tenantId, conversationId, visitorId, message, metadata } = body;
+    const {
+      tenantId,
+      conversationId,
+      visitorId,
+      message,
+      metadata,
+      triggerGreeting,
+      skipped,
+    } = body;
 
-    if (!tenantId || !message || !visitorId) {
+    // `triggerGreeting` is a hidden assistant turn fired by the widget
+    // after the visitor completes (or skips) the qualifying flow. No
+    // visitor message exists; we run a single-sentence acknowledgement
+    // turn so the bot doesn't go silent. See widget `triggerGreeting`.
+    const isGreetingTurn = triggerGreeting === true;
+
+    if (!tenantId || !visitorId) {
       return new Response(
-        JSON.stringify({ error: "tenantId, visitorId, and message are required" }),
+        JSON.stringify({ error: "tenantId and visitorId are required" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (!isGreetingTurn && !message) {
+      return new Response(
+        JSON.stringify({ error: "message is required" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -119,7 +140,8 @@ export async function POST(req: NextRequest) {
     // CON-98 layer 1: regex pre-filter. Pure flag-and-log; the message
     // still goes to the model unchanged (wrapped on layer 2 below).
     // Behaviour is silent to the visitor — they get a normal response.
-    const injectionFlag = injectionDefenceOn
+    // Skipped on greeting turns (no visitor message to scan).
+    const injectionFlag = injectionDefenceOn && !isGreetingTurn
       ? detectInjection(message)
       : { flagged: false, pattern: null };
 
@@ -129,26 +151,33 @@ export async function POST(req: NextRequest) {
       const convo = await createConversation(tenantId, visitorId, metadata);
       convoId = convo.id;
 
-      // Fire-and-forget admin notification for new conversations
-      sendAdminNotification(
-        {
-          id: tenant.id,
-          name: tenant.name,
-          slug: tenant.slug,
-          settings: tenant.settings as Record<string, unknown> | null,
-        },
-        {
-          id: convo.id,
-          visitorId,
-          metadata: metadata as Record<string, unknown> | undefined,
-        },
-        message
-      );
+      // Fire-and-forget admin notification for new conversations.
+      // Skipped on greeting turns — there's nothing useful to notify
+      // about until the visitor sends a real message.
+      if (!isGreetingTurn) {
+        sendAdminNotification(
+          {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            settings: tenant.settings as Record<string, unknown> | null,
+          },
+          {
+            id: convo.id,
+            visitorId,
+            metadata: metadata as Record<string, unknown> | undefined,
+          },
+          message
+        );
+      }
     }
 
     // Persist user message (raw — we don't mutate stored content; the
     // CON-98 wrapping is applied only to what we send to OpenAI).
-    const persistedUser = await addMessage(convoId, "user", message);
+    // Greeting turns have no visitor message, so nothing to persist.
+    const persistedUser = isGreetingTurn
+      ? null
+      : await addMessage(convoId, "user", message);
 
     // CON-98 audit: log the regex hit (if any) now that we have a
     // conversation + message id to associate it with. Non-blocking.
@@ -188,15 +217,18 @@ export async function POST(req: NextRequest) {
     const keywordOverrides = leadConfig?.detection?.keywords;
 
     let leadOutcome: Awaited<ReturnType<typeof maybeCaptureLead>> | null = null;
-    try {
-      leadOutcome = await maybeCaptureLead({
-        conversationId: convoId,
-        message,
-        keywordOverrides,
-        enabled: leadEnabled,
-      });
-    } catch (err) {
-      console.error("[Chat] lead capture failed (non-fatal):", err);
+    // Greeting turns have no visitor message to scan for lead intent.
+    if (!isGreetingTurn) {
+      try {
+        leadOutcome = await maybeCaptureLead({
+          conversationId: convoId,
+          message,
+          keywordOverrides,
+          enabled: leadEnabled,
+        });
+      } catch (err) {
+        console.error("[Chat] lead capture failed (non-fatal):", err);
+      }
     }
 
     // Load recent history for context (oldest first)
@@ -213,7 +245,9 @@ export async function POST(req: NextRequest) {
     // visitor input apart from system instructions. Older history is left
     // un-wrapped intentionally — re-wrapping in-flight conversations would
     // change model behaviour for benign visitors mid-conversation.
-    if (injectionDefenceOn && history.length > 0) {
+    // Greeting turns have no fresh visitor message so there's nothing
+    // new to wrap.
+    if (injectionDefenceOn && !isGreetingTurn && history.length > 0) {
       const last = history[history.length - 1];
       if (last.role === "user") {
         last.content = wrapVisitorMessage(last.content);
@@ -238,29 +272,32 @@ export async function POST(req: NextRequest) {
     // Retrieve relevant indexed site content for THIS user message (K-07 / CON-89).
     // Failure here must not break the chat — we degrade to no-context if anything
     // goes wrong. Tracking-only: errors are logged for ops.
+    // Greeting turns have no query, so we skip retrieval entirely.
     let retrievalContext = "";
     const retrievalStart = Date.now();
-    try {
-      const chunks = await retrieveRelevantChunks(tenant.id, message, {
-        limit: 6,
-        maxDistance: 0.7,
-      });
-      const formatted = formatChunksForPrompt(chunks);
-      // CON-98 layer 2 (cont.): fence-wrap RAG chunks as DATA so the
-      // model can't be tricked by a chunk containing "ignore previous
-      // instructions" (indirect injection — the threat that matters
-      // most for CON-143 + CON-89).
-      retrievalContext = injectionDefenceOn
-        ? wrapRagContext(formatted)
-        : formatted;
-      if (chunks.length > 0) {
-        console.log(
-          `[Chat] retrieved ${chunks.length} chunks in ${Date.now() - retrievalStart}ms ` +
-            `for tenant ${tenant.id} (top distance ${chunks[0].distance.toFixed(3)})`
-        );
+    if (!isGreetingTurn) {
+      try {
+        const chunks = await retrieveRelevantChunks(tenant.id, message, {
+          limit: 6,
+          maxDistance: 0.7,
+        });
+        const formatted = formatChunksForPrompt(chunks);
+        // CON-98 layer 2 (cont.): fence-wrap RAG chunks as DATA so the
+        // model can't be tricked by a chunk containing "ignore previous
+        // instructions" (indirect injection — the threat that matters
+        // most for CON-143 + CON-89).
+        retrievalContext = injectionDefenceOn
+          ? wrapRagContext(formatted)
+          : formatted;
+        if (chunks.length > 0) {
+          console.log(
+            `[Chat] retrieved ${chunks.length} chunks in ${Date.now() - retrievalStart}ms ` +
+              `for tenant ${tenant.id} (top distance ${chunks[0].distance.toFixed(3)})`
+          );
+        }
+      } catch (err) {
+        console.error("[Chat] retrieval failed (non-fatal):", err);
       }
-    } catch (err) {
-      console.error("[Chat] retrieval failed (non-fatal):", err);
     }
 
     // CON-90: resolve forum.config.json driven response-engine settings
@@ -270,6 +307,15 @@ export async function POST(req: NextRequest) {
       tenant.settings as Record<string, unknown> | null,
     );
 
+    // Greeting-turn override (qualifying just finished or was skipped).
+    // Drop the 3-part response-structure addendum and append a single,
+    // tightly-scoped instruction so the model emits a one-sentence
+    // acknowledgement instead of a substantive answer to nothing.
+    // Copy lives in `buildGreetingAddendum` for unit-testability.
+    const greetingAddendum = isGreetingTurn
+      ? buildGreetingAddendum({ skipped: skipped === true })
+      : "";
+
     // System prompt assembly:
     //   - base systemPrompt (tenant config + global rules)
     //   - CON-94 personaContext (resolved qualifying state, when any)
@@ -277,11 +323,17 @@ export async function POST(req: NextRequest) {
     //   - CON-90 response-engine addendum (3-part structure + locale)
     // Empty strings are filtered — no behaviour change for tenants
     // without qualifying / RAG / response-engine config.
+    //
+    // Greeting turns swap the 3-part addendum for `greetingAddendum`
+    // (single-sentence instruction). Locale handling — baked into the
+    // response-engine addendum on normal turns — doesn't ride along
+    // here; greeting turns are short enough that the base persona
+    // prompt + Australian-English convention covers it.
     const fullSystemPrompt = [
       systemPrompt,
       personaContext,
       retrievalContext,
-      responseEngine.promptAddendum,
+      isGreetingTurn ? greetingAddendum : responseEngine.promptAddendum,
     ]
       .filter((s) => s && s.length > 0)
       .join("\n\n");
@@ -404,7 +456,9 @@ export async function POST(req: NextRequest) {
           // CON-93 — resolve structured CTA from tenant config and emit as
           // its own SSE event. URLs come from `cta_rules` only; the model
           // never sees them, so it cannot invent one.
-          try {
+          // Skipped on greeting turns — no visitor message to classify
+          // against, and we don't want a CTA on a one-sentence "hi".
+          if (!isGreetingTurn) try {
             const ctaResult = resolveCta({
               settings: tenant.settings as Record<string, unknown> | null,
               messages: [...history, { role: "assistant", content: fullResponse }],
@@ -432,7 +486,9 @@ export async function POST(req: NextRequest) {
           // is persisted, BEFORE the `done` event. Re-eval failure MUST NOT
           // break the chat response — `runReEvaluation` is non-throwing by
           // contract, and the surrounding try/catch is belt-and-braces.
-          try {
+          // Skipped on greeting turns — there's no visitor message to
+          // re-evaluate, so the classifier has nothing to act on.
+          if (!isGreetingTurn) try {
             const settings = (tenant.settings ?? {}) as Record<string, unknown>;
             const forumConfigRaw = (settings.forumConfig ?? {}) as Record<
               string,
@@ -530,7 +586,11 @@ export async function POST(req: NextRequest) {
           // Strictly after the visitor's response is delivered so chat
           // latency is untouched. Both calls are internally fire-and-
           // forget; errors are caught + logged.
+          // Greeting turns never set `leadOutcome` (no visitor message
+          // to scan), so the guard already short-circuits, but the
+          // explicit check makes the intent obvious.
           if (
+            !isGreetingTurn &&
             leadOutcome &&
             (leadOutcome.kind === "captured" || leadOutcome.kind === "updated") &&
             (leadOutcome.newDetections.length > 0 ||
