@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "npm run build:widget && next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint && npm run lint:migrations",
+    "lint:migrations": "node scripts/lint-migrations.mjs",
     "build:widget": "node scripts/build-widget.mjs",
     "validate:config": "tsx scripts/validate-forum-config.ts"
   },
