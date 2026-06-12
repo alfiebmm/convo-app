@@ -1,0 +1,39 @@
+name: widget-size
+
+on:
+  pull_request:
+    paths:
+      - "src/widget/**"
+      - "scripts/build-widget.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/widget-size.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/widget/**"
+      - "scripts/build-widget.mjs"
+      - "package.json"
+      - "package-lock.json"
+
+jobs:
+  size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Build widget and enforce size budget
+        env:
+          CONVO_WIDGET_SIZE_GATE: "1"
+        run: npm run build:widget
+      - name: Upload widget bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: widget.js
+          path: public/widget.js
+          if-no-files-found: error
