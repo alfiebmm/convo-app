@@ -4,9 +4,15 @@
  * Tests a generic/custom CMS connection by sending a GET to the base URL.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { testGenericConnection } from "@/lib/publishing/generic";
 
 export async function PUT(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json();
 
   const { endpoint, headers, authType, authValue } = body as {

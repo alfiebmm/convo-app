@@ -9,11 +9,18 @@ import { db } from "@/lib/db";
 import { content } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { publishContent } from "@/lib/publishing";
+import { auth } from "@/lib/auth";
+import { getTenantMembership } from "@/lib/auth-context";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   const { searchParams } = new URL(req.url);
   const draft = searchParams.get("draft") === "true";
@@ -27,6 +34,14 @@ export async function POST(
 
   if (!item) {
     return NextResponse.json({ error: "Content not found" }, { status: 404 });
+  }
+
+  const membership = await getTenantMembership(session.user.id, item.tenantId);
+  if (!membership) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (membership.role === "viewer") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (item.status !== "approved") {

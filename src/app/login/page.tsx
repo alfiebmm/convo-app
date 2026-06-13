@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
@@ -258,7 +259,7 @@ export default function LoginPage() {
       
       <div className="login-page">
         <div className="login-card">
-          <a href="/" className="back-link">← Back to home</a>
+          <Link href="/" className="back-link">← Back to home</Link>
           
           <div className="login-logo">
             <span>convo</span>
@@ -328,7 +329,7 @@ export default function LoginPage() {
           </div>
           
           <div className="login-footer">
-            By continuing, you agree to our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Service</a>.
+            By continuing, you agree to our <Link href="/privacy">Privacy Policy</Link> and <Link href="/terms">Terms of Service</Link>.
           </div>
         </div>
       </div>

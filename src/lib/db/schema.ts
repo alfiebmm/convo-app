@@ -69,6 +69,14 @@ export const knowledgeFileStatusEnum = pgEnum("knowledge_file_status", [
   "failed",
 ]);
 
+export const followUpCaseStatusEnum = pgEnum("follow_up_case_status", [
+  "open",
+  "in_progress",
+  "waiting_on_customer",
+  "resolved",
+  "dismissed",
+]);
+
 // ============================================================
 // TENANTS (organisations / sites)
 // ============================================================
@@ -337,6 +345,239 @@ export const widgetSessions = pgTable(
       .notNull(),
   },
   (table) => [index("widget_sessions_tenant_idx").on(table.tenantId)]
+);
+
+// ============================================================
+// CONTACTS (CON-160 / Epic B1)
+// ============================================================
+//
+// Tenant-scoped people/company records created only after the visitor
+// supplies configured contact details. Conversations can remain anonymous;
+// a Contact is a durable entity that links multiple conversations/cases.
+
+export const contacts = pgTable(
+  "contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    displayName: varchar("display_name", { length: 255 }),
+    emailNormalised: varchar("email_normalised", { length: 320 }),
+    phoneNormalised: varchar("phone_normalised", { length: 64 }),
+    preferredContactMethod: varchar("preferred_contact_method", {
+      length: 50,
+    }),
+    attributes: jsonb("attributes").default({}).notNull(),
+    consentState: varchar("consent_state", { length: 50 }),
+    privacyNoticeVersion: varchar("privacy_notice_version", { length: 100 }),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("contacts_tenant_email_idx").on(table.tenantId, table.emailNormalised),
+    index("contacts_tenant_phone_idx").on(table.tenantId, table.phoneNormalised),
+    index("contacts_tenant_display_name_idx").on(
+      table.tenantId,
+      table.displayName
+    ),
+  ]
+);
+
+export const contactIdentifiers = pgTable(
+  "contact_identifiers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    contactId: uuid("contact_id")
+      .references(() => contacts.id, { onDelete: "cascade" })
+      .notNull(),
+    type: varchar("type", { length: 50 }).notNull(),
+    valueNormalised: text("value_normalised").notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    source: varchar("source", { length: 50 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("contact_identifiers_tenant_type_value_unique").on(
+      table.tenantId,
+      table.type,
+      table.valueNormalised
+    ),
+    index("contact_identifiers_contact_idx").on(table.contactId),
+    index("contact_identifiers_tenant_contact_idx").on(
+      table.tenantId,
+      table.contactId
+    ),
+  ]
+);
+
+export const conversationContacts = pgTable(
+  "conversation_contacts",
+  {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    contactId: uuid("contact_id")
+      .references(() => contacts.id, { onDelete: "cascade" })
+      .notNull(),
+    relationship: varchar("relationship", { length: 50 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.conversationId, table.contactId],
+    }),
+    index("conversation_contacts_tenant_conversation_idx").on(
+      table.tenantId,
+      table.conversationId
+    ),
+    index("conversation_contacts_tenant_contact_idx").on(
+      table.tenantId,
+      table.contactId
+    ),
+  ]
+);
+
+// ============================================================
+// FOLLOW-UP CASES (CON-161 / Epic B2)
+// ============================================================
+//
+// Actionable tenant-scoped operational records created when configured
+// follow-up rules fire or when staff manually flag a conversation.
+// `contactId` stays nullable by design: a case may exist without captured
+// personal details and still appear in the tenant inbox for staff review.
+
+export const followUpCases = pgTable(
+  "follow_up_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    contactId: uuid("contact_id").references(() => contacts.id, {
+      onDelete: "set null",
+    }),
+    caseType: varchar("case_type", { length: 50 }).notNull(),
+    status: followUpCaseStatusEnum("status").default("open").notNull(),
+    priority: varchar("priority", { length: 20 }),
+    routingKey: varchar("routing_key", { length: 100 }),
+    title: text("title"),
+    summary: text("summary"),
+    reason: text("reason"),
+    source: varchar("source", { length: 50 }),
+    ruleId: varchar("rule_id", { length: 100 }),
+    classifierConfidence: real("classifier_confidence"),
+    assignedTo: uuid("assigned_to").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    externalSystem: varchar("external_system", { length: 50 }),
+    externalId: varchar("external_id", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("follow_up_cases_tenant_conversation_unique").on(
+      table.tenantId,
+      table.conversationId
+    ),
+    index("follow_up_cases_tenant_status_idx").on(table.tenantId, table.status),
+    index("follow_up_cases_tenant_case_type_idx").on(
+      table.tenantId,
+      table.caseType
+    ),
+    index("follow_up_cases_tenant_contact_idx").on(table.tenantId, table.contactId),
+    index("follow_up_cases_tenant_assigned_idx").on(
+      table.tenantId,
+      table.assignedTo
+    ),
+  ]
+);
+
+export const followUpCaseAttributes = pgTable(
+  "follow_up_case_attributes",
+  {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    caseId: uuid("case_id")
+      .references(() => followUpCases.id, { onDelete: "cascade" })
+      .notNull(),
+    key: varchar("key", { length: 100 }).notNull(),
+    value: jsonb("value").notNull(),
+    source: varchar("source", { length: 50 }),
+    confidence: real("confidence"),
+    detectedAt: timestamp("detected_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.caseId, table.key],
+    }),
+    index("follow_up_case_attributes_tenant_case_idx").on(
+      table.tenantId,
+      table.caseId
+    ),
+  ]
+);
+
+export const followUpEvents = pgTable(
+  "follow_up_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    caseId: uuid("case_id")
+      .references(() => followUpCases.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    actorType: varchar("actor_type", { length: 50 }).notNull(),
+    actorId: varchar("actor_id", { length: 255 }),
+    eventType: varchar("event_type", { length: 100 }).notNull(),
+    payload: jsonb("payload").default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("follow_up_events_tenant_case_idx").on(table.tenantId, table.caseId),
+    index("follow_up_events_tenant_conversation_idx").on(
+      table.tenantId,
+      table.conversationId
+    ),
+    index("follow_up_events_event_type_idx").on(table.eventType),
+  ]
 );
 
 // ============================================================

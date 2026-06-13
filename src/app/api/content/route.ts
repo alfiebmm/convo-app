@@ -7,18 +7,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { content } from "@/lib/db/schema";
 import { eq, and, desc, type SQL } from "drizzle-orm";
+import { auth } from "@/lib/auth";
+import { getActiveTenantIdForUser } from "@/lib/auth-context";
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
-  const tenantId = searchParams.get("tenantId");
+  const requestedTenantId = searchParams.get("tenantId");
   const status = searchParams.get("status");
   const type = searchParams.get("type");
+  const tenantId = await getActiveTenantIdForUser(session.user.id);
 
   if (!tenantId) {
     return NextResponse.json(
-      { error: "tenantId is required" },
-      { status: 400 }
+      { error: "Tenant not found" },
+      { status: 404 }
     );
+  }
+
+  if (requestedTenantId && requestedTenantId !== tenantId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const conditions: SQL[] = [eq(content.tenantId, tenantId)];

@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getConversation } from "@/lib/conversations";
+import { getConversationForVisitor } from "@/lib/conversations";
 import { readQualifying } from "@/lib/qualifying/types";
 
 const CORS_HEADERS = {
@@ -21,16 +21,44 @@ const CORS_HEADERS = {
   "Cache-Control": "no-store",
 };
 
-export async function GET(req: NextRequest) {
-  const conversationId = req.nextUrl.searchParams.get("conversation");
-  if (!conversationId) {
+type QualifyingStateConversation = {
+  id: string;
+  tenantId: string;
+  visitorId: string | null;
+  metadata: unknown;
+} | null;
+
+type QualifyingStateDeps = {
+  getConversationForVisitor: (
+    conversationId: string,
+    tenantId: string,
+    visitorId: string
+  ) => Promise<QualifyingStateConversation>;
+};
+
+const defaultDeps: QualifyingStateDeps = {
+  getConversationForVisitor,
+};
+
+export async function handleQualifyingState(
+  url: URL,
+  deps: QualifyingStateDeps = defaultDeps
+) {
+  const conversationId = url.searchParams.get("conversation");
+  const tenantId = url.searchParams.get("tenant");
+  const visitorId = url.searchParams.get("visitor");
+  if (!conversationId || !tenantId || !visitorId) {
     return NextResponse.json(
-      { error: "conversation query param required" },
+      { error: "conversation, tenant, and visitor query params required" },
       { status: 400, headers: CORS_HEADERS }
     );
   }
 
-  const convo = await getConversation(conversationId);
+  const convo = await deps.getConversationForVisitor(
+    conversationId,
+    tenantId,
+    visitorId
+  );
   if (!convo) {
     return NextResponse.json(
       { error: "Conversation not found" },
@@ -52,6 +80,10 @@ export async function GET(req: NextRequest) {
     },
     { headers: CORS_HEADERS }
   );
+}
+
+export async function GET(req: NextRequest) {
+  return handleQualifyingState(req.nextUrl);
 }
 
 export async function OPTIONS() {

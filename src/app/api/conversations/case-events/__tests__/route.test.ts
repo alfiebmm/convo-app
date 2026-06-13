@@ -61,6 +61,8 @@ const TENANT_B_ID = "b2222222-2222-4222-9222-222222222222";
 const CONVO_A_ID = "cccccccc-cccc-4ccc-accc-cccccccccccc";
 const UNKNOWN_TENANT_ID = "d3333333-3333-4333-b333-333333333333";
 const UNKNOWN_CONVO_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const VISITOR_A_ID = "visitor-a";
+const VISITOR_B_ID = "visitor-b";
 
 function mockReq(body: unknown): { json: () => Promise<unknown> } {
   return {
@@ -72,8 +74,14 @@ function makeDeps(overrides: Partial<CaseEventDeps> = {}): CaseEventDeps {
   return {
     getTenantById: async (id: string) =>
       id === TENANT_A_ID || id === TENANT_B_ID ? { id } : null,
-    getConversation: async (id: string) =>
-      id === CONVO_A_ID
+    getConversationForVisitor: async (
+      id: string,
+      tenantId: string,
+      visitorId: string
+    ) =>
+      id === CONVO_A_ID &&
+      tenantId === TENANT_A_ID &&
+      visitorId === VISITOR_A_ID
         ? { id: CONVO_A_ID, tenantId: TENANT_A_ID }
         : null,
     ...overrides,
@@ -93,6 +101,7 @@ async function runAll() {
     const res = await handleCaseEvent(
       mockReq({
         conversationId: CONVO_A_ID,
+        visitorId: VISITOR_A_ID,
         caseEventType: "offer_accepted",
       }),
       makeDeps(),
@@ -104,6 +113,7 @@ async function runAll() {
     const res = await handleCaseEvent(
       mockReq({
         tenantId: TENANT_A_ID,
+        visitorId: VISITOR_A_ID,
         caseEventType: "offer_accepted",
       }),
       makeDeps(),
@@ -116,6 +126,7 @@ async function runAll() {
       mockReq({
         tenantId: TENANT_A_ID,
         conversationId: CONVO_A_ID,
+        visitorId: VISITOR_A_ID,
       }),
       makeDeps(),
     );
@@ -126,6 +137,7 @@ async function runAll() {
     const res = await handleCaseEvent(
       mockReq({
         tenantId: TENANT_A_ID,
+        visitorId: VISITOR_A_ID,
         conversationId: CONVO_A_ID,
         caseEventType: "offer_maybe",
       }),
@@ -138,6 +150,19 @@ async function runAll() {
     const res = await handleCaseEvent(
       mockReq({
         tenantId: "not-a-uuid",
+        visitorId: VISITOR_A_ID,
+        conversationId: CONVO_A_ID,
+        caseEventType: "offer_accepted",
+      }),
+      makeDeps(),
+    );
+    assertEq(res.status, 400, "status");
+  });
+
+  await test("missing visitorId → 400", async () => {
+    const res = await handleCaseEvent(
+      mockReq({
+        tenantId: TENANT_A_ID,
         conversationId: CONVO_A_ID,
         caseEventType: "offer_accepted",
       }),
@@ -160,6 +185,7 @@ async function runAll() {
     const res = await handleCaseEvent(
       mockReq({
         tenantId: UNKNOWN_TENANT_ID,
+        visitorId: VISITOR_A_ID,
         conversationId: CONVO_A_ID,
         caseEventType: "offer_accepted",
       }),
@@ -169,11 +195,10 @@ async function runAll() {
   });
 
   await test("cross-tenant conversation → 404 (non-enumerating)", async () => {
-    // Conversation belongs to tenant A; caller supplies tenant B's id.
-    // Must 404, NOT 403, and must NOT leak the real owner.
     const res = await handleCaseEvent(
       mockReq({
         tenantId: TENANT_B_ID,
+        visitorId: VISITOR_A_ID,
         conversationId: CONVO_A_ID,
         caseEventType: "offer_accepted",
       }),
@@ -185,15 +210,29 @@ async function runAll() {
     // "tenant" — it should look like a generic 404.
     assert(typeof body.error === "string", "error string present");
     assert(
-      !/tenant_a|owner|wrong tenant/i.test(body.error ?? ""),
+      !/tenant_a|owner|wrong tenant|visitor/i.test(body.error ?? ""),
       "404 must not enumerate the real owner",
     );
+  });
+
+  await test("cross-visitor conversation → 404 (non-enumerating)", async () => {
+    const res = await handleCaseEvent(
+      mockReq({
+        tenantId: TENANT_A_ID,
+        visitorId: VISITOR_B_ID,
+        conversationId: CONVO_A_ID,
+        caseEventType: "offer_accepted",
+      }),
+      makeDeps(),
+    );
+    assertEq(res.status, 404, "status");
   });
 
   await test("unknown conversation → 404", async () => {
     const res = await handleCaseEvent(
       mockReq({
         tenantId: TENANT_A_ID,
+        visitorId: VISITOR_A_ID,
         conversationId: UNKNOWN_CONVO_ID,
         caseEventType: "offer_accepted",
       }),
@@ -206,6 +245,7 @@ async function runAll() {
     const res = await handleCaseEvent(
       mockReq({
         tenantId: TENANT_A_ID,
+        visitorId: VISITOR_A_ID,
         conversationId: CONVO_A_ID,
         caseEventType: "offer_accepted",
         metadata: { rule_id: "r1", confidence: 0.8 },
@@ -221,6 +261,7 @@ async function runAll() {
     const res = await handleCaseEvent(
       mockReq({
         tenantId: TENANT_A_ID,
+        visitorId: VISITOR_A_ID,
         conversationId: CONVO_A_ID,
         caseEventType: "offer_declined",
       }),

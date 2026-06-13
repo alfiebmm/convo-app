@@ -6,11 +6,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { content } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { auth } from "@/lib/auth";
+import {
+  getTenantMembership,
+  userHasTenantAccess,
+} from "@/lib/auth-context";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   const [item] = await db
@@ -23,6 +33,11 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const hasAccess = await userHasTenantAccess(session.user.id, item.tenantId);
+  if (!hasAccess) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   return NextResponse.json(item);
 }
 
@@ -30,7 +45,33 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
+
+  const [existing] = await db
+    .select({ id: content.id, tenantId: content.tenantId })
+    .from(content)
+    .where(eq(content.id, id))
+    .limit(1);
+
+  if (!existing) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const membership = await getTenantMembership(
+    session.user.id,
+    existing.tenantId
+  );
+  if (!membership) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (membership.role === "viewer") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json();
   const allowedFields: Record<string, unknown> = {};

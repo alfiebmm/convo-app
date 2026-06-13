@@ -4,9 +4,15 @@
  * Tests WordPress connection by hitting the WP REST API.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { testWordPressConnection, type WPConfig } from "@/lib/publishing/wordpress";
 
 export async function PUT(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json();
 
   const { siteUrl, username, applicationPassword } = body as WPConfig;

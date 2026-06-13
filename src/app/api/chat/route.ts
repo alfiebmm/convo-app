@@ -4,6 +4,7 @@ import { getTenantById } from "@/lib/tenant";
 import {
   createConversation,
   getConversation,
+  getConversationForVisitor,
   getConversationMessages,
   addMessage,
 } from "@/lib/conversations";
@@ -168,6 +169,18 @@ export async function POST(req: NextRequest) {
             metadata: metadata as Record<string, unknown> | undefined,
           },
           message
+        );
+      }
+    } else {
+      const existingConversation = await getConversationForVisitor(
+        convoId,
+        tenantId,
+        visitorId
+      );
+      if (!existingConversation) {
+        return new Response(
+          JSON.stringify({ error: "Conversation not found" }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
         );
       }
     }
