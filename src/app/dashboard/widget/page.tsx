@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { APP_CONFIG } from "@/config/app";
 
 type WidgetPosition = "bottom-left" | "bottom-right";
@@ -326,12 +327,12 @@ export default function WidgetPage() {
           <p className="text-xs text-slate-400">
             Looking for topic restrictions, deflect rules, or audience
             personas? Those live under{" "}
-            <a
+            <Link
               href="/dashboard/settings"
               className="text-blue-600 underline hover:text-blue-700"
             >
               Settings → Topic Boundaries
-            </a>
+            </Link>
             .
           </p>
           <div className="flex items-center gap-3">

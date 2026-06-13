@@ -38,6 +38,7 @@ import { getTenantById } from "@/lib/tenant";
 import {
   createConversation,
   appendQualifyingAnswer,
+  getConversationForVisitor,
   setQualifyingState,
 } from "@/lib/conversations";
 import {
@@ -120,6 +121,18 @@ export async function POST(req: NextRequest) {
   if (!convoId) {
     const convo = await createConversation(tenantId, visitorId, metadata);
     convoId = convo.id;
+  } else {
+    const existingConversation = await getConversationForVisitor(
+      convoId,
+      tenantId,
+      visitorId
+    );
+    if (!existingConversation) {
+      return NextResponse.json(
+        { error: "Conversation not found" },
+        { status: 404, headers: CORS_HEADERS }
+      );
+    }
   }
 
   if (skip) {

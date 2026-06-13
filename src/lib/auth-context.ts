@@ -34,35 +34,16 @@ export async function getCurrentTenant() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const cookieStore = await cookies();
-  const activeTenantId = cookieStore.get("active-tenant")?.value;
+  const activeTenantId = await getActiveTenantIdForUser(user.id);
+  if (!activeTenantId) return null;
 
-  // If user has a cookie preference, verify membership
-  if (activeTenantId) {
-    const [membership] = await db
-      .select({ tenant: tenants, role: tenantMembers.role })
-      .from(tenantMembers)
-      .innerJoin(tenants, eq(tenantMembers.tenantId, tenants.id))
-      .where(
-        and(
-          eq(tenantMembers.userId, user.id),
-          eq(tenantMembers.tenantId, activeTenantId)
-        )
-      )
-      .limit(1);
-
-    if (membership) return membership.tenant;
-  }
-
-  // Fall back to first tenant
-  const [first] = await db
-    .select({ tenant: tenants, role: tenantMembers.role })
-    .from(tenantMembers)
-    .innerJoin(tenants, eq(tenantMembers.tenantId, tenants.id))
-    .where(eq(tenantMembers.userId, user.id))
+  const [tenant] = await db
+    .select()
+    .from(tenants)
+    .where(eq(tenants.id, activeTenantId))
     .limit(1);
 
-  return first?.tenant ?? null;
+  return tenant ?? null;
 }
 
 /**
@@ -108,20 +89,49 @@ export async function requireAuth() {
 export async function requireTenantAccess(tenantId: string) {
   const { user } = await requireAuth();
 
-  const [membership] = await db
-    .select()
-    .from(tenantMembers)
-    .where(
-      and(
-        eq(tenantMembers.tenantId, tenantId),
-        eq(tenantMembers.userId, user.id)
-      )
-    )
-    .limit(1);
+  const membership = await getTenantMembership(user.id, tenantId);
 
   if (!membership) {
     redirect("/dashboard");
   }
 
   return { user, membership };
+}
+
+export async function getTenantMembership(userId: string, tenantId: string) {
+  const [membership] = await db
+    .select()
+    .from(tenantMembers)
+    .where(
+      and(
+        eq(tenantMembers.tenantId, tenantId),
+        eq(tenantMembers.userId, userId)
+      )
+    )
+    .limit(1);
+
+  return membership ?? null;
+}
+
+export async function userHasTenantAccess(userId: string, tenantId: string) {
+  const membership = await getTenantMembership(userId, tenantId);
+  return membership !== null;
+}
+
+export async function getActiveTenantIdForUser(userId: string) {
+  const cookieStore = await cookies();
+  const activeTenantId = cookieStore.get("active-tenant")?.value;
+
+  if (activeTenantId) {
+    const membership = await getTenantMembership(userId, activeTenantId);
+    if (membership) return activeTenantId;
+  }
+
+  const [first] = await db
+    .select({ tenantId: tenantMembers.tenantId })
+    .from(tenantMembers)
+    .where(eq(tenantMembers.userId, userId))
+    .limit(1);
+
+  return first?.tenantId ?? null;
 }

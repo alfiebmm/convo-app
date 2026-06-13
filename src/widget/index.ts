@@ -859,7 +859,7 @@ class ConvoWidget {
     if (this.conversationId && this.qualifyingQuestions.length > 0) {
       try {
         const stateRes = await fetch(
-          `${this.config.apiBase}/api/conversations/qualifying/state?conversation=${encodeURIComponent(this.conversationId)}`,
+          `${this.config.apiBase}/api/conversations/qualifying/state?conversation=${encodeURIComponent(this.conversationId)}&tenant=${encodeURIComponent(this.config.tenantId)}&visitor=${encodeURIComponent(this.visitorId)}`,
           { method: "GET", credentials: "omit" }
         );
         if (stateRes.ok) {
@@ -1638,6 +1638,7 @@ class ConvoWidget {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tenantId: this.config.tenantId,
+              visitorId: this.visitorId,
               conversationId: this.conversationId,
               caseEventType: eventType,
               metadata,
@@ -1790,7 +1791,11 @@ class ConvoWidget {
     fetch(`${this.config.apiBase}/api/pipeline/trigger`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: this.conversationId }),
+      body: JSON.stringify({
+        conversationId: this.conversationId,
+        tenantId: this.config.tenantId,
+        visitorId: this.visitorId,
+      }),
     }).catch(() => { /* non-critical */ });
   }
 

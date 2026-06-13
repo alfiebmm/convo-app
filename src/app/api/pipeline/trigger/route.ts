@@ -4,32 +4,55 @@
  * Called by the widget when the chat window is closed.
  * Marks conversation as completed and processes it through the content pipeline.
  *
- * Accepts: { conversationId }
+ * Accepts: { conversationId, tenantId, visitorId }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { conversations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
 import { processConversation } from "@/lib/pipeline";
+import { getConversationForVisitor } from "@/lib/conversations";
 
-export async function POST(req: NextRequest) {
+type TriggerConversation = {
+  id: string;
+  status: string;
+};
+
+export type PipelineTriggerDeps = {
+  getConversationForVisitor: (
+    conversationId: string,
+    tenantId: string,
+    visitorId: string
+  ) => Promise<TriggerConversation | null>;
+  processConversation: (conversationId: string) => Promise<unknown>;
+};
+
+const defaultDeps: PipelineTriggerDeps = {
+  getConversationForVisitor,
+  processConversation,
+};
+
+export async function handlePipelineTrigger(
+  req: { json: () => Promise<unknown> },
+  deps: PipelineTriggerDeps = defaultDeps
+) {
   try {
     const body = await req.json();
-    const { conversationId } = body as { conversationId?: string };
+    const { conversationId, tenantId, visitorId } = body as {
+      conversationId?: string;
+      tenantId?: string;
+      visitorId?: string;
+    };
 
-    if (!conversationId) {
+    if (!conversationId || !tenantId || !visitorId) {
       return NextResponse.json(
-        { error: "conversationId is required" },
+        { error: "conversationId, tenantId, and visitorId are required" },
         { status: 400 }
       );
     }
 
-    // Check conversation exists and is active
-    const [convo] = await db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.id, conversationId))
-      .limit(1);
+    const convo = await deps.getConversationForVisitor(
+      conversationId,
+      tenantId,
+      visitorId
+    );
 
     if (!convo) {
       return NextResponse.json(
@@ -45,9 +68,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Process through the pipeline (synchronous for v1)
-    const result = await processConversation(conversationId);
-
+    const result = await deps.processConversation(conversationId);
     return NextResponse.json(result);
   } catch {
     return NextResponse.json(
@@ -55,6 +76,10 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+}
+
+export async function POST(req: NextRequest) {
+  return handlePipelineTrigger(req);
 }
 
 /** Handle CORS preflight for widget cross-origin requests */

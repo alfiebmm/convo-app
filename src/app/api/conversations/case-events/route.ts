@@ -9,14 +9,15 @@
  * Security model (mirrors `/api/chat`):
  *   - Public route (allowlisted in middleware so the widget can POST
  *     without an authenticated session).
- *   - Tenant-scoped: the caller supplies `tenantId` + `conversationId`,
- *     and the server verifies the conversation actually belongs to that
- *     tenant. Cross-tenant attempts return 404 (non-enumerating — never
- *     "found in a different tenant").
+ *   - Visitor-scoped: the caller supplies `tenantId` + `visitorId` +
+ *     `conversationId`, and the server verifies the conversation
+ *     actually belongs to that tuple. Cross-tenant / cross-visitor
+ *     attempts return 404 (non-enumerating — never "found elsewhere").
  *
  * Body:
  *   {
  *     tenantId: uuid,
+ *     visitorId: string,
  *     conversationId: uuid,
  *     caseEventType: "offer_accepted" | "offer_declined",
  *     metadata?: { rule_id?, confidence?, ... }
@@ -30,7 +31,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { getConversation } from "@/lib/conversations";
+import { getConversationForVisitor } from "@/lib/conversations";
 import { getTenantById } from "@/lib/tenant";
 
 // ---------------------------------------------------------------------------
@@ -46,12 +47,16 @@ type ConversationLookupRow = { id: string; tenantId: string } | null;
 
 export type CaseEventDeps = {
   getTenantById: (id: string) => Promise<TenantLookupRow>;
-  getConversation: (id: string) => Promise<ConversationLookupRow>;
+  getConversationForVisitor: (
+    conversationId: string,
+    tenantId: string,
+    visitorId: string
+  ) => Promise<ConversationLookupRow>;
 };
 
 const defaultDeps: CaseEventDeps = {
   getTenantById,
-  getConversation,
+  getConversationForVisitor,
 };
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,7 @@ const caseEventTypeSchema = z.enum(["offer_accepted", "offer_declined"]);
 
 const requestBodySchema = z.object({
   tenantId: z.string().uuid(),
+  visitorId: z.string().min(1),
   conversationId: z.string().uuid(),
   caseEventType: caseEventTypeSchema,
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -113,7 +119,7 @@ export async function handleCaseEvent(
     return badRequest(`Invalid request: ${fieldPath}`);
   }
 
-  const { tenantId, conversationId, caseEventType, metadata } = parsed.data;
+  const { tenantId, visitorId, conversationId, caseEventType, metadata } = parsed.data;
 
   // Tenant scope check: tenant must exist.
   const tenant = await deps.getTenantById(tenantId);
@@ -121,9 +127,13 @@ export async function handleCaseEvent(
     return notFound();
   }
 
-  // Conversation must exist AND belong to the supplied tenant.
-  const conversation = await deps.getConversation(conversationId);
-  if (!conversation || conversation.tenantId !== tenantId) {
+  // Conversation must exist AND belong to the supplied tenant + visitor.
+  const conversation = await deps.getConversationForVisitor(
+    conversationId,
+    tenantId,
+    visitorId
+  );
+  if (!conversation) {
     return notFound();
   }
 

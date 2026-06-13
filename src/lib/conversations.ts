@@ -4,7 +4,7 @@
  */
 import { db } from "./db";
 import { conversations, messages } from "./db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 import type {
   ConversationQualifying,
   QualifyingAnswer,
@@ -35,6 +35,41 @@ export async function getConversation(id: string) {
     .from(conversations)
     .where(eq(conversations.id, id))
     .limit(1);
+  return conversation ?? null;
+}
+
+export async function getConversationForTenant(id: string, tenantId: string) {
+  const [conversation] = await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.id, id),
+        eq(conversations.tenantId, tenantId)
+      )
+    )
+    .limit(1);
+
+  return conversation ?? null;
+}
+
+export async function getConversationForVisitor(
+  id: string,
+  tenantId: string,
+  visitorId: string
+) {
+  const [conversation] = await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.id, id),
+        eq(conversations.tenantId, tenantId),
+        eq(conversations.visitorId, visitorId)
+      )
+    )
+    .limit(1);
+
   return conversation ?? null;
 }
 
