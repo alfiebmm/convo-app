@@ -77,6 +77,13 @@ export const followUpCaseStatusEnum = pgEnum("follow_up_case_status", [
   "dismissed",
 ]);
 
+export const connectorOutboxStatusEnum = pgEnum("connector_outbox_status", [
+  "pending",
+  "sent",
+  "failed",
+  "abandoned",
+]);
+
 // ============================================================
 // TENANTS (organisations / sites)
 // ============================================================
@@ -577,6 +584,49 @@ export const followUpEvents = pgTable(
       table.conversationId
     ),
     index("follow_up_events_event_type_idx").on(table.eventType),
+  ]
+);
+
+// ============================================================
+// CONNECTOR OUTBOX (CON-162 / Epic B3)
+// ============================================================
+
+export const connectorOutbox = pgTable(
+  "connector_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    caseId: uuid("case_id")
+      .references(() => followUpCases.id, { onDelete: "cascade" })
+      .notNull(),
+    connectorType: varchar("connector_type", { length: 50 }).notNull(),
+    destinationId: varchar("destination_id", { length: 255 }),
+    payloadVersion: varchar("payload_version", { length: 20 }).notNull(),
+    payload: jsonb("payload").notNull(),
+    status: connectorOutboxStatusEnum("status").default("pending").notNull(),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    lastError: text("last_error"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("connector_outbox_tenant_idempotency_unique").on(
+      table.tenantId,
+      table.idempotencyKey
+    ),
+    index("connector_outbox_status_next_attempt_idx").on(
+      table.status,
+      table.nextAttemptAt
+    ),
+    index("connector_outbox_tenant_case_idx").on(table.tenantId, table.caseId),
   ]
 );
 
