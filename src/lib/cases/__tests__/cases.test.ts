@@ -21,6 +21,7 @@ import {
   assignCase,
   createCase,
   getCaseById,
+  getCaseByConversation,
   listCasesByTenant,
   updateCaseStatus,
 } from "../index";
@@ -215,6 +216,62 @@ async function runAllTests() {
       () => getCaseById(TENANT_A, "nope", { store }),
       "caseId must be a UUID",
       "garbage caseId"
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // getCaseByConversation — CON-170 / D2a chat-route idempotency helper
+  // -------------------------------------------------------------------------
+
+  await test("getCaseByConversation: returns null when no case exists for the conversation", async () => {
+    const store = createInMemoryCasesStore();
+    const fetched = await getCaseByConversation(TENANT_A, CONVO_A, { store });
+    assertEq(fetched, null, "no case yet");
+  });
+
+  await test("getCaseByConversation: returns the case after createCase", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+    const fetched = await getCaseByConversation(TENANT_A, CONVO_A, { store });
+    assert(fetched !== null, "found by conversation");
+    assertEq(fetched!.id, created.id, "same case id");
+  });
+
+  await test("getCaseByConversation: tenant B cannot see tenant A's case via conversation lookup", async () => {
+    const store = createInMemoryCasesStore();
+    await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+    const fetched = await getCaseByConversation(TENANT_B, CONVO_A, { store });
+    assertEq(fetched, null, "cross-tenant lookup returns null");
+  });
+
+  await test("getCaseByConversation: rejects empty tenantId", async () => {
+    const store = createInMemoryCasesStore();
+    await assertThrows(
+      () =>
+        getCaseByConversation(
+          "",
+          "00000000-0000-4000-8000-000000000000",
+          { store }
+        ),
+      "tenantId is required",
+      "empty tenantId"
+    );
+  });
+
+  await test("getCaseByConversation: rejects non-UUID conversationId", async () => {
+    const store = createInMemoryCasesStore();
+    await assertThrows(
+      () => getCaseByConversation(TENANT_A, "nope", { store }),
+      "conversationId must be a UUID",
+      "garbage conversationId"
     );
   });
 

@@ -162,6 +162,22 @@ export interface CasesStore {
 
   findCaseById(tenantId: string, caseId: string): Promise<CaseRow | null>;
 
+  /**
+   * Look up the (at most one) case for a (tenant, conversation) pair. The
+   * unique index `follow_up_cases_tenant_conversation_unique` from CON-161
+   * guarantees at most one row. Returns `null` when no case exists yet.
+   *
+   * Used by the chat-route lifecycle (CON-170 / D2a) to keep persistence
+   * idempotent across re-eval turns within the same conversation: the
+   * first re-eval that resolves a case-creating action inserts the row;
+   * subsequent turns find-and-return the existing row instead of racing
+   * the unique-index constraint.
+   */
+  findCaseByConversation(
+    tenantId: string,
+    conversationId: string
+  ): Promise<CaseRow | null>;
+
   listCases(tenantId: string, filters: ListCasesFilters): Promise<CaseRow[]>;
 
   insertEvent(tenantId: string, input: RecordCaseEventInput): Promise<CaseEventRow>;
@@ -237,6 +253,20 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
           and(
             eq(followUpCases.tenantId, tenantId),
             eq(followUpCases.id, caseId)
+          )
+        )
+        .limit(1);
+      return (row as CaseRow) ?? null;
+    },
+
+    async findCaseByConversation(tenantId, conversationId) {
+      const [row] = await db
+        .select()
+        .from(followUpCases)
+        .where(
+          and(
+            eq(followUpCases.tenantId, tenantId),
+            eq(followUpCases.conversationId, conversationId)
           )
         )
         .limit(1);

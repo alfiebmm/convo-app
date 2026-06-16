@@ -42,7 +42,12 @@ import {
   runReEvaluation,
   buildCaseEvent,
   emitCaseEvent,
+  actionRequiresCasePersistence,
+  type CaseSseCapturePolicy,
 } from "@/lib/follow-up/lifecycle";
+import { createCase, getCaseByConversation } from "@/lib/cases";
+import { recordCaseEvent } from "@/lib/cases/events";
+import { CLASSIFIER_VERSION } from "@/lib/classifier/schema";
 import { db } from "@/lib/db";
 import { platformInjectionEvents } from "@/lib/db/schema";
 
@@ -565,17 +570,156 @@ export async function POST(req: NextRequest) {
               });
 
               if (lifecycleResult) {
-                // TODO(B5): persist `follow_up_cases` row keyed
-                // (tenant_id, conversation_id) when action is one of
-                // offer_follow_up / capture_details_then_flag /
-                // flag_for_staff_review_without_interrupting_visitor /
-                // immediate_escalation; upsert `follow_up_case_attributes`;
-                // append `follow_up_events` with action.evidence +
-                // classifierResult.output + CLASSIFIER_VERSION. Epic B / B5.
+                // CON-170 / D2a — persist the case row BEFORE emitting
+                // the widget `case` event. The widget binds its capture
+                // form to `case_id`; the event must not fire without a
+                // committed row, or the subsequent POST
+                // `/api/cases/{caseId}/capture` would 404.
+                //
+                // Persistence is tenant-scoped via the B5 helpers from
+                // CON-164 (`createCase`, `getCaseByConversation`,
+                // `recordCaseEvent`). The unique index
+                // `follow_up_cases_tenant_conversation_unique` guarantees
+                // one case per (tenant, conversation); we use a
+                // find-then-create dance to stay idempotent across
+                // re-eval turns within the same conversation.
+                //
+                // Failures here MUST NOT break the chat response. The
+                // outer `reevalErr` catch covers throws — we additionally
+                // guard the widget event emission below so a persistence
+                // failure short-circuits the widget without crashing the
+                // SSE stream.
+                const { action } = lifecycleResult;
+                let persistedCaseId: string | null = null;
 
-                const caseEvent = buildCaseEvent(lifecycleResult.action);
-                if (caseEvent) {
-                  emitCaseEvent(controller, encoder, caseEvent);
+                if (actionRequiresCasePersistence(action)) {
+                  try {
+                    const existing = await getCaseByConversation(
+                      tenant.id,
+                      convoId,
+                    );
+                    if (existing) {
+                      persistedCaseId = existing.id;
+                    } else {
+                      const created = await createCase(tenant.id, {
+                        conversationId: convoId,
+                        caseType: action.case_type,
+                        routingKey: action.routing_key,
+                        ruleId: action.rule_id,
+                        classifierConfidence: action.confidence,
+                        source: "follow_up_classifier",
+                      });
+                      persistedCaseId = created.id;
+                    }
+
+                    // CON-170: append an audit event capturing the
+                    // classifier output + evidence for this turn. Best
+                    // effort — a failure to log does not block the
+                    // widget event since the case row is already
+                    // committed.
+                    try {
+                      await recordCaseEvent(tenant.id, {
+                        caseId: persistedCaseId,
+                        conversationId: convoId,
+                        actorType: "classifier",
+                        actorId: CLASSIFIER_VERSION,
+                        eventType: "case_resolved",
+                        payload: {
+                          action: action.type,
+                          rule_id: action.rule_id,
+                          routing_key: action.routing_key,
+                          case_type: action.case_type,
+                          confidence: action.confidence,
+                          evidence: action.evidence,
+                          classifier_output: lifecycleResult.classifierResult.output,
+                          classifier_version: CLASSIFIER_VERSION,
+                        },
+                      });
+                    } catch (eventErr) {
+                      console.error(
+                        "[follow-up] case audit event append failed (non-fatal):",
+                        {
+                          tenantId: tenant.id,
+                          conversationId: convoId,
+                          caseId: persistedCaseId,
+                          err:
+                            eventErr instanceof Error
+                              ? eventErr.message
+                              : String(eventErr),
+                        },
+                      );
+                    }
+                  } catch (persistErr) {
+                    console.error(
+                      "[follow-up] case persistence failed (non-fatal):",
+                      {
+                        tenantId: tenant.id,
+                        conversationId: convoId,
+                        action: action.type,
+                        err:
+                          persistErr instanceof Error
+                            ? persistErr.message
+                            : String(persistErr),
+                      },
+                    );
+                  }
+                }
+
+                // Resolve full capture_policy from tenant config so the
+                // widget gets `required_fields[]`, `optional_fields[]`,
+                // `privacy_notice`, and `privacy_policy_url` inlined on
+                // the SSE `case` event (CON-170 / D2a). The schema
+                // already enforced rule → policy linkage at parse time,
+                // so a known capture_policy_id MUST resolve here; if not,
+                // we omit the inlined object and rely on the back-compat
+                // `capture_policy_id` string instead.
+                const policyId =
+                  action.type === "offer_follow_up" ||
+                  action.type === "capture_details_then_flag" ||
+                  action.type === "immediate_escalation"
+                    ? action.capture_policy_id
+                    : undefined;
+
+                let capturePolicy: CaseSseCapturePolicy | undefined;
+                if (policyId !== undefined) {
+                  const policy = followUp.capture_policies.find(
+                    (p) => p.id === policyId,
+                  );
+                  if (policy) {
+                    capturePolicy = {
+                      id: policy.id,
+                      case_type: policy.case_type,
+                      required_fields: policy.required_fields,
+                      optional_fields: policy.optional_fields,
+                      privacy_notice: policy.privacy_notice,
+                      privacy_policy_url: policy.privacy_policy_url,
+                    };
+                  } else {
+                    console.error(
+                      "[follow-up] capture_policy_id not resolvable from tenant config",
+                      {
+                        tenantId: tenant.id,
+                        conversationId: convoId,
+                        capture_policy_id: policyId,
+                      },
+                    );
+                  }
+                }
+
+                // Emit the widget event only when both: (a) the action
+                // requires widget UI and (b) we have a persisted case_id
+                // for the widget to bind to. If persistence failed and we
+                // have no case_id, we silently skip — the visitor still
+                // gets a clean assistant reply, and the next re-eval turn
+                // will retry persistence.
+                if (persistedCaseId !== null) {
+                  const caseEvent = buildCaseEvent(action, {
+                    caseId: persistedCaseId,
+                    capturePolicy,
+                  });
+                  if (caseEvent) {
+                    emitCaseEvent(controller, encoder, caseEvent);
+                  }
                 }
               }
             }
