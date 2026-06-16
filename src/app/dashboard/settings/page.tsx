@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 interface AudienceConfig {
   id: string;
@@ -215,6 +216,25 @@ export default function SettingsPage() {
             Automatically approve and publish high-scoring content.
           </p>
           <AutoPublishSettings settings={settings} onUpdate={setSettings} />
+        </section>
+
+        {/* Forum config (persona, qualifying, allowed topics, follow-up) */}
+        <section className="rounded-lg border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Chatbot behaviour
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Persona, qualifying questions, allowed topics, and follow-up policy.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/dashboard/settings/forum-config"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Open forum config editor
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
         </section>
 
         {/* Guardrails */}
