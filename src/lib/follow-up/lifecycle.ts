@@ -18,10 +18,13 @@
  *      via a separate code path that re-uses `runReEvaluation`.
  *   5. Staff-requested manual refresh — Epic E inbox UI.
  *
- * Persistence (`follow_up_cases`, `follow_up_case_attributes`,
- * `follow_up_events`) is stubbed pending B5 helpers under Epic B
- * (CON-151), currently P0-blocked. The lifecycle returns enough info for
- * B5 to wire in without changing this module.
+ * Persistence (`follow_up_cases`, `follow_up_events`) is wired at the
+ * chat-route layer via the tenant-scoped B5 helpers from `@/lib/cases`
+ * (CON-164). CON-170 / D2a: callers use `actionRequiresCasePersistence`
+ * to decide whether to call `createCase` + `recordCaseEvent` before
+ * emitting the widget SSE `case` event. Attribute upserts
+ * (`follow_up_case_attributes`) remain a future addition once the inbox
+ * surfaces (Epic E) need per-turn classifier snapshots.
  *
  * Hard guarantees:
  *   - Never throws. Classifier already returns `{ok:false}` on degradation;
@@ -40,7 +43,11 @@ import {
   type ClassifyConversationResult,
 } from "@/lib/classifier";
 import type { ClassifierMessage } from "@/lib/classifier/prompt";
-import type { CaseType, FollowUp } from "@/lib/forum-config/schema";
+import type {
+  CapturePolicy,
+  CaseType,
+  FollowUp,
+} from "@/lib/forum-config/schema";
 
 import { resolveAction } from "./resolver";
 import type { ConversationContext, ResolvedAction } from "./resolver-types";
@@ -85,16 +92,42 @@ export function looksLikeGreeting(message: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
+ * Inlined capture-policy payload emitted on the SSE `case` event
+ * (CON-170 / D2a). The widget (Epic D — D2b) needs the full resolved
+ * policy on the wire, not just the id, so it can render required +
+ * optional fields and surface privacy copy without a second round-trip.
+ *
+ * Sourced from `tenantClassifierConfig.followUp.capture_policies` on the
+ * server, resolved by id at chat-route time. Matches the
+ * `capturePolicySchema` shape but typed as `Pick<>` so this module never
+ * has to evolve when the schema gains audit-only fields.
+ */
+export type CaseSseCapturePolicy = Pick<
+  CapturePolicy,
+  "id" | "case_type" | "required_fields" | "optional_fields" | "privacy_notice" | "privacy_policy_url"
+>;
+
+/**
  * SSE `case` event payload emitted to the widget when a `ResolvedAction`
  * needs widget-side UI (Epic D consumes this). Pulled to a typed surface
  * here so the route file simply passes it to the encoder.
  *
  * Discriminator: `case.action` — maps 1:1 to `ResolvedAction["type"]`.
  *
- * Optional fields are populated based on the action variant:
+ * Required fields on the widget contract (CON-170 / D2a):
+ *   - `case_id` — stable id the widget binds capture-form submissions to.
+ *   - `capture_policy` — inlined full policy object (`required_fields`,
+ *     `optional_fields`, `privacy_notice`, `privacy_policy_url`). Only
+ *     present when the action carries a `capture_policy_id`.
+ *
+ * Back-compat fields preserved (older widget builds key off id strings):
+ *   - `capture_policy_id`, `contact_method_id`
+ *
+ * Other optional fields populated based on the action variant:
  *   - `offer_follow_up`, `capture_details_then_flag`: `capture_policy_id`
+ *     (+ inlined `capture_policy`)
  *   - `immediate_escalation`: either or both of `capture_policy_id` /
- *     `contact_method_id`
+ *     `contact_method_id` (+ inlined `capture_policy` when policy id present)
  *   - All non-noop variants: `rule_id`, `routing_key`, `case_type`,
  *     `confidence`
  *
@@ -104,11 +137,13 @@ export type CaseSseEvent = {
   type: "case";
   case: {
     action: ResolvedAction["type"];
+    case_id: string;
     rule_id?: string;
     routing_key?: string;
     case_type?: CaseType;
     confidence?: number;
     capture_policy_id?: string;
+    capture_policy?: CaseSseCapturePolicy;
     contact_method_id?: string;
     // CON-169 (Epic D1): visitor-facing title for the `offer_follow_up`
     // card. Only populated when the matched rule sets `offer_title`.
@@ -147,12 +182,46 @@ export function actionRequiresWidget(action: ResolvedAction): boolean {
 }
 
 /**
+ * Options passed to `buildCaseEvent` carrying the server-resolved data
+ * the widget needs but that the resolver cannot produce on its own.
+ *
+ * CON-170 / D2a:
+ *   - `caseId` is the persisted `follow_up_cases.id`. The chat route
+ *     creates the case BEFORE calling `buildCaseEvent`, so the id is
+ *     always known when this function is invoked.
+ *   - `capturePolicy` is the FULL resolved policy looked up from
+ *     `followUp.capture_policies` by `action.capture_policy_id`. The
+ *     widget needs `required_fields`, `optional_fields`, `privacy_notice`,
+ *     and `privacy_policy_url` inlined so it can render the form without
+ *     a second fetch. `undefined` when the action does not carry a
+ *     `capture_policy_id` (e.g. `immediate_escalation` without a policy).
+ */
+export type BuildCaseEventOptions = {
+  caseId: string;
+  capturePolicy?: CaseSseCapturePolicy;
+};
+
+/**
  * Build a `CaseSseEvent` payload for a `ResolvedAction`, or `null` when
  * the action does not need widget UI. Pure function — the route handler
  * just JSON-stringifies the result.
+ *
+ * Requires `opts.caseId` (the persisted `follow_up_cases.id`). If the
+ * action carries a `capture_policy_id`, the caller MUST also pass
+ * `opts.capturePolicy` resolved from the tenant's follow-up config; the
+ * inlined object is what the widget reads to render its capture form
+ * (CON-170 / D2a).
  */
-export function buildCaseEvent(action: ResolvedAction): CaseSseEvent | null {
+export function buildCaseEvent(
+  action: ResolvedAction,
+  opts: BuildCaseEventOptions,
+): CaseSseEvent | null {
   if (!actionRequiresWidget(action)) return null;
+
+  const policyFields =
+    opts.capturePolicy !== undefined
+      ? { capture_policy: opts.capturePolicy }
+      : {};
 
   switch (action.type) {
     case "offer_follow_up":
@@ -160,11 +229,13 @@ export function buildCaseEvent(action: ResolvedAction): CaseSseEvent | null {
         type: "case",
         case: {
           action: action.type,
+          case_id: opts.caseId,
           rule_id: action.rule_id,
           routing_key: action.routing_key,
           case_type: action.case_type,
           confidence: action.confidence,
           capture_policy_id: action.capture_policy_id,
+          ...policyFields,
           // CON-169 (Epic D1): surface rule-configured title to the widget.
           ...(action.offer_title !== undefined
             ? { offer_title: action.offer_title }
@@ -176,11 +247,13 @@ export function buildCaseEvent(action: ResolvedAction): CaseSseEvent | null {
         type: "case",
         case: {
           action: action.type,
+          case_id: opts.caseId,
           rule_id: action.rule_id,
           routing_key: action.routing_key,
           case_type: action.case_type,
           confidence: action.confidence,
           capture_policy_id: action.capture_policy_id,
+          ...policyFields,
         },
       };
     case "immediate_escalation":
@@ -188,6 +261,7 @@ export function buildCaseEvent(action: ResolvedAction): CaseSseEvent | null {
         type: "case",
         case: {
           action: action.type,
+          case_id: opts.caseId,
           rule_id: action.rule_id,
           routing_key: action.routing_key,
           case_type: action.case_type,
@@ -195,6 +269,7 @@ export function buildCaseEvent(action: ResolvedAction): CaseSseEvent | null {
           ...(action.capture_policy_id !== undefined
             ? { capture_policy_id: action.capture_policy_id }
             : {}),
+          ...(action.capture_policy_id !== undefined ? policyFields : {}),
           ...(action.contact_method_id !== undefined
             ? { contact_method_id: action.contact_method_id }
             : {}),
@@ -203,6 +278,45 @@ export function buildCaseEvent(action: ResolvedAction): CaseSseEvent | null {
     /* c8 ignore next 4 — unreachable given actionRequiresWidget gate */
     default:
       return null;
+  }
+}
+
+/**
+ * Pure predicate: does this action require the route layer to persist a
+ * `follow_up_cases` row?
+ *
+ * Mirrors `actionRequiresWidget` but also includes
+ * `flag_for_staff_review_without_interrupting_visitor` — silent flags
+ * still create a case (staff inbox visibility), they just don't emit a
+ * widget SSE event. This is the PRD-locked invariant: "a case may exist
+ * without a contact".
+ *
+ * `refer_to_approved_contact_method` is intentionally excluded at V1 —
+ * the resolver emits it as a visitor-side referral without staff inbox
+ * follow-up. Future Epic E may revisit.
+ */
+export function actionRequiresCasePersistence(
+  action: ResolvedAction,
+): action is Extract<
+  ResolvedAction,
+  {
+    type:
+      | "offer_follow_up"
+      | "capture_details_then_flag"
+      | "immediate_escalation"
+      | "flag_for_staff_review_without_interrupting_visitor";
+  }
+> {
+  switch (action.type) {
+    case "offer_follow_up":
+    case "capture_details_then_flag":
+    case "immediate_escalation":
+    case "flag_for_staff_review_without_interrupting_visitor":
+      return true;
+    case "refer_to_approved_contact_method":
+    case "continue_helping":
+    case "clarify_then_recheck":
+      return false;
   }
 }
 
@@ -253,9 +367,10 @@ export type LifecycleResult = {
  *   5. Wrap entire body in try/catch as belt-and-braces; return `null` on
  *      any caught throw.
  *
- * Persistence stubs (B5, see module header) are documented at the route
- * call-site as inline `TODO(B5)` markers. This module returns enough info
- * for B5 to wire in later without changes here.
+ * Persistence (case row + audit event) is handled at the chat-route
+ * layer using the tenant-scoped B5 helpers from `@/lib/cases` (CON-164).
+ * This module stays I/O-free per its non-throwing contract; callers use
+ * `actionRequiresCasePersistence(action)` to decide whether to persist.
  */
 export async function runReEvaluation(
   input: LifecycleInput,
@@ -287,17 +402,12 @@ export async function runReEvaluation(
       conversationContext: input.conversationContext,
     });
 
-    // TODO(B5): persist case + attributes + evidence event.
-    //   - if (action.type is one of offer_follow_up, capture_details_then_flag,
-    //     flag_for_staff_review_without_interrupting_visitor,
-    //     immediate_escalation) → upsert row in `follow_up_cases` keyed
-    //     (tenant_id, conversation_id).
-    //   - Always upsert `follow_up_case_attributes` for the current turn
-    //     with classifierResult.output.
-    //   - Always append a `follow_up_events` row with action.evidence (if
-    //     present), classifierResult.output, and CLASSIFIER_VERSION.
-    //   The lifecycle returns enough info for B5 to wire these in without
-    //   modifying this module.
+    // Persistence (case row + audit event) happens at the chat-route
+    // layer using the tenant-scoped B5 helpers from `@/lib/cases`
+    // (CON-164). This module stays I/O-free per its non-throwing contract
+    // — the route caller reads `action.type`, dispatches via
+    // `actionRequiresCasePersistence`, and uses `createCase` +
+    // `recordCaseEvent`. CON-170 / D2a wires that.
 
     return { action, classifierResult };
   } catch (err) {

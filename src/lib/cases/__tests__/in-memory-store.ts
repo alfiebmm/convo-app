@@ -87,6 +87,18 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
       return row ? { ...row } : null;
     },
 
+    async findCaseByConversation(
+      tenantId,
+      conversationId
+    ): Promise<CaseRow | null> {
+      // Mirrors the unique-index guarantee from CON-161:
+      // (tenant_id, conversation_id) is unique → at most one row.
+      const row = cases.find(
+        (c) => c.tenantId === tenantId && c.conversationId === conversationId
+      );
+      return row ? { ...row } : null;
+    },
+
     async listCases(tenantId, filters: ListCasesFilters): Promise<CaseRow[]> {
       let rows = cases.filter((c) => c.tenantId === tenantId);
       if (filters.status) {

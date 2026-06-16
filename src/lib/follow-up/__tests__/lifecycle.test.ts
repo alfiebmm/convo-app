@@ -39,12 +39,28 @@ import {
 import { followUpSchema, type FollowUp } from "@/lib/forum-config/schema";
 
 import {
+  actionRequiresCasePersistence,
   actionRequiresWidget,
   buildCaseEvent,
   looksLikeGreeting,
   runReEvaluation,
+  type CaseSseCapturePolicy,
 } from "../lifecycle";
 import type { ConversationContext, ResolvedAction } from "../resolver-types";
+
+// CON-170 / D2a — fixture for the inlined capture_policy now required on
+// the SSE `case` event for actions that carry a capture_policy_id. Mirrors
+// the shape of the tenant config's `capture_policies[].` entries.
+const FAKE_CAPTURE_POLICY: CaseSseCapturePolicy = {
+  id: "cp1",
+  case_type: "cx_support",
+  required_fields: ["name", "email"],
+  optional_fields: ["mobile", "postcode"],
+  privacy_notice: "We use your details only to follow up on this enquiry.",
+  privacy_policy_url: "https://example.com/privacy",
+};
+
+const FAKE_CASE_ID = "00000000-0000-4000-8000-000000000001";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -288,17 +304,29 @@ const widgetActions: ReadonlyArray<ResolvedAction> = [
 for (const a of noopActions) {
   await test(`actionRequiresWidget(${a.type}) → false`, () => {
     assertEq(actionRequiresWidget(a), false, "no widget");
-    assertEq(buildCaseEvent(a), null, "no event");
+    assertEq(
+      buildCaseEvent(a, {
+        caseId: FAKE_CASE_ID,
+        capturePolicy: FAKE_CAPTURE_POLICY,
+      }),
+      null,
+      "no event",
+    );
   });
 }
 
 for (const a of widgetActions) {
   await test(`actionRequiresWidget(${a.type}) → true + event shape`, () => {
     assertEq(actionRequiresWidget(a), true, "widget required");
-    const evt = buildCaseEvent(a);
+    const evt = buildCaseEvent(a, {
+      caseId: FAKE_CASE_ID,
+      capturePolicy: FAKE_CAPTURE_POLICY,
+    });
     assert(evt !== null, "event built");
     assertEq(evt.type, "case", "type");
     assertEq(evt.case.action, a.type, "action discriminator");
+    // CON-170 / D2a — case_id is mandatory on every widget event.
+    assertEq(evt.case.case_id, FAKE_CASE_ID, "case_id propagated");
     if ("rule_id" in a) {
       assertEq(evt.case.rule_id, a.rule_id, "rule_id");
       assertEq(evt.case.routing_key, a.routing_key, "routing_key");
@@ -307,6 +335,21 @@ for (const a of widgetActions) {
     }
     if (a.type === "offer_follow_up" || a.type === "capture_details_then_flag") {
       assertEq(evt.case.capture_policy_id, a.capture_policy_id, "capture_policy_id");
+      // CON-170 / D2a — capture_policy must be inlined for these variants.
+      assert(
+        evt.case.capture_policy !== undefined,
+        "capture_policy inlined",
+      );
+      assertEq(
+        evt.case.capture_policy.id,
+        FAKE_CAPTURE_POLICY.id,
+        "capture_policy.id",
+      );
+      assertEq(
+        evt.case.capture_policy.privacy_policy_url,
+        FAKE_CAPTURE_POLICY.privacy_policy_url,
+        "capture_policy.privacy_policy_url",
+      );
     }
     // Evidence MUST NOT leak to widget
     assert(!("evidence" in evt.case), "evidence must not leak to widget");
@@ -324,9 +367,17 @@ await test("immediate_escalation with both capture + contact method propagates b
     confidence: 0.95,
     evidence: fakeEvidence,
   };
-  const evt = buildCaseEvent(action);
+  const evt = buildCaseEvent(action, {
+    caseId: FAKE_CASE_ID,
+    capturePolicy: FAKE_CAPTURE_POLICY,
+  });
   assert(evt !== null, "event built");
+  assertEq(evt.case.case_id, FAKE_CASE_ID, "case_id");
   assertEq(evt.case.capture_policy_id, "cp1", "policy");
+  assert(
+    evt.case.capture_policy !== undefined,
+    "capture_policy inlined",
+  );
   assertEq(evt.case.contact_method_id, "cm1", "contact");
 });
 
@@ -339,16 +390,69 @@ await test("immediate_escalation without optional ids omits those fields", () =>
     confidence: 0.95,
     evidence: fakeEvidence,
   };
-  const evt = buildCaseEvent(action);
+  // No capture_policy_id on the action → caller should omit capturePolicy too.
+  const evt = buildCaseEvent(action, { caseId: FAKE_CASE_ID });
   assert(evt !== null, "event built");
+  assertEq(evt.case.case_id, FAKE_CASE_ID, "case_id still required");
   assert(
     !("capture_policy_id" in evt.case),
     "capture_policy_id should be absent",
   );
   assert(
+    !("capture_policy" in evt.case),
+    "capture_policy should be absent when action has no policy id",
+  );
+  assert(
     !("contact_method_id" in evt.case),
     "contact_method_id should be absent",
   );
+});
+
+// CON-170 / D2a — actionRequiresCasePersistence covers every variant.
+await test("actionRequiresCasePersistence covers every variant correctly", () => {
+  // Persisting variants (widget + silent flag).
+  for (const a of widgetActions) {
+    assertEq(
+      actionRequiresCasePersistence(a),
+      true,
+      `${a.type} should persist`,
+    );
+  }
+  const silentFlag: ResolvedAction = {
+    type: "flag_for_staff_review_without_interrupting_visitor",
+    rule_id: "r1",
+    routing_key: "rk",
+    case_type: "cx_support",
+    confidence: 0.9,
+    evidence: fakeEvidence,
+  };
+  assertEq(
+    actionRequiresCasePersistence(silentFlag),
+    true,
+    "silent flag persists (PRD invariant: case may exist without contact)",
+  );
+
+  // Non-persisting variants.
+  const nonPersist: ResolvedAction[] = [
+    { type: "continue_helping" },
+    { type: "clarify_then_recheck" },
+    {
+      type: "refer_to_approved_contact_method",
+      contact_method_id: "cm1",
+      rule_id: "r1",
+      routing_key: "rk",
+      case_type: "cx_support",
+      confidence: 0.9,
+      evidence: fakeEvidence,
+    },
+  ];
+  for (const a of nonPersist) {
+    assertEq(
+      actionRequiresCasePersistence(a),
+      false,
+      `${a.type} should NOT persist`,
+    );
+  }
 });
 
 // CON-169 (Epic D1): the `case` SSE event must surface the rule-configured
@@ -365,7 +469,10 @@ await test("offer_follow_up with offer_title → buildCaseEvent includes it", ()
     evidence: fakeEvidence,
     offer_title: "Would you like our team to follow up?",
   };
-  const evt = buildCaseEvent(action);
+  const evt = buildCaseEvent(action, {
+    caseId: FAKE_CASE_ID,
+    capturePolicy: FAKE_CAPTURE_POLICY,
+  });
   assert(evt !== null, "event built");
   assertEq(
     evt.case.offer_title,
@@ -384,7 +491,10 @@ await test("offer_follow_up WITHOUT offer_title → buildCaseEvent omits the fie
     confidence: 0.8,
     evidence: fakeEvidence,
   };
-  const evt = buildCaseEvent(action);
+  const evt = buildCaseEvent(action, {
+    caseId: FAKE_CASE_ID,
+    capturePolicy: FAKE_CAPTURE_POLICY,
+  });
   assert(evt !== null, "event built");
   assert(
     !("offer_title" in evt.case),
@@ -496,7 +606,11 @@ await test("substantive message, resolver returns continue_helping → buildCase
   });
   assert(result !== null, "result not null");
   assertEq(result.action.type, "continue_helping", "no rule matched");
-  assertEq(buildCaseEvent(result.action), null, "no widget event");
+  assertEq(
+    buildCaseEvent(result.action, { caseId: FAKE_CASE_ID }),
+    null,
+    "no widget event",
+  );
 });
 
 await test("classifier throws → runReEvaluation returns null, does not propagate", async () => {
@@ -539,7 +653,11 @@ await test("multi-turn: turn 1 no-match config → null action, turn 2 match →
   });
   assert(t1 !== null, "turn 1 returns result");
   assertEq(t1.action.type, "continue_helping", "turn 1 no match");
-  assertEq(buildCaseEvent(t1.action), null, "turn 1 no widget event");
+  assertEq(
+    buildCaseEvent(t1.action, { caseId: FAKE_CASE_ID }),
+    null,
+    "turn 1 no widget event",
+  );
 
   // Turn 2: real Doggo config + buyer intent → capture_details_then_flag
   const stubT2 = stubClassifier(
@@ -566,9 +684,17 @@ await test("multi-turn: turn 1 no-match config → null action, turn 2 match →
   });
   assert(t2 !== null, "turn 2 returns result");
   assertEq(t2.action.type, "capture_details_then_flag", "turn 2 matches");
-  const evt = buildCaseEvent(t2.action);
+  const evt = buildCaseEvent(t2.action, {
+    caseId: FAKE_CASE_ID,
+    capturePolicy: FAKE_CAPTURE_POLICY,
+  });
   assert(evt !== null, "turn 2 emits widget event");
   assertEq(evt.case.action, "capture_details_then_flag", "event action");
+  assertEq(evt.case.case_id, FAKE_CASE_ID, "case_id present on widget event");
+  assert(
+    evt.case.capture_policy !== undefined,
+    "capture_policy inlined on widget event",
+  );
 });
 
 await test("tenant scoping: conversationContext.tenantId flows through, no cross-leak", async () => {

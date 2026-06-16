@@ -216,3 +216,35 @@ export async function getCaseById(
 
   return resolveStore(opts).findCaseById(tenantId, caseId);
 }
+
+// ---------------------------------------------------------------------------
+// getCaseByConversation
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the (at most one) case bound to a `(tenant, conversation)` pair.
+ * Returns `null` when no case exists yet for this conversation, OR when the
+ * conversation belongs to a different tenant.
+ *
+ * The uniqueness guarantee comes from the
+ * `follow_up_cases_tenant_conversation_unique` index (CON-161). Callers
+ * (CON-170 / D2a chat-route lifecycle) use this to decide between
+ * `createCase` (first re-eval that resolves a case-creating action) and
+ * a no-op reuse (subsequent re-evals on the same conversation).
+ *
+ * @param tenantId Tenant UUID — REQUIRED.
+ * @param conversationId Conversation UUID — REQUIRED.
+ * @returns The case row, or `null` if none.
+ *
+ * @throws Error when `tenantId`/`conversationId` are missing or not valid UUIDs.
+ */
+export async function getCaseByConversation(
+  tenantId: string,
+  conversationId: string,
+  opts?: CaseHelperOptions
+): Promise<CaseRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(conversationId, "conversationId");
+
+  return resolveStore(opts).findCaseByConversation(tenantId, conversationId);
+}
