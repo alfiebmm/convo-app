@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { APP_CONFIG } from "@/config/app";
+import { LegacyDeprecationBanner } from "../settings/legacy-deprecation-banner";
 
 type WidgetPosition = "bottom-left" | "bottom-right";
 type WidgetSize = "sm" | "md" | "lg";
@@ -220,13 +221,18 @@ export default function WidgetPage() {
             <label className="block text-sm font-medium text-slate-700">
               Persona / System Prompt
             </label>
+            {/* CON-192 — superseded by Chatbot Behaviour > Persona. */}
+            <LegacyDeprecationBanner
+              surface="widget-prompt"
+              className="mt-2 max-w-md"
+            />
             <textarea
               rows={4}
               value={config.systemPrompt}
               onChange={(e) =>
                 setConfig((c) => ({ ...c, systemPrompt: e.target.value }))
               }
-              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              className="mt-2 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
           </div>
           <div>

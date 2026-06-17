@@ -1,6 +1,11 @@
 import { redirect } from "next/navigation";
 import { getCurrentTenant } from "@/lib/auth-context";
 import { ForumConfigEditor } from "./editor";
+import {
+  buildLegacyDraft,
+  hasLegacySignal,
+  isForumConfigEmpty,
+} from "@/lib/forum-config/transform-legacy";
 
 /**
  * Settings → Forum config (four-slice authoring UI).
@@ -11,6 +16,15 @@ import { ForumConfigEditor } from "./editor";
  *   - allowed_topics
  *   - follow_up (contact methods + capture policies + rules + destinations)
  *
+ * CON-192 add-on (Cam, 17 Jun) — auto-copy from legacy: when the tenant
+ * has NOT yet engaged with forumConfig but DOES have legacy values in
+ * `widget.systemPrompt` / `guardrails.audiences[].persona` /
+ * `guardrails.topicBoundaries.allow` / `widget.allowedTopics`, we
+ * pre-fill the editor's initial form state from those legacy sources
+ * and surface an inline notice so the tenant can review and save without
+ * re-typing. Clicking Save persists the pre-filled values as the
+ * forumConfig source of truth.
+ *
  * Persistence: PATCH /api/settings/forum-config (per-slice atomic write).
  * Read-only follow-up overview remains under Knowledge → Follow-up.
  */
@@ -19,10 +33,28 @@ export default async function ForumConfigPage() {
   if (!tenant) redirect("/onboarding");
 
   const settings = (tenant.settings ?? {}) as Record<string, unknown>;
-  const initialForumConfig = (settings.forumConfig ?? {}) as Record<
+  const existingForumConfig = (settings.forumConfig ?? {}) as Record<
     string,
     unknown
   >;
+
+  // CON-192 auto-copy gate:
+  //   - forumConfig totally empty → safe to pre-fill
+  //   - at least one legacy signal worth copying
+  // If either fails, render the existing forumConfig as-is.
+  const shouldAutoCopy =
+    isForumConfigEmpty(existingForumConfig) && hasLegacySignal(settings);
+
+  let initialForumConfig: Record<string, unknown> = existingForumConfig;
+  let autoCopied = false;
+  if (shouldAutoCopy) {
+    const draft = buildLegacyDraft(settings);
+    initialForumConfig = {
+      ai_persona: draft.ai_persona,
+      allowed_topics: draft.allowed_topics,
+    };
+    autoCopied = true;
+  }
 
   return (
     <div>
@@ -34,7 +66,10 @@ export default async function ForumConfigPage() {
         </p>
       </header>
 
-      <ForumConfigEditor initialForumConfig={initialForumConfig} />
+      <ForumConfigEditor
+        initialForumConfig={initialForumConfig}
+        autoCopied={autoCopied}
+      />
     </div>
   );
 }
