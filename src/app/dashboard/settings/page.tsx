@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { LegacyDeprecationBanner } from "./legacy-deprecation-banner";
 
 interface AudienceConfig {
   id: string;
@@ -1559,6 +1560,11 @@ function GuardrailsSection({
                     />
                   </FormField>
                   <FormField label="Persona" hint="System prompt personality and instructions for this audience.">
+                    {/* CON-192 — superseded by Chatbot Behaviour > Persona. */}
+                    <LegacyDeprecationBanner
+                      surface="audience-persona"
+                      className="mt-2"
+                    />
                     <textarea
                       value={audience.persona}
                       onChange={(e) =>
@@ -1569,7 +1575,7 @@ function GuardrailsSection({
                       }
                       rows={4}
                       placeholder="Describe how the AI should behave for this audience..."
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     />
                   </FormField>
                   <FormField
@@ -1631,6 +1637,11 @@ function GuardrailsSection({
             label="Allowed Topics"
             hint="Comma-separated list of topics the AI can discuss freely."
           >
+            {/* CON-192 — superseded by Chatbot Behaviour > Allowed topics. */}
+            <LegacyDeprecationBanner
+              surface="allowed-topics"
+              className="mt-2"
+            />
             <input
               type="text"
               value={guardrails.topicBoundaries.allow.join(", ")}
@@ -1648,7 +1659,7 @@ function GuardrailsSection({
                 setGuardrails(updated);
               }}
               placeholder="breed info, care, training, pricing"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
           </FormField>
 

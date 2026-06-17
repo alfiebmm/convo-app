@@ -7,6 +7,42 @@ import { AllowedTopicsPanel } from "./panels/allowed-topics-panel";
 import { FollowUpPanel } from "./panels/follow-up-panel";
 import type { AuthoringSliceKey, ForumConfigRaw } from "./types";
 
+/**
+ * CON-192 auto-copy notice — shown when page.tsx pre-filled the editor from
+ * legacy widget/guardrails fields. The tenant has NOT engaged with the new
+ * editor yet; we want them to review, tweak, and click Save to make the
+ * pre-filled values the persisted source of truth.
+ */
+function AutoCopiedNotice({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div
+      role="status"
+      className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+    >
+      <span aria-hidden className="mt-0.5">
+        ✨
+      </span>
+      <div className="flex-1">
+        <p className="font-medium">Pre-filled from your existing chatbot settings.</p>
+        <p className="mt-1 text-amber-800">
+          We&apos;ve copied your persona prompt and allowed topics from the
+          legacy Settings page. Review each tab and click Save on the panels
+          you want to keep — once saved, this becomes the source of truth and
+          the legacy fields are ignored.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="rounded-md p-1 text-amber-700 hover:bg-amber-100"
+        aria-label="Dismiss notice"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 const TABS: { key: AuthoringSliceKey; label: string; description: string }[] = [
   {
     key: "ai_persona",
@@ -32,22 +68,35 @@ const TABS: { key: AuthoringSliceKey; label: string; description: string }[] = [
 
 export function ForumConfigEditor({
   initialForumConfig,
+  autoCopied = false,
 }: {
   initialForumConfig: ForumConfigRaw;
+  /**
+   * CON-192: true when page.tsx pre-filled the initial form state from
+   * legacy widget/guardrails fields because the tenant has no forumConfig
+   * yet. Surfaces an inline review-and-save notice above the tabs.
+   */
+  autoCopied?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<AuthoringSliceKey>("ai_persona");
   const [forumConfig, setForumConfig] =
     useState<ForumConfigRaw>(initialForumConfig);
+  const [showAutoCopiedNotice, setShowAutoCopiedNotice] = useState(autoCopied);
 
   const handleSliceSaved = useCallback(
     (slice: AuthoringSliceKey, value: unknown) => {
       setForumConfig((prev) => ({ ...prev, [slice]: value }));
+      // First save closes the pre-fill notice — the tenant has now engaged.
+      setShowAutoCopiedNotice(false);
     },
     [],
   );
 
   return (
     <div>
+      {showAutoCopiedNotice && (
+        <AutoCopiedNotice onDismiss={() => setShowAutoCopiedNotice(false)} />
+      )}
       {/* Tabs */}
       <div
         role="tablist"
