@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { allowedTopicsSchema } from "@/lib/forum-config/schema";
 import { saveSlice } from "../types";
 import {
@@ -19,9 +19,11 @@ function normalise(initial: unknown): string[] {
 export function AllowedTopicsPanel({
   initialValue,
   onSaved,
+  onDirtyChange,
 }: {
   initialValue: unknown;
   onSaved: (value: string[]) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const initial = useMemo(() => normalise(initialValue), [initialValue]);
   const [value, setValue] = useState<string[]>(initial);
@@ -30,6 +32,10 @@ export function AllowedTopicsPanel({
   const [error, setError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(initial) !== JSON.stringify(value);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
@@ -58,12 +64,12 @@ export function AllowedTopicsPanel({
     <PanelCard>
       <PanelHeader
         title="Allowed topics"
-        description="The topics your chatbot is allowed to discuss. Anything outside this list is deflected. Off-topic block lists live under exclusion_list (managed separately for V1)."
+        description="The topics your bot is allowed to discuss. Anything outside this list is gently deflected."
       />
 
       <Field
         label="Topics"
-        hint="Add one topic at a time. Press Enter to add. These are matched against the conversation classifier."
+        hint="Add one topic at a time and press Enter. Broad themes work better than narrow keywords."
       >
         <ChipInput
           values={value}
@@ -74,9 +80,9 @@ export function AllowedTopicsPanel({
 
       {value.length === 0 && (
         <p className="mt-3 rounded-lg border border-dashed border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-          ⚠️ With no allowed topics configured, your bot won&apos;t have an
-          explicit topic gate. Make sure your persona + voice_description carry the
-          guardrail load until you add specific topics here.
+          No allowed topics set. Without this list, the bot has no explicit
+          topic gate — your persona and voice description have to do all the
+          guardrail work. Add 3–5 broad themes to give the bot a clear scope.
         </p>
       )}
 

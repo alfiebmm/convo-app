@@ -119,15 +119,17 @@ export function SaveBar({
   onReset?: () => void;
   dirty: boolean;
 }) {
+  // Sticky so the action stays visible while editing long panels (Follow-up
+  // especially). White/blur backdrop keeps it readable over scrolled content.
   return (
-    <div className="mt-6 flex items-center gap-3 border-t border-zinc-100 pt-5">
+    <div className="sticky bottom-0 z-10 -mx-6 mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/80">
       <button
         type="button"
         onClick={onSave}
         disabled={saving || !dirty}
         className="rounded-lg bg-[#FF6B2C] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#E85A1E] disabled:cursor-not-allowed disabled:bg-zinc-300 transition-colors"
       >
-        {saving ? "Saving…" : "Save"}
+        {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
       </button>
       {onReset && (
         <button
@@ -139,7 +141,12 @@ export function SaveBar({
           Discard
         </button>
       )}
-      {saved && !error && (
+      {dirty && !saving && !error && (
+        <span className="text-sm text-zinc-500" role="status">
+          You have unsaved changes.
+        </span>
+      )}
+      {saved && !dirty && !error && (
         <span className="text-sm text-emerald-600" role="status">
           ✓ Saved
         </span>
@@ -149,6 +156,33 @@ export function SaveBar({
           {error}
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * EmptyState — used inside a SubSection or panel when a list is empty.
+ * Nudges the tenant toward a sensible starting action instead of leaving a
+ * bare "No X yet" line.
+ */
+export function EmptyState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50/50 px-4 py-6 text-center">
+      <p className="text-sm font-medium text-zinc-900">{title}</p>
+      {description && (
+        <p className="mx-auto mt-1 max-w-md text-xs text-zinc-500">
+          {description}
+        </p>
+      )}
+      {action && <div className="mt-3 flex justify-center">{action}</div>}
     </div>
   );
 }

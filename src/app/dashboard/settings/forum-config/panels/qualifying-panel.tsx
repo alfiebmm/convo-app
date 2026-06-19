@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   qualifyingQuestionsSchema,
   type QualifyingQuestion,
@@ -38,9 +38,11 @@ function normalise(initial: unknown): Value {
 export function QualifyingPanel({
   initialValue,
   onSaved,
+  onDirtyChange,
 }: {
   initialValue: unknown;
   onSaved: (value: Value) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const initial = useMemo(() => normalise(initialValue), [initialValue]);
   const [value, setValue] = useState<Value>(initial);
@@ -49,6 +51,10 @@ export function QualifyingPanel({
   const [error, setError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(initial) !== JSON.stringify(value);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
@@ -102,13 +108,13 @@ export function QualifyingPanel({
     <PanelCard>
       <PanelHeader
         title="Qualifying questions"
-        description="The opening multi-choice questions the bot asks every new visitor to set persona. One preset question + up to four additional."
+        description="Opening multiple-choice questions the bot asks every new visitor. One preset question plus up to four follow-ons."
       />
 
       <div className="space-y-5">
         <SubSection
           title="Preset question"
-          description="Asked of every visitor first. Defaults applied if you leave it blank."
+          description="The first question every visitor sees. Leave blank to use our default opener."
         >
           <QuestionEditor
             value={presetQuestion}
@@ -118,7 +124,7 @@ export function QualifyingPanel({
 
         <SubSection
           title="Additional questions"
-          description={`Up to 4 follow-on questions. Currently ${value.additional.length}/4.`}
+          description={`Up to 4 follow-on questions, asked in order after the preset. ${value.additional.length}/4 used.`}
           action={
             <GhostButton
               disabled={value.additional.length >= 4}
@@ -138,7 +144,8 @@ export function QualifyingPanel({
         >
           {value.additional.length === 0 ? (
             <p className="text-sm text-zinc-500">
-              No additional questions yet.
+              No additional questions yet. Add one if you need to route
+              visitors by intent (e.g. buyer vs. seller, new vs. returning).
             </p>
           ) : (
             value.additional.map((q, i) => (
@@ -195,7 +202,7 @@ function QuestionEditor({
 }) {
   return (
     <div className="space-y-3">
-      <Field label="Question text" hint="The question shown to the visitor.">
+      <Field label="Question text" hint="The question your visitor sees.">
         <TextInput
           value={value.question}
           onChange={(e) => onChange({ ...value, question: e.target.value })}
@@ -205,7 +212,7 @@ function QuestionEditor({
 
       <Field
         label="Persona field"
-        hint="The field name this answer populates on the visitor persona (e.g. visitor_intent, marketplace_side)."
+        hint="Internal name for storing the answer (e.g. visitor_intent, marketplace_side). Lowercase, no spaces."
       >
         <TextInput
           value={value.persona_field}
@@ -218,7 +225,7 @@ function QuestionEditor({
 
       <Field
         label="Options"
-        hint="The answers the visitor can pick. Each has a visible label and an internal value."
+        hint="Answers the visitor picks from. Label is what they see; value is what gets stored."
       >
         <div className="space-y-2">
           {value.options.map((opt, i) => (

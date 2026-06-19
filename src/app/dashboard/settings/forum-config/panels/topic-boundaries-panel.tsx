@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { z } from "zod";
 import {
   DangerButton,
@@ -49,9 +49,11 @@ function splitCsv(value: string) {
 export function TopicBoundariesPanel({
   initialValue,
   onSaved,
+  onDirtyChange,
 }: {
   initialValue: unknown;
   onSaved: (value: TopicBoundariesValue) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const initial = useMemo(() => normalise(initialValue), [initialValue]);
   const [value, setValue] = useState<TopicBoundariesValue>(initial);
@@ -60,6 +62,10 @@ export function TopicBoundariesPanel({
   const [error, setError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(initial) !== JSON.stringify(value);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
@@ -122,13 +128,13 @@ export function TopicBoundariesPanel({
     <PanelCard>
       <PanelHeader
         title="Topic boundaries"
-        description="Specific off-topic rules that redirect or hard-block conversations. Allowed topics stay in the Allowed topics tab."
+        description="Specific topics the bot should steer away from. Deflect rules redirect with a custom reply; hard-block stops the conversation cold."
       />
 
       <div className="space-y-5">
         <SubSection
           title="Deflect rules"
-          description="Topics to redirect with a specific response."
+          description="Topics the bot should politely redirect away from with a specific reply."
           action={
             <GhostButton
               onClick={() =>
@@ -143,7 +149,11 @@ export function TopicBoundariesPanel({
           }
         >
           {value.deflect.length === 0 ? (
-            <p className="text-sm text-zinc-500">No deflect rules yet.</p>
+            <p className="text-sm text-zinc-500">
+              No deflect rules yet. Add one for topics adjacent to your scope
+              that need a specific redirect — e.g. medical, legal, or pricing
+              questions you&apos;d rather a human handle.
+            </p>
           ) : (
             value.deflect.map((rule, index) => (
               <div
@@ -166,7 +176,7 @@ export function TopicBoundariesPanel({
                   </DangerButton>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                  <Field label="Topic" hint="The topic or intent to redirect.">
+                  <Field label="Topic" hint="What the visitor is asking about.">
                     <TextInput
                       value={rule.topic}
                       onChange={(e) =>
@@ -180,7 +190,7 @@ export function TopicBoundariesPanel({
                   </Field>
                   <Field
                     label="Response"
-                    hint="What the bot should say before returning to allowed topics."
+                    hint="What the bot says before steering back to allowed topics."
                   >
                     <TextArea
                       rows={3}
@@ -202,12 +212,12 @@ export function TopicBoundariesPanel({
 
         <SubSection
           title="Hard block"
-          description="Topics the bot should never engage with."
+          description="Topics the bot must never engage with under any circumstances."
         >
           <Field
             label="Hard block topics"
             htmlFor="hard-block-topics"
-            hint="Comma-separated list. These are stored as individual topics."
+            hint="Separate each topic with a comma. The bot will refuse to engage with any of these."
           >
             <TextInput
               id="hard-block-topics"

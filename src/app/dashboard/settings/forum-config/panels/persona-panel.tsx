@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   aiPersonaSchema,
   type AiPersona,
@@ -40,9 +40,11 @@ function normalise(initial: unknown): AiPersona {
 export function PersonaPanel({
   initialValue,
   onSaved,
+  onDirtyChange,
 }: {
   initialValue: unknown;
   onSaved: (value: AiPersona) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const initial = useMemo(() => normalise(initialValue), [initialValue]);
   const [value, setValue] = useState<AiPersona>(initial);
@@ -52,6 +54,10 @@ export function PersonaPanel({
   const [issues, setIssues] = useState<Record<string, string>>({});
 
   const dirty = JSON.stringify(initial) !== JSON.stringify(value);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
@@ -87,14 +93,14 @@ export function PersonaPanel({
     <PanelCard>
       <PanelHeader
         title="Persona"
-        description="How your chatbot speaks. Tone is the biggest lever; voice description is what the model reads to set the dial each turn."
+        description="How your chatbot sounds. Tone sets the overall character; voice description fine-tunes it."
       />
 
       <div className="space-y-5">
         <Field
           label="Tone"
           htmlFor="persona-tone"
-          hint="The headline character of the bot's replies."
+          hint="The overall character of your bot's replies."
           error={issues.tone}
         >
           <Select
@@ -115,7 +121,7 @@ export function PersonaPanel({
         <Field
           label="Locale"
           htmlFor="persona-locale"
-          hint="IETF language tag — e.g. en-AU, en-GB, en-US. Affects spelling and idiom."
+          hint="Language and region. en-AU for Australian English, en-GB for UK, en-US for US. Affects spelling and idiom."
           error={issues.locale}
         >
           <TextInput
@@ -129,7 +135,7 @@ export function PersonaPanel({
         <Field
           label="Voice description"
           htmlFor="persona-voice"
-          hint="3–5 sentences describing how the bot sounds. Read by the system prompt every turn."
+          hint="3–5 sentences describing how your bot sounds. The bot reads this on every reply, so be specific."
           error={issues.voice_description}
         >
           <TextArea
@@ -145,7 +151,7 @@ export function PersonaPanel({
 
         <Field
           label="Banned words"
-          hint="Words or phrases the bot must never use. Press Enter to add."
+          hint="Words or phrases the bot must never use. Type one and press Enter to add."
           error={issues.banned_words}
         >
           <ChipInput
