@@ -1684,8 +1684,8 @@ function GuardrailsSection({
         Guardrails & Personas
       </h2>
       <p className="mt-1 text-sm text-slate-500">
-        Configure audience detection, conversation personas, and topic
-        boundaries.
+        Configure audience detection and conversation personas. Topic
+        boundaries are now managed in Chat Config &gt; Topic scope.
       </p>
 
       {/* Audiences */}
@@ -1840,49 +1840,11 @@ function GuardrailsSection({
         </div>
       </div>
 
-      {/* Topic Boundaries */}
-      <div className="mt-6">
-        <h3 className="text-sm font-semibold text-slate-700">
-          Topic Boundaries
-        </h3>
-
-        <div className="mt-3 space-y-3">
-          <FormField
-            label="Allowed Topics"
-            hint="Comma-separated list of topics the AI can discuss freely."
-          >
-            {/* CON-192 — superseded by Chatbot Behaviour > Allowed topics. */}
-            <LegacyDeprecationBanner
-              surface="allowed-topics"
-              tenantId={tenantId}
-              forumConfigPopulated={forumConfigPopulated}
-              dismissedAtFromServer={bannerDismissedAt}
-              onDismissPersist={onBannerDismiss}
-              className="mt-2"
-            />
-            <input
-              type="text"
-              value={guardrails.topicBoundaries.allow.join(", ")}
-              onChange={(e) => {
-                const updated = {
-                  ...guardrails,
-                  topicBoundaries: {
-                    ...guardrails.topicBoundaries,
-                    allow: e.target.value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  },
-                };
-                setGuardrails(updated);
-              }}
-              placeholder="breed info, care, training, pricing"
-              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </FormField>
-
-        </div>
-      </div>
+      {/* CON-202 — Topic Boundaries section removed; allowed_topics is now
+          managed in Chat Config > Topic scope (forumConfig). The legacy
+          settings.guardrails.topicBoundaries.allow data shape is preserved
+          on the server for backwards-compat union in buildSystemPrompt
+          (CON-192). */}
 
       {/* Save */}
       <div className="mt-6 flex gap-2">
