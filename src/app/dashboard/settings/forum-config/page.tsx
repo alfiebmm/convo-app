@@ -33,10 +33,19 @@ export default async function ForumConfigPage() {
   if (!tenant) redirect("/onboarding");
 
   const settings = (tenant.settings ?? {}) as Record<string, unknown>;
+  const guardrails = (settings.guardrails ?? {}) as Record<string, unknown>;
+  const rawTopicBoundaries = (guardrails.topicBoundaries ?? {}) as Record<
+    string,
+    unknown
+  >;
   const existingForumConfig = (settings.forumConfig ?? {}) as Record<
     string,
     unknown
   >;
+  const initialConversationLimits = normaliseConversationLimits(
+    guardrails.conversationLimits,
+  );
+  const initialTopicBoundaries = normaliseTopicBoundaries(rawTopicBoundaries);
 
   // CON-192 auto-copy gate:
   //   - forumConfig totally empty → safe to pre-fill
@@ -68,8 +77,46 @@ export default async function ForumConfigPage() {
 
       <ForumConfigEditor
         initialForumConfig={initialForumConfig}
+        initialConversationLimits={initialConversationLimits}
+        initialTopicBoundaries={initialTopicBoundaries}
         autoCopied={autoCopied}
       />
     </div>
   );
+}
+
+function normaliseConversationLimits(raw: unknown) {
+  const value =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  return {
+    maxTurnsBeforeCTA:
+      typeof value.maxTurnsBeforeCTA === "number"
+        ? value.maxTurnsBeforeCTA
+        : 5,
+    idleTimeoutMinutes:
+      typeof value.idleTimeoutMinutes === "number"
+        ? value.idleTimeoutMinutes
+        : 10,
+  };
+}
+
+function normaliseTopicBoundaries(raw: Record<string, unknown>) {
+  return {
+    deflect: Array.isArray(raw.deflect)
+      ? raw.deflect
+          .filter(
+            (rule): rule is { topic: string; response: string } =>
+              typeof rule === "object" &&
+              rule !== null &&
+              typeof (rule as Record<string, unknown>).topic === "string" &&
+              typeof (rule as Record<string, unknown>).response === "string",
+          )
+          .map((rule) => ({ topic: rule.topic, response: rule.response }))
+      : [],
+    hardBlock: Array.isArray(raw.hardBlock)
+      ? raw.hardBlock.filter((topic): topic is string => typeof topic === "string")
+      : [],
+  };
 }

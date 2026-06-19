@@ -40,6 +40,11 @@ interface TenantInfo {
   domain: string | null;
 }
 
+type ForumConfigPopulated = {
+  ai_persona?: boolean;
+  allowed_topics?: boolean;
+};
+
 const DEFAULT_WIDGET: WidgetConfig = {
   chatbotName: APP_CONFIG.name,
   welcomeMessage: "Hi! How can I help you today?",
@@ -63,15 +68,24 @@ function normaliseSize(v: unknown): WidgetSize {
 export default function WidgetPage() {
   const [config, setConfig] = useState<WidgetConfig>(DEFAULT_WIDGET);
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
+  const [forumConfigPopulated, setForumConfigPopulated] =
+    useState<ForumConfigPopulated>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((data) => {
+    Promise.all([
+      fetch("/api/settings").then((r) => r.json()),
+      fetch("/api/settings/forum-config")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ])
+      .then(([data, forumConfigData]) => {
         if (data.tenant) setTenant(data.tenant);
+        setForumConfigPopulated(
+          deriveForumConfigPopulated(forumConfigData?.forumConfigRaw),
+        );
         const w = data.settings?.widget as Partial<WidgetConfig> | undefined;
         if (w) {
           setConfig({
@@ -224,6 +238,8 @@ export default function WidgetPage() {
             {/* CON-192 — superseded by Chatbot Behaviour > Persona. */}
             <LegacyDeprecationBanner
               surface="widget-prompt"
+              tenantId={tenant?.id}
+              forumConfigPopulated={forumConfigPopulated}
               className="mt-2 max-w-md"
             />
             <textarea
@@ -357,4 +373,28 @@ export default function WidgetPage() {
       </div>
     </div>
   );
+}
+
+function deriveForumConfigPopulated(raw: unknown): ForumConfigPopulated {
+  const forumConfig =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const aiPersona =
+    typeof forumConfig.ai_persona === "object" &&
+    forumConfig.ai_persona !== null &&
+    !Array.isArray(forumConfig.ai_persona)
+      ? (forumConfig.ai_persona as Record<string, unknown>)
+      : null;
+
+  return {
+    ai_persona:
+      !!aiPersona &&
+      (typeof aiPersona.voice_description === "string"
+        ? aiPersona.voice_description.trim().length > 0
+        : Object.keys(aiPersona).length > 0),
+    allowed_topics:
+      Array.isArray(forumConfig.allowed_topics) &&
+      forumConfig.allowed_topics.length > 0,
+  };
 }

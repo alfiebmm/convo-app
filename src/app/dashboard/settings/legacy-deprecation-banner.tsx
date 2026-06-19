@@ -1,7 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+
+export type LegacyBannerSurface =
+  | "widget-prompt"
+  | "audience-persona"
+  | "allowed-topics";
+
+export type ForumConfigPopulated = {
+  ai_persona?: boolean;
+  allowed_topics?: boolean;
+};
+
+export function getLegacyBannerDismissalKey(
+  tenantId: string,
+  surface: LegacyBannerSurface,
+) {
+  return `convo:legacy-banner-dismissed:${tenantId}:${surface}`;
+}
+
+export function shouldAutoHideLegacyBanner(
+  surface: LegacyBannerSurface,
+  forumConfigPopulated?: ForumConfigPopulated,
+) {
+  if (
+    (surface === "widget-prompt" || surface === "audience-persona") &&
+    forumConfigPopulated?.ai_persona
+  ) {
+    return true;
+  }
+  return surface === "allowed-topics" && !!forumConfigPopulated?.allowed_topics;
+}
+
+export function isLegacyBannerDismissed(
+  storage: Pick<Storage, "getItem">,
+  tenantId: string,
+  surface: LegacyBannerSurface,
+) {
+  return storage.getItem(getLegacyBannerDismissalKey(tenantId, surface)) === "1";
+}
+
+export function persistLegacyBannerDismissal(
+  storage: Pick<Storage, "setItem">,
+  tenantId: string,
+  surface: LegacyBannerSurface,
+) {
+  storage.setItem(getLegacyBannerDismissalKey(tenantId, surface), "1");
+}
 
 /**
  * CON-192 — Deprecation banner for the three legacy persona/topic surfaces:
@@ -23,14 +69,39 @@ import Link from "next/link";
  */
 export function LegacyDeprecationBanner({
   surface,
+  tenantId,
+  forumConfigPopulated,
   className = "",
 }: {
-  surface: "widget-prompt" | "audience-persona" | "allowed-topics";
+  surface: LegacyBannerSurface;
+  tenantId?: string;
+  forumConfigPopulated?: ForumConfigPopulated;
   className?: string;
 }) {
   const [migrating, setMigrating] = useState(false);
   const [migrated, setMigrated] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    try {
+      if (isLegacyBannerDismissed(window.localStorage, tenantId, surface)) {
+        setHidden(true);
+      }
+    } catch {
+      // localStorage can be unavailable in private contexts. Keep the banner usable.
+    }
+  }, [surface, tenantId]);
+
+  if (
+    !tenantId ||
+    hidden ||
+    shouldAutoHideLegacyBanner(surface, forumConfigPopulated)
+  ) {
+    return null;
+  }
+  const resolvedTenantId = tenantId;
 
   const copy = {
     "widget-prompt": {
@@ -98,6 +169,15 @@ export function LegacyDeprecationBanner({
         setMigrating(false);
         return;
       }
+      try {
+        persistLegacyBannerDismissal(
+          window.localStorage,
+          resolvedTenantId,
+          surface,
+        );
+      } catch {
+        // Non-fatal: the inline confirmation still tells the operator it worked.
+      }
       setMigrated(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
@@ -106,14 +186,53 @@ export function LegacyDeprecationBanner({
     }
   }
 
+  function handleDismiss() {
+    try {
+      persistLegacyBannerDismissal(window.localStorage, resolvedTenantId, surface);
+    } catch {
+      // Non-fatal: hiding for this render is still useful.
+    }
+    setHidden(true);
+  }
+
+  if (migrated) {
+    return (
+      <div
+        className={
+          "inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 " +
+          className
+        }
+        role="status"
+      >
+        <span>✓ Migrated to Chatbot Behaviour</span>
+        <button
+          type="button"
+          onClick={handleDismiss}
+          className="rounded p-0.5 text-emerald-700 hover:bg-emerald-100"
+          aria-label="Dismiss migrated confirmation"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className={
-        "rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 " +
+        "relative rounded-lg border border-amber-200 bg-amber-50 p-3 pr-10 text-sm text-amber-900 " +
         className
       }
       role="note"
     >
+      <button
+        type="button"
+        onClick={handleDismiss}
+        className="absolute right-2 top-2 rounded p-1 text-amber-700 hover:bg-amber-100"
+        aria-label="Dismiss legacy migration banner"
+      >
+        ✕
+      </button>
       <p className="font-medium">
         Deprecated — {copy.label} has moved to Chatbot Behaviour.
       </p>
@@ -125,20 +244,14 @@ export function LegacyDeprecationBanner({
         >
           Open Chatbot Behaviour →
         </Link>
-        {!migrated ? (
-          <button
-            type="button"
-            onClick={handleMigrate}
-            disabled={migrating}
-            className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50 transition-colors"
-          >
-            {migrating ? "Migrating…" : "Migrate now"}
-          </button>
-        ) : (
-          <span className="text-xs font-medium text-emerald-700">
-            ✓ Migrated to Chatbot Behaviour
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={handleMigrate}
+          disabled={migrating}
+          className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50 transition-colors"
+        >
+          {migrating ? "Migrating…" : "Migrate now"}
+        </button>
         {error && <span className="text-xs text-red-700">{error}</span>}
       </div>
     </div>

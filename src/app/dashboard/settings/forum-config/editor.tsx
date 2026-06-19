@@ -5,7 +5,9 @@ import { PersonaPanel } from "./panels/persona-panel";
 import { QualifyingPanel } from "./panels/qualifying-panel";
 import { AllowedTopicsPanel } from "./panels/allowed-topics-panel";
 import { FollowUpPanel } from "./panels/follow-up-panel";
-import type { AuthoringSliceKey, ForumConfigRaw } from "./types";
+import { TopicBoundariesPanel } from "./panels/topic-boundaries-panel";
+import { ConversationLimitsPanel } from "./panels/conversation-limits-panel";
+import type { AuthoringSliceKey, EditorTabKey, ForumConfigRaw } from "./types";
 
 /**
  * CON-192 auto-copy notice — shown when page.tsx pre-filled the editor from
@@ -43,7 +45,7 @@ function AutoCopiedNotice({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-const TABS: { key: AuthoringSliceKey; label: string; description: string }[] = [
+const TABS: { key: EditorTabKey; label: string; description: string }[] = [
   {
     key: "ai_persona",
     label: "Persona",
@@ -60,17 +62,43 @@ const TABS: { key: AuthoringSliceKey; label: string; description: string }[] = [
     description: "What the bot will and won't talk about.",
   },
   {
+    key: "topic_boundaries",
+    label: "Topic boundaries",
+    description: "Deflect rules and hard-block topics.",
+  },
+  {
     key: "follow_up",
     label: "Follow-up",
     description: "Rules, capture policies, contact methods, destinations.",
+  },
+  {
+    key: "conversation_limits",
+    label: "Limits",
+    description: "Maximum turns before CTA and idle timeout.",
   },
 ];
 
 export function ForumConfigEditor({
   initialForumConfig,
+  initialConversationLimits = {
+    maxTurnsBeforeCTA: 5,
+    idleTimeoutMinutes: 10,
+  },
+  initialTopicBoundaries = {
+    deflect: [],
+    hardBlock: [],
+  },
   autoCopied = false,
 }: {
   initialForumConfig: ForumConfigRaw;
+  initialConversationLimits?: {
+    maxTurnsBeforeCTA: number;
+    idleTimeoutMinutes: number;
+  };
+  initialTopicBoundaries?: {
+    deflect: { topic: string; response: string }[];
+    hardBlock: string[];
+  };
   /**
    * CON-192: true when page.tsx pre-filled the initial form state from
    * legacy widget/guardrails fields because the tenant has no forumConfig
@@ -78,9 +106,13 @@ export function ForumConfigEditor({
    */
   autoCopied?: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<AuthoringSliceKey>("ai_persona");
+  const [activeTab, setActiveTab] = useState<EditorTabKey>("ai_persona");
   const [forumConfig, setForumConfig] =
     useState<ForumConfigRaw>(initialForumConfig);
+  const [conversationLimits, setConversationLimits] = useState(
+    initialConversationLimits,
+  );
+  const [topicBoundaries, setTopicBoundaries] = useState(initialTopicBoundaries);
   const [showAutoCopiedNotice, setShowAutoCopiedNotice] = useState(autoCopied);
 
   const handleSliceSaved = useCallback(
@@ -168,6 +200,18 @@ export function ForumConfigEditor({
             />
           </div>
         )}
+        {activeTab === "topic_boundaries" && (
+          <div
+            role="tabpanel"
+            id="panel-topic_boundaries"
+            aria-labelledby="tab-topic_boundaries"
+          >
+            <TopicBoundariesPanel
+              initialValue={topicBoundaries}
+              onSaved={setTopicBoundaries}
+            />
+          </div>
+        )}
         {activeTab === "follow_up" && (
           <div
             role="tabpanel"
@@ -177,6 +221,18 @@ export function ForumConfigEditor({
             <FollowUpPanel
               initialValue={forumConfig.follow_up}
               onSaved={(v) => handleSliceSaved("follow_up", v)}
+            />
+          </div>
+        )}
+        {activeTab === "conversation_limits" && (
+          <div
+            role="tabpanel"
+            id="panel-conversation_limits"
+            aria-labelledby="tab-conversation_limits"
+          >
+            <ConversationLimitsPanel
+              initialValue={conversationLimits}
+              onSaved={setConversationLimits}
             />
           </div>
         )}
