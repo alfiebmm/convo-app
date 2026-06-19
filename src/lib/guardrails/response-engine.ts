@@ -14,7 +14,7 @@
  */
 
 import { DEFAULT_FORUM_CONFIG } from "@/lib/forum-config/defaults";
-import { parseForumConfigSafe } from "@/lib/forum-config/validate";
+import { parseForumConfigPerSlice } from "@/lib/forum-config/validate";
 import type { ForumConfig } from "@/lib/forum-config/schema";
 
 // ─── Feature flags ───────────────────────────────────────────
@@ -56,8 +56,11 @@ function readFlags(settings: Record<string, unknown>): ResponseEngineFlags {
 
 /**
  * Resolve the effective `ForumConfig` for a tenant. Validates
- * `settings.forumConfig` and falls back to `DEFAULT_FORUM_CONFIG` on
- * missing or malformed data.
+ * `settings.forumConfig` slice-by-slice (CON-201) and falls back to the
+ * corresponding slice of `DEFAULT_FORUM_CONFIG` for any slice that is
+ * missing or malformed. A tenant who has only populated
+ * `ai_persona.voice_description` still gets that voice surfaced, instead
+ * of being silently replaced by the default persona.
  */
 export function resolveForumConfig(
   settings: Record<string, unknown> | null | undefined,
@@ -65,7 +68,7 @@ export function resolveForumConfig(
   if (!settings || typeof settings !== "object") return DEFAULT_FORUM_CONFIG;
   const raw = (settings as Record<string, unknown>).forumConfig;
   if (!raw) return DEFAULT_FORUM_CONFIG;
-  return parseForumConfigSafe(raw, DEFAULT_FORUM_CONFIG);
+  return parseForumConfigPerSlice(raw);
 }
 
 // ─── Locale ──────────────────────────────────────────────────

@@ -345,7 +345,10 @@ eq(
 );
 
 {
-  // Garbage forumConfig → safeParse falls back to defaults (parseForumConfigSafe contract).
+  // CON-201: per-slice parse. A garbage schema_version normalises to 1.
+  // Every absent slice falls back to its DEFAULT_FORUM_CONFIG[slice]
+  // value (the rich Convo-shipped defaults), so the resolved config
+  // equals DEFAULT_FORUM_CONFIG when no other slices are present.
   const got = resolveForumConfig({ forumConfig: { schema_version: "not a number" } });
   eq("resolveForumConfig: invalid → defaults", got, DEFAULT_FORUM_CONFIG);
 }

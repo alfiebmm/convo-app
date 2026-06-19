@@ -15,10 +15,7 @@
  * persona* (the field→value map), not the menu.
  */
 
-import {
-  DEFAULT_FORUM_CONFIG,
-} from "@/lib/forum-config/defaults";
-import { parseForumConfigSafe } from "@/lib/forum-config/validate";
+import { parseForumConfigPerSlice } from "@/lib/forum-config/validate";
 import type { QualifyingQuestion } from "@/lib/forum-config/schema";
 import type {
   ConversationQualifying,
@@ -45,9 +42,12 @@ export function getConfiguredQuestions(
   const forumConfigRaw =
     (settings && (settings as Record<string, unknown>).forumConfig) ?? null;
 
-  // parseForumConfigSafe falls back to defaults on malformed config — same
-  // pattern CTA resolver uses. Defaults ship a sensible single preset.
-  const cfg = parseForumConfigSafe(forumConfigRaw, DEFAULT_FORUM_CONFIG);
+  // CON-201: per-slice parse so a tenant with ONLY qualifying_questions in
+  // their forumConfig (no ai_persona, no seo_defaults) still surfaces their
+  // configured questions instead of silently falling through to the generic
+  // "I have a question / I need advice / ..." defaults that leaked to the
+  // AgPages widget in production.
+  const cfg = parseForumConfigPerSlice(forumConfigRaw);
   const qq = cfg.qualifying_questions;
 
   const ordered: QualifyingQuestion[] = [];

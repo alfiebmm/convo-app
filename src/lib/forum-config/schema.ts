@@ -13,8 +13,13 @@ import { z } from "zod";
 // AI Persona Configuration
 // ============================================================
 
+// CON-201: `tone` now has a field-level default so a partial `ai_persona`
+// slice that omits `tone` (e.g. a tenant who only set `voice_description`)
+// still parses cleanly instead of falling through to the fallback config.
 export const aiPersonaSchema = z.object({
-  tone: z.enum(["professional", "friendly", "casual", "expert", "empathetic"]),
+  tone: z
+    .enum(["professional", "friendly", "casual", "expert", "empathetic"])
+    .default("friendly"),
   locale: z.string().default("en-AU"),
   banned_words: z.array(z.string()).default([]),
   voice_description: z.string().default(""),
@@ -64,17 +69,20 @@ export const exclusionListSchema = z.array(z.string()).default([]);
 // SEO Defaults Configuration
 // ============================================================
 
+// CON-201: field-level defaults so an absent or partial `seo_defaults`
+// slice no longer kills the strict root parse. SEO templates are pure
+// UI/display surface — defaults are safe filler.
 export const seoDefaultsSchema = z.object({
-  title_template: z.string(),
-  meta_template: z.string(),
+  title_template: z.string().default("{topic} | {site_name}"),
+  meta_template: z
+    .string()
+    .default(
+      "Expert advice on {topic}. Get clear, practical answers from Australian specialists.",
+    ),
   og_image: z.string().url().optional(),
-  schema_org_type: z.enum([
-    "Article",
-    "BlogPosting",
-    "QAPage",
-    "HowTo",
-    "FAQPage",
-  ]),
+  schema_org_type: z
+    .enum(["Article", "BlogPosting", "QAPage", "HowTo", "FAQPage"])
+    .default("Article"),
 });
 
 // ============================================================
@@ -439,15 +447,24 @@ export const followUpSchema = z
 // Root Forum Config Schema
 // ============================================================
 
+// CON-201: every slice is `.prefault({})` so the strict root parse no
+// longer fails when a tenant config is missing a slice. Combined with
+// the field-level defaults on `ai_persona` and `seo_defaults`, a tenant
+// whose `forumConfig` only contains one authoring slice (e.g.
+// `qualifying_questions`) round-trips through `parseForumConfigSafe`
+// without being replaced wholesale by `DEFAULT_FORUM_CONFIG`.
+//
+// `parseForumConfigPerSlice` in `./validate.ts` is the belt-and-braces
+// runtime safety net for any future tightening — see that file.
 export const forumConfigSchema = z.object({
   schema_version: z.number().int().positive().default(1),
-  ai_persona: aiPersonaSchema,
+  ai_persona: aiPersonaSchema.prefault({}),
   cta_rules: ctaRulesSchema,
   qualifying_questions: qualifyingQuestionsSchema.prefault({}),
   lead_capture: leadCaptureSchema.prefault({}),
   allowed_topics: allowedTopicsSchema,
   exclusion_list: exclusionListSchema,
-  seo_defaults: seoDefaultsSchema,
+  seo_defaults: seoDefaultsSchema.prefault({}),
   connectors: connectorsSchema.prefault({}),
   limits: limitsSchema.prefault({}),
   follow_up: followUpSchema.prefault({}),
