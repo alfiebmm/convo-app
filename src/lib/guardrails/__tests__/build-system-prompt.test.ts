@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
  * CON-192 — buildSystemPrompt precedence tests.
+ * CON-204 — legacy `guardrails.topicBoundaries.allow` branch removed from
+ * the allowed-topics union; only forumConfig.allowed_topics and
+ * widget.allowedTopics feed the prompt now.
  *
  *   npx tsx src/lib/guardrails/__tests__/build-system-prompt.test.ts
  *
@@ -10,7 +13,9 @@
  *   - widget.systemPrompt used when neither forumConfig nor audiences exist
  *   - settings.persona / settings.systemPrompt used as deepest fallback
  *   - default tenant prose used when nothing is configured
- *   - allowed topics: forumConfig + guardrails + widget unioned + deduped
+ *   - allowed topics: forumConfig + widget unioned + deduped
+ *   - CON-204 regression: tenant with ONLY legacy topicBoundaries.allow
+ *     set → prompt's allowed-topics list is empty (intended new behaviour)
  *   - strict backwards-compat: legacy-only tenant gets exact same prompt
  *     it would have got pre-CON-192 (no spurious empty Topic Boundaries
  *     section).
@@ -77,7 +82,7 @@ test("forumConfig.voice_description wins over audience.persona (with audiences)"
             ctaAfterTurns: 5,
           },
         ],
-        topicBoundaries: { allow: [], deflect: [], hardBlock: [] },
+        topicBoundaries: { deflect: [], hardBlock: [] },
         conversationLimits: { maxTurnsBeforeCTA: 5, idleTimeoutMinutes: 10 },
       },
     }),
@@ -114,7 +119,7 @@ test("audience persona wins when no forumConfig", () => {
             ctaAfterTurns: 5,
           },
         ],
-        topicBoundaries: { allow: [], deflect: [], hardBlock: [] },
+        topicBoundaries: { deflect: [], hardBlock: [] },
         conversationLimits: { maxTurnsBeforeCTA: 5, idleTimeoutMinutes: 10 },
       },
     }),
@@ -157,17 +162,76 @@ test("default tenant prose when nothing configured", () => {
 
 // ─── Allowed-topics union (CON-192 add-on) ───────────────────
 
-test("allowed topics: forumConfig + guardrails + widget unioned, deduped (no audiences)", () => {
+test("allowed topics: forumConfig + widget unioned, deduped (no audiences)", () => {
   const prompt = buildSystemPrompt(
     tenant({
       forumConfig: { allowed_topics: ["forumA", "shared"] },
-      guardrails: undefined,
       widget: { allowedTopics: "legacyA, shared, legacyB" },
     }),
     {},
   );
-  // Order: forumConfig first, then widget (guardrails undefined)
+  // Order: forumConfig first, then widget. CON-204: legacy
+  // guardrails.topicBoundaries.allow no longer participates.
   assert(prompt.includes("forumA, shared, legacyA, legacyB"), "union order");
+});
+
+test("CON-204: legacy guardrails.topicBoundaries.allow is NOT read by the prompt", () => {
+  // Tenant with ONLY the legacy structured allow list populated. After
+  // CON-204 this no longer feeds the prompt — forumConfig.allowed_topics
+  // is the single structured source. Such tenants must re-author topics
+  // via the dashboard (Cam accepted this regression on 19 Jun 2026).
+  const prompt = buildSystemPrompt(
+    // Cast through unknown because TopicBoundaries no longer declares
+    // `allow` — we're deliberately simulating a residual JSON blob.
+    tenant({
+      guardrails: {
+        audiences: [
+          {
+            id: "default",
+            name: "Visitor",
+            urlPatterns: ["*"],
+            persona: "Helpful.",
+            ctaMessages: [],
+            ctaAfterTurns: 5,
+          },
+        ],
+        topicBoundaries: {
+          allow: ["legacyOnly"],
+          deflect: [],
+          hardBlock: [],
+        },
+        conversationLimits: { maxTurnsBeforeCTA: 5, idleTimeoutMinutes: 10 },
+      },
+    }),
+    {},
+  );
+  assert(
+    !prompt.includes("legacyOnly"),
+    "legacy allow value must not appear in prompt",
+  );
+  assert(
+    !prompt.includes("You should only discuss topics related to"),
+    "flat allowed-topics line should not render",
+  );
+  assert(
+    !prompt.includes("**Allowed topics:**"),
+    "structured allowed-topics line should not render",
+  );
+});
+
+test("CON-204: forumConfig.allowed_topics still flows through end-to-end", () => {
+  const prompt = buildSystemPrompt(
+    tenant({
+      forumConfig: { allowed_topics: ["a", "b"] },
+    }),
+    {},
+  );
+  assert(
+    prompt.includes(
+      "You should only discuss topics related to: a, b",
+    ),
+    "forumConfig topics surface in prompt",
+  );
 });
 
 test("allowed topics: dedupe is case-insensitive, preserves first occurrence", () => {
@@ -181,7 +245,7 @@ test("allowed topics: dedupe is case-insensitive, preserves first occurrence", (
   assert(prompt.includes("Farming, soil"), "ci-dedupe");
 });
 
-test("allowed topics: surface inside the structured Topic Boundaries section when audiences present", () => {
+test("allowed topics: surface inside the structured Topic Boundaries section when audiences present (forumConfig only after CON-204)", () => {
   const prompt = buildSystemPrompt(
     tenant({
       forumConfig: { allowed_topics: ["forumTopic"] },
@@ -197,7 +261,6 @@ test("allowed topics: surface inside the structured Topic Boundaries section whe
           },
         ],
         topicBoundaries: {
-          allow: ["legacyTopic"],
           deflect: [],
           hardBlock: [],
         },
@@ -208,8 +271,8 @@ test("allowed topics: surface inside the structured Topic Boundaries section whe
   );
   assert(prompt.includes("# Topic Boundaries"), "section present");
   assert(
-    prompt.includes("**Allowed topics:** forumTopic, legacyTopic"),
-    "merged topics",
+    prompt.includes("**Allowed topics:** forumTopic"),
+    "forumConfig topics",
   );
 });
 
@@ -259,7 +322,7 @@ test("audience-mode tenant with no forumConfig: no empty Topic Boundaries when n
             ctaAfterTurns: 5,
           },
         ],
-        topicBoundaries: { allow: [], deflect: [], hardBlock: [] },
+        topicBoundaries: { deflect: [], hardBlock: [] },
         conversationLimits: { maxTurnsBeforeCTA: 5, idleTimeoutMinutes: 10 },
       },
     }),
@@ -284,7 +347,6 @@ test("audience-mode tenant with legacy deflect rules: section appears and is non
           },
         ],
         topicBoundaries: {
-          allow: [],
           deflect: [{ topic: "off-brand", response: "Let's stay on track." }],
           hardBlock: [],
         },
