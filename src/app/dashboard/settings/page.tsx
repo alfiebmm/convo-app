@@ -76,8 +76,22 @@ interface TenantSettings {
   notifications?: NotificationsConfig;
 }
 
+interface TenantInfo {
+  id: string;
+  name?: string;
+  domain?: string | null;
+}
+
+type ForumConfigPopulated = {
+  ai_persona?: boolean;
+  allowed_topics?: boolean;
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<TenantSettings>({});
+  const [tenant, setTenant] = useState<TenantInfo | null>(null);
+  const [forumConfigPopulated, setForumConfigPopulated] =
+    useState<ForumConfigPopulated>({});
   const [loading, setLoading] = useState(true);
   const [siteName, setSiteName] = useState("");
   const [domain, setDomain] = useState("");
@@ -85,14 +99,22 @@ export default function SettingsPage() {
   const [generalSaved, setGeneralSaved] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((data) => {
+    Promise.all([
+      fetch("/api/settings").then((r) => r.json()),
+      fetch("/api/settings/forum-config")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ])
+      .then(([data, forumConfigData]) => {
         setSettings(data.settings ?? {});
         if (data.tenant) {
+          setTenant(data.tenant);
           setSiteName(data.tenant.name ?? "");
           setDomain(data.tenant.domain ?? "");
         }
+        setForumConfigPopulated(
+          deriveForumConfigPopulated(forumConfigData?.forumConfigRaw),
+        );
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -109,6 +131,7 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.tenant) {
+        setTenant(data.tenant);
         setSiteName(data.tenant.name ?? "");
         setDomain(data.tenant.domain ?? "");
       }
@@ -239,7 +262,12 @@ export default function SettingsPage() {
         </section>
 
         {/* Guardrails */}
-        <GuardrailsSection settings={settings} onUpdate={setSettings} />
+        <GuardrailsSection
+          settings={settings}
+          onUpdate={setSettings}
+          tenantId={tenant?.id}
+          forumConfigPopulated={forumConfigPopulated}
+        />
 
         {/* Notifications */}
         <NotificationsSection settings={settings} onUpdate={setSettings} />
@@ -260,6 +288,30 @@ export default function SettingsPage() {
       </div>
     </div>
   );
+}
+
+function deriveForumConfigPopulated(raw: unknown): ForumConfigPopulated {
+  const forumConfig =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const aiPersona =
+    typeof forumConfig.ai_persona === "object" &&
+    forumConfig.ai_persona !== null &&
+    !Array.isArray(forumConfig.ai_persona)
+      ? (forumConfig.ai_persona as Record<string, unknown>)
+      : null;
+
+  return {
+    ai_persona:
+      !!aiPersona &&
+      (typeof aiPersona.voice_description === "string"
+        ? aiPersona.voice_description.trim().length > 0
+        : Object.keys(aiPersona).length > 0),
+    allowed_topics:
+      Array.isArray(forumConfig.allowed_topics) &&
+      forumConfig.allowed_topics.length > 0,
+  };
 }
 
 // ─── Helper: Save CMS config ─────────────────────────────────
@@ -1410,9 +1462,13 @@ function BillingSection() {
 function GuardrailsSection({
   settings,
   onUpdate,
+  tenantId,
+  forumConfigPopulated,
 }: {
   settings: TenantSettings;
   onUpdate: (s: TenantSettings) => void;
+  tenantId?: string;
+  forumConfigPopulated: ForumConfigPopulated;
 }) {
   const [saving, setSaving] = useState(false);
   const [guardrails, setGuardrails] = useState<GuardrailsConfig>(
@@ -1494,6 +1550,11 @@ function GuardrailsSection({
             + Add Audience
           </button>
         </div>
+        <p className="mt-1 text-xs text-zinc-500">
+          Audiences are URL-pattern-routed targeting and apply across chat and
+          future surfaces (for example, blogs). Chat config references the
+          matched audience persona when forumConfig voice is empty.
+        </p>
 
         <div className="mt-3 space-y-3">
           {guardrails.audiences.map((audience, idx) => (
@@ -1563,6 +1624,8 @@ function GuardrailsSection({
                     {/* CON-192 — superseded by Chatbot Behaviour > Persona. */}
                     <LegacyDeprecationBanner
                       surface="audience-persona"
+                      tenantId={tenantId}
+                      forumConfigPopulated={forumConfigPopulated}
                       className="mt-2"
                     />
                     <textarea
@@ -1640,6 +1703,8 @@ function GuardrailsSection({
             {/* CON-192 — superseded by Chatbot Behaviour > Allowed topics. */}
             <LegacyDeprecationBanner
               surface="allowed-topics"
+              tenantId={tenantId}
+              forumConfigPopulated={forumConfigPopulated}
               className="mt-2"
             />
             <input
@@ -1663,167 +1728,6 @@ function GuardrailsSection({
             />
           </FormField>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-slate-700">
-                Deflect Rules
-              </label>
-              <button
-                onClick={() => {
-                  const updated = {
-                    ...guardrails,
-                    topicBoundaries: {
-                      ...guardrails.topicBoundaries,
-                      deflect: [
-                        ...guardrails.topicBoundaries.deflect,
-                        { topic: "", response: "" },
-                      ],
-                    },
-                  };
-                  setGuardrails(updated);
-                }}
-                className="text-sm text-slate-500 hover:text-slate-700"
-              >
-                + Add Rule
-              </button>
-            </div>
-            <p className="text-xs text-slate-400">
-              Topics to redirect with a specific response.
-            </p>
-            <div className="mt-2 space-y-2">
-              {guardrails.topicBoundaries.deflect.map((rule, idx) => (
-                <div key={idx} className="flex gap-2 items-start">
-                  <input
-                    type="text"
-                    value={rule.topic}
-                    onChange={(e) => {
-                      const deflect = [...guardrails.topicBoundaries.deflect];
-                      deflect[idx] = { ...deflect[idx], topic: e.target.value };
-                      setGuardrails({
-                        ...guardrails,
-                        topicBoundaries: {
-                          ...guardrails.topicBoundaries,
-                          deflect,
-                        },
-                      });
-                    }}
-                    placeholder="Topic"
-                    className="w-1/3 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="text"
-                    value={rule.response}
-                    onChange={(e) => {
-                      const deflect = [...guardrails.topicBoundaries.deflect];
-                      deflect[idx] = {
-                        ...deflect[idx],
-                        response: e.target.value,
-                      };
-                      setGuardrails({
-                        ...guardrails,
-                        topicBoundaries: {
-                          ...guardrails.topicBoundaries,
-                          deflect,
-                        },
-                      });
-                    }}
-                    placeholder="Response"
-                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  />
-                  <button
-                    onClick={() => {
-                      const deflect =
-                        guardrails.topicBoundaries.deflect.filter(
-                          (_, i) => i !== idx
-                        );
-                      setGuardrails({
-                        ...guardrails,
-                        topicBoundaries: {
-                          ...guardrails.topicBoundaries,
-                          deflect,
-                        },
-                      });
-                    }}
-                    className="px-2 py-2 text-red-400 hover:text-red-600"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <FormField
-            label="Hard Block Topics"
-            hint="Comma-separated. The AI will never engage with these."
-          >
-            <input
-              type="text"
-              value={guardrails.topicBoundaries.hardBlock.join(", ")}
-              onChange={(e) => {
-                const updated = {
-                  ...guardrails,
-                  topicBoundaries: {
-                    ...guardrails.topicBoundaries,
-                    hardBlock: e.target.value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  },
-                };
-                setGuardrails(updated);
-              }}
-              placeholder="puppy mill defence, animal welfare harm"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </FormField>
-        </div>
-      </div>
-
-      {/* Conversation Limits */}
-      <div className="mt-6">
-        <h3 className="text-sm font-semibold text-slate-700">
-          Conversation Limits
-        </h3>
-        <div className="mt-3 grid max-w-md grid-cols-2 gap-4">
-          <FormField label="Max turns before CTA">
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={guardrails.conversationLimits.maxTurnsBeforeCTA}
-              onChange={(e) => {
-                const updated = {
-                  ...guardrails,
-                  conversationLimits: {
-                    ...guardrails.conversationLimits,
-                    maxTurnsBeforeCTA: parseInt(e.target.value) || 5,
-                  },
-                };
-                setGuardrails(updated);
-              }}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </FormField>
-          <FormField label="Idle timeout (minutes)">
-            <input
-              type="number"
-              min={1}
-              max={120}
-              value={guardrails.conversationLimits.idleTimeoutMinutes}
-              onChange={(e) => {
-                const updated = {
-                  ...guardrails,
-                  conversationLimits: {
-                    ...guardrails.conversationLimits,
-                    idleTimeoutMinutes: parseInt(e.target.value) || 10,
-                  },
-                };
-                setGuardrails(updated);
-              }}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </FormField>
         </div>
       </div>
 

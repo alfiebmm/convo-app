@@ -7,6 +7,11 @@ export type AuthoringSliceKey =
   | "allowed_topics"
   | "follow_up";
 
+export type EditorTabKey =
+  | AuthoringSliceKey
+  | "topic_boundaries"
+  | "conversation_limits";
+
 /** Raw forumConfig as it comes off the jsonb column — fully unknown-typed. */
 export type ForumConfigRaw = Record<string, unknown>;
 
