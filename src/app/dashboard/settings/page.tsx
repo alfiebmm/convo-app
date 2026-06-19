@@ -25,8 +25,10 @@ interface DeflectRule {
 
 interface GuardrailsConfig {
   audiences: AudienceConfig[];
+  // CON-204: `topicBoundaries.allow` removed — forumConfig.allowed_topics
+  // is the single structured source. Existing tenant JSON blobs may still
+  // carry an `allow` field; it's harmlessly ignored by the runtime.
   topicBoundaries: {
-    allow: string[];
     deflect: DeflectRule[];
     hardBlock: string[];
   };
@@ -1623,7 +1625,7 @@ function GuardrailsSection({
   const [guardrails, setGuardrails] = useState<GuardrailsConfig>(
     settings.guardrails ?? {
       audiences: [],
-      topicBoundaries: { allow: [], deflect: [], hardBlock: [] },
+      topicBoundaries: { deflect: [], hardBlock: [] },
       conversationLimits: { maxTurnsBeforeCTA: 5, idleTimeoutMinutes: 10 },
     }
   );
@@ -1841,10 +1843,11 @@ function GuardrailsSection({
       </div>
 
       {/* CON-202 — Topic Boundaries section removed; allowed_topics is now
-          managed in Chat Config > Topic scope (forumConfig). The legacy
-          settings.guardrails.topicBoundaries.allow data shape is preserved
-          on the server for backwards-compat union in buildSystemPrompt
-          (CON-192). */}
+          managed in Chat Config > Topic scope (forumConfig). CON-204 — the
+          buildSystemPrompt legacy union over settings.guardrails.topicBoundaries.allow
+          was also removed; forumConfig.allowed_topics (plus the still-live
+          widget.allowedTopics embed path) are the only sources now. Any
+          residual `allow` data in tenant JSON blobs is harmlessly ignored. */}
 
       {/* Save */}
       <div className="mt-6 flex gap-2">
