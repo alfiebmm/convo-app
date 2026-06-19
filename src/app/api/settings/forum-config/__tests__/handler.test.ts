@@ -108,15 +108,17 @@ async function run() {
     assertEq(res.status, 404, "status");
   });
 
-  await test("GET returns raw forumConfig (empty) for empty tenant", async () => {
-    // Root schema requires ai_persona+seo_defaults so an empty tenant won't
-    // parseOk — we return the raw object and the UI falls back to per-slice
-    // defaults using its own schemas.
+  await test("GET returns parsed forumConfig (defaults) for empty tenant", async () => {
+    // CON-201: every root slice is now `.prefault({})` and `ai_persona` +
+    // `seo_defaults` carry field-level defaults, so the strict root parse
+    // succeeds on an empty config and the UI receives schema defaults
+    // directly. (Previously parseOk was false here and the UI silently
+    // fell back to defaults; that fallback is now in the schema itself.)
     const deps = makeDeps({ "tenant-a": {} });
     const res = await handleForumConfigGet("tenant-a", deps);
     assertEq(res.status, 200, "status");
     const body = await readJson(res);
-    assertEq(body.parseOk, false, "parseOk false on empty tenant");
+    assertEq(body.parseOk, true, "parseOk true on empty tenant (CON-201)");
     assert(
       typeof body.forumConfig === "object" && body.forumConfig !== null,
       "forumConfig is an object even when empty",

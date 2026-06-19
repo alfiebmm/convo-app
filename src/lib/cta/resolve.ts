@@ -23,7 +23,7 @@
 import {
   DEFAULT_FORUM_CONFIG,
 } from "@/lib/forum-config/defaults";
-import { parseForumConfigSafe } from "@/lib/forum-config/validate";
+import { parseForumConfigPerSlice } from "@/lib/forum-config/validate";
 import type { ForumConfig, CtaRule } from "@/lib/forum-config/schema";
 import { classifyPrimaryTag, type ClassifiableMessage } from "./classify";
 
@@ -81,17 +81,17 @@ const DEFAULT_FOLLOW_UP = "Want to dig deeper? Ask a follow-up.";
 const DEFAULT_MIN_RESPONSE_CHARS = 80;
 
 /**
- * Read and validate `forumConfig` from tenant settings, with a safe fallback
- * to `DEFAULT_FORUM_CONFIG` when the stored config is missing or malformed.
+ * Read and validate `forumConfig` from tenant settings, with a per-slice
+ * fallback to `DEFAULT_FORUM_CONFIG` (CON-201). A tenant whose stored
+ * config only carries `cta_rules` (no ai_persona, no seo_defaults) still
+ * gets their CTAs resolved instead of being silently replaced by an
+ * empty default cta_rules array.
  */
 function loadForumConfig(
   settings: Record<string, unknown> | null
 ): ForumConfig {
   if (!settings) return DEFAULT_FORUM_CONFIG;
-  return parseForumConfigSafe(
-    settings.forumConfig,
-    DEFAULT_FORUM_CONFIG
-  );
+  return parseForumConfigPerSlice(settings.forumConfig);
 }
 
 function loadCtaSettings(
