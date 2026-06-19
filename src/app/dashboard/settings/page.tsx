@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { LegacyDeprecationBanner } from "./legacy-deprecation-banner";
+import {
+  LegacyDeprecationBanner,
+  MigrationConfirmationNote,
+  anyForumConfigSlicePopulated,
+  type LegacyBannerSurface,
+} from "./legacy-deprecation-banner";
 
 interface AudienceConfig {
   id: string;
@@ -84,7 +89,19 @@ interface TenantInfo {
 
 type ForumConfigPopulated = {
   ai_persona?: boolean;
+  qualifying_questions?: boolean;
   allowed_topics?: boolean;
+  follow_up?: boolean;
+};
+
+/**
+ * CON-197 — server-persisted UI state slice for the settings page. Lives
+ * under `settings.ui_state`. Other UI-state keys are tolerated and
+ * preserved by PATCH callers via a shallow merge.
+ */
+type SettingsUiState = {
+  migrate_banner_dismissed_at?: string | null;
+  migration_confirmation_seen_at?: string | null;
 };
 
 export default function SettingsPage() {
@@ -92,6 +109,7 @@ export default function SettingsPage() {
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [forumConfigPopulated, setForumConfigPopulated] =
     useState<ForumConfigPopulated>({});
+  const [uiState, setUiState] = useState<SettingsUiState>({});
   const [loading, setLoading] = useState(true);
   const [siteName, setSiteName] = useState("");
   const [domain, setDomain] = useState("");
@@ -107,6 +125,7 @@ export default function SettingsPage() {
     ])
       .then(([data, forumConfigData]) => {
         setSettings(data.settings ?? {});
+        setUiState(extractUiState(data.settings));
         if (data.tenant) {
           setTenant(data.tenant);
           setSiteName(data.tenant.name ?? "");
@@ -161,6 +180,28 @@ export default function SettingsPage() {
       </p>
 
       <div className="mt-8 space-y-8">
+        <MigrationConfirmationNote
+          show={
+            anyForumConfigSlicePopulated(forumConfigPopulated) &&
+            !uiState.migration_confirmation_seen_at
+          }
+          onDismiss={() => {
+            const seenAt = new Date().toISOString();
+            const next: SettingsUiState = {
+              ...uiState,
+              migration_confirmation_seen_at: seenAt,
+            };
+            setUiState(next);
+            void patchUiState(next).catch(() => {
+              // Optimistic UI — revert on failure so we offer the note again.
+              setUiState((prev) => ({
+                ...prev,
+                migration_confirmation_seen_at: null,
+              }));
+            });
+          }}
+        />
+
         {/* General */}
         <section className="rounded-lg border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">General</h2>
@@ -267,6 +308,26 @@ export default function SettingsPage() {
           onUpdate={setSettings}
           tenantId={tenant?.id}
           forumConfigPopulated={forumConfigPopulated}
+          bannerDismissedAt={uiState.migrate_banner_dismissed_at ?? null}
+          onBannerDismiss={(surface) => {
+            const dismissedAt = new Date().toISOString();
+            const next: SettingsUiState = {
+              ...uiState,
+              migrate_banner_dismissed_at: dismissedAt,
+            };
+            setUiState(next);
+            void patchUiState(next).catch(() => {
+              // Optimistic UI — revert so a fresh dismiss attempt can persist.
+              setUiState((prev) => ({
+                ...prev,
+                migrate_banner_dismissed_at: null,
+              }));
+            });
+            // Surface arg is unused at the page level today (one ui_state flag
+            // for all banner surfaces) but kept so we can split per-surface
+            // later without changing the banner contract.
+            void surface;
+          }}
         />
 
         {/* Notifications */}
@@ -301,6 +362,18 @@ function deriveForumConfigPopulated(raw: unknown): ForumConfigPopulated {
     !Array.isArray(forumConfig.ai_persona)
       ? (forumConfig.ai_persona as Record<string, unknown>)
       : null;
+  const qualifyingQuestions =
+    typeof forumConfig.qualifying_questions === "object" &&
+    forumConfig.qualifying_questions !== null &&
+    !Array.isArray(forumConfig.qualifying_questions)
+      ? (forumConfig.qualifying_questions as Record<string, unknown>)
+      : null;
+  const followUp =
+    typeof forumConfig.follow_up === "object" &&
+    forumConfig.follow_up !== null &&
+    !Array.isArray(forumConfig.follow_up)
+      ? (forumConfig.follow_up as Record<string, unknown>)
+      : null;
 
   return {
     ai_persona:
@@ -308,10 +381,82 @@ function deriveForumConfigPopulated(raw: unknown): ForumConfigPopulated {
       (typeof aiPersona.voice_description === "string"
         ? aiPersona.voice_description.trim().length > 0
         : Object.keys(aiPersona).length > 0),
+    qualifying_questions: hasQualifyingQuestionsPopulated(qualifyingQuestions),
     allowed_topics:
       Array.isArray(forumConfig.allowed_topics) &&
       forumConfig.allowed_topics.length > 0,
+    follow_up: hasFollowUpPopulated(followUp),
   };
+}
+
+function hasQualifyingQuestionsPopulated(
+  slice: Record<string, unknown> | null,
+): boolean {
+  if (!slice) return false;
+  const questions = slice.questions;
+  if (Array.isArray(questions) && questions.length > 0) return true;
+  // Some tenants persist legacy shapes — treat any non-default key as populated.
+  return Object.keys(slice).some((k) => k !== "questions");
+}
+
+function hasFollowUpPopulated(slice: Record<string, unknown> | null): boolean {
+  if (!slice) return false;
+  // Treat the slice as populated once any author-editable sub-key has a value.
+  // The schema defaults are empty objects/arrays, so any non-empty content here
+  // means the tenant has explicitly configured follow-up.
+  return Object.entries(slice).some(([, value]) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") {
+      return Object.keys(value as Record<string, unknown>).length > 0;
+    }
+    return value !== undefined && value !== null && value !== "";
+  });
+}
+
+function extractUiState(rawSettings: unknown): SettingsUiState {
+  if (!rawSettings || typeof rawSettings !== "object") return {};
+  const ui = (rawSettings as Record<string, unknown>).ui_state;
+  if (!ui || typeof ui !== "object" || Array.isArray(ui)) return {};
+  const obj = ui as Record<string, unknown>;
+  return {
+    migrate_banner_dismissed_at:
+      typeof obj.migrate_banner_dismissed_at === "string"
+        ? obj.migrate_banner_dismissed_at
+        : null,
+    migration_confirmation_seen_at:
+      typeof obj.migration_confirmation_seen_at === "string"
+        ? obj.migration_confirmation_seen_at
+        : null,
+  };
+}
+
+async function patchUiState(next: SettingsUiState): Promise<void> {
+  // Fetch current settings.ui_state first so we don't clobber other UI flags
+  // owned by adjacent features. /api/settings PATCH does a shallow merge at
+  // the top level, so ui_state itself needs to be merged client-side.
+  let currentUiState: Record<string, unknown> = {};
+  try {
+    const res = await fetch("/api/settings");
+    if (res.ok) {
+      const data = await res.json();
+      const settings = (data?.settings ?? {}) as Record<string, unknown>;
+      const ui = settings.ui_state;
+      if (ui && typeof ui === "object" && !Array.isArray(ui)) {
+        currentUiState = ui as Record<string, unknown>;
+      }
+    }
+  } catch {
+    // Best-effort — fall through with empty current state.
+  }
+  const mergedUiState = { ...currentUiState, ...next };
+  const res = await fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ui_state: mergedUiState }),
+  });
+  if (!res.ok) {
+    throw new Error(`PATCH /api/settings failed (${res.status})`);
+  }
 }
 
 // ─── Helper: Save CMS config ─────────────────────────────────
@@ -1464,11 +1609,15 @@ function GuardrailsSection({
   onUpdate,
   tenantId,
   forumConfigPopulated,
+  bannerDismissedAt,
+  onBannerDismiss,
 }: {
   settings: TenantSettings;
   onUpdate: (s: TenantSettings) => void;
   tenantId?: string;
   forumConfigPopulated: ForumConfigPopulated;
+  bannerDismissedAt: string | null;
+  onBannerDismiss: (surface: LegacyBannerSurface) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [guardrails, setGuardrails] = useState<GuardrailsConfig>(
@@ -1626,6 +1775,8 @@ function GuardrailsSection({
                       surface="audience-persona"
                       tenantId={tenantId}
                       forumConfigPopulated={forumConfigPopulated}
+                      dismissedAtFromServer={bannerDismissedAt}
+                      onDismissPersist={onBannerDismiss}
                       className="mt-2"
                     />
                     <textarea
@@ -1705,6 +1856,8 @@ function GuardrailsSection({
               surface="allowed-topics"
               tenantId={tenantId}
               forumConfigPopulated={forumConfigPopulated}
+              dismissedAtFromServer={bannerDismissedAt}
+              onDismissPersist={onBannerDismiss}
               className="mt-2"
             />
             <input

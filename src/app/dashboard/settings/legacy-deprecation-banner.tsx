@@ -8,9 +8,19 @@ export type LegacyBannerSurface =
   | "audience-persona"
   | "allowed-topics";
 
+/**
+ * Slice population flags consumed by the auto-hide logic.
+ *
+ * CON-197 extends this beyond `ai_persona` / `allowed_topics` so the banner
+ * disappears on the Settings page as soon as a tenant has any forum-config
+ * authoring slice populated — at that point there's nothing left to migrate
+ * and the banner is just noise.
+ */
 export type ForumConfigPopulated = {
   ai_persona?: boolean;
+  qualifying_questions?: boolean;
   allowed_topics?: boolean;
+  follow_up?: boolean;
 };
 
 export function getLegacyBannerDismissalKey(
@@ -20,17 +30,45 @@ export function getLegacyBannerDismissalKey(
   return `convo:legacy-banner-dismissed:${tenantId}:${surface}`;
 }
 
+/**
+ * CON-197 — once any forum-config authoring slice is populated, the tenant
+ * is on the new system and there is nothing to migrate. Hide every legacy
+ * deprecation banner surface in that case. The original per-surface checks
+ * are kept for back-compat in case a partial migration leaves only the
+ * surface-specific slice populated.
+ */
 export function shouldAutoHideLegacyBanner(
   surface: LegacyBannerSurface,
   forumConfigPopulated?: ForumConfigPopulated,
 ) {
+  if (!forumConfigPopulated) return false;
+  if (anyForumConfigSlicePopulated(forumConfigPopulated)) {
+    return true;
+  }
   if (
     (surface === "widget-prompt" || surface === "audience-persona") &&
-    forumConfigPopulated?.ai_persona
+    forumConfigPopulated.ai_persona
   ) {
     return true;
   }
-  return surface === "allowed-topics" && !!forumConfigPopulated?.allowed_topics;
+  return surface === "allowed-topics" && !!forumConfigPopulated.allowed_topics;
+}
+
+/**
+ * True if any of the four authoring slices report as populated. Used by both
+ * the auto-hide check and the "you're on the new chat config" confirmation
+ * toast.
+ */
+export function anyForumConfigSlicePopulated(
+  forumConfigPopulated?: ForumConfigPopulated,
+) {
+  if (!forumConfigPopulated) return false;
+  return (
+    !!forumConfigPopulated.ai_persona ||
+    !!forumConfigPopulated.qualifying_questions ||
+    !!forumConfigPopulated.allowed_topics ||
+    !!forumConfigPopulated.follow_up
+  );
 }
 
 export function isLegacyBannerDismissed(
@@ -50,19 +88,24 @@ export function persistLegacyBannerDismissal(
 }
 
 /**
- * CON-192 — Deprecation banner for the three legacy persona/topic surfaces:
+ * CON-192 / CON-197 — Deprecation banner for the three legacy persona/topic
+ * surfaces:
  *
  *   1. Widget page → Persona / System Prompt textarea (settings.widget.systemPrompt)
  *   2. Settings page → Audience persona textarea (settings.guardrails.audiences[].persona)
  *   3. Settings page → Allowed Topics input (settings.guardrails.topicBoundaries.allow)
  *
  * Behaviour:
- *   - Always shows the deprecation copy and a link to /dashboard/settings/forum-config.
+ *   - Auto-hides when ANY forum-config authoring slice is populated.
  *   - "Migrate now" button POSTs the current page's settings to the same
  *     legacy→forumConfig transform used by the editor pre-fill, then PATCHes
  *     /api/settings/forum-config to persist the result. On success, the
  *     banner switches to a "✓ Migrated" state and links the tenant to the
  *     forum-config editor to review.
+ *   - Manual dismiss persists across reloads. Persistence is primarily
+ *     server-side (settings.ui_state.migrate_banner_dismissed_at via an
+ *     onDismissPersist callback supplied by the parent) and falls back to
+ *     localStorage for resilience when the parent has not wired persistence.
  *
  * The banner does not delete the legacy field — that's a separate cleanup
  * (CON-???) once we're confident every tenant has migrated.
@@ -71,11 +114,27 @@ export function LegacyDeprecationBanner({
   surface,
   tenantId,
   forumConfigPopulated,
+  dismissedAtFromServer,
+  onDismissPersist,
   className = "",
 }: {
   surface: LegacyBannerSurface;
   tenantId?: string;
   forumConfigPopulated?: ForumConfigPopulated;
+  /**
+   * ISO timestamp of the server-side dismissal, if known. Truthy values are
+   * treated as "already dismissed" and the banner stays hidden across
+   * reloads. Optional — falls back to localStorage when undefined.
+   */
+  dismissedAtFromServer?: string | null;
+  /**
+   * Optional persist hook called when the operator clicks dismiss. Receives
+   * the surface so the parent can keep per-surface state if it wants. The
+   * banner still updates local state and localStorage regardless of whether
+   * a persist hook is supplied, so the UI never feels broken if the network
+   * call fails.
+   */
+  onDismissPersist?: (surface: LegacyBannerSurface) => void;
   className?: string;
 }) {
   const [migrating, setMigrating] = useState(false);
@@ -84,6 +143,10 @@ export function LegacyDeprecationBanner({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (dismissedAtFromServer) {
+      setHidden(true);
+      return;
+    }
     if (!tenantId) return;
     try {
       if (isLegacyBannerDismissed(window.localStorage, tenantId, surface)) {
@@ -92,7 +155,7 @@ export function LegacyDeprecationBanner({
     } catch {
       // localStorage can be unavailable in private contexts. Keep the banner usable.
     }
-  }, [surface, tenantId]);
+  }, [surface, tenantId, dismissedAtFromServer]);
 
   if (
     !tenantId ||
@@ -178,6 +241,7 @@ export function LegacyDeprecationBanner({
       } catch {
         // Non-fatal: the inline confirmation still tells the operator it worked.
       }
+      onDismissPersist?.(surface);
       setMigrated(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
@@ -192,6 +256,7 @@ export function LegacyDeprecationBanner({
     } catch {
       // Non-fatal: hiding for this render is still useful.
     }
+    onDismissPersist?.(surface);
     setHidden(true);
   }
 
@@ -254,6 +319,49 @@ export function LegacyDeprecationBanner({
         </button>
         {error && <span className="text-xs text-red-700">{error}</span>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * CON-197 — one-time confirmation note shown on the Settings page when the
+ * tenant is already on the new forum-config (any authoring slice populated)
+ * AND the `settings.ui_state.migration_confirmation_seen_at` flag is not yet
+ * set. Dismissing it calls `onDismiss`, which the parent wires up to a PATCH
+ * that persists the seen-at timestamp.
+ */
+export function MigrationConfirmationNote({
+  show,
+  onDismiss,
+  className = "",
+}: {
+  show: boolean;
+  onDismiss: () => void;
+  className?: string;
+}) {
+  if (!show) return null;
+  return (
+    <div
+      className={
+        "relative rounded-lg border border-emerald-200 bg-emerald-50 p-3 pr-10 text-sm text-emerald-800 " +
+        className
+      }
+      role="status"
+    >
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="absolute right-2 top-2 rounded p-1 text-emerald-700 hover:bg-emerald-100"
+        aria-label="Dismiss migration confirmation"
+      >
+        ✕
+      </button>
+      <p className="font-medium">✓ You&apos;re on the new chat config.</p>
+      <p className="mt-1 text-emerald-700">
+        Persona, qualifying questions, allowed topics, and follow-up now live
+        under Chatbot Behaviour. The legacy fields below are kept for
+        reference and are no longer authoritative.
+      </p>
     </div>
   );
 }
