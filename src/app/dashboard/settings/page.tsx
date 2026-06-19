@@ -3,10 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  LegacyDeprecationBanner,
   MigrationConfirmationNote,
   anyForumConfigSlicePopulated,
-  type LegacyBannerSurface,
 } from "./legacy-deprecation-banner";
 
 interface AudienceConfig {
@@ -83,12 +81,6 @@ interface TenantSettings {
   notifications?: NotificationsConfig;
 }
 
-interface TenantInfo {
-  id: string;
-  name?: string;
-  domain?: string | null;
-}
-
 type ForumConfigPopulated = {
   ai_persona?: boolean;
   qualifying_questions?: boolean;
@@ -108,7 +100,6 @@ type SettingsUiState = {
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<TenantSettings>({});
-  const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [forumConfigPopulated, setForumConfigPopulated] =
     useState<ForumConfigPopulated>({});
   const [uiState, setUiState] = useState<SettingsUiState>({});
@@ -129,7 +120,6 @@ export default function SettingsPage() {
         setSettings(data.settings ?? {});
         setUiState(extractUiState(data.settings));
         if (data.tenant) {
-          setTenant(data.tenant);
           setSiteName(data.tenant.name ?? "");
           setDomain(data.tenant.domain ?? "");
         }
@@ -152,7 +142,6 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.tenant) {
-        setTenant(data.tenant);
         setSiteName(data.tenant.name ?? "");
         setDomain(data.tenant.domain ?? "");
       }
@@ -308,28 +297,6 @@ export default function SettingsPage() {
         <GuardrailsSection
           settings={settings}
           onUpdate={setSettings}
-          tenantId={tenant?.id}
-          forumConfigPopulated={forumConfigPopulated}
-          bannerDismissedAt={uiState.migrate_banner_dismissed_at ?? null}
-          onBannerDismiss={(surface) => {
-            const dismissedAt = new Date().toISOString();
-            const next: SettingsUiState = {
-              ...uiState,
-              migrate_banner_dismissed_at: dismissedAt,
-            };
-            setUiState(next);
-            void patchUiState(next).catch(() => {
-              // Optimistic UI — revert so a fresh dismiss attempt can persist.
-              setUiState((prev) => ({
-                ...prev,
-                migrate_banner_dismissed_at: null,
-              }));
-            });
-            // Surface arg is unused at the page level today (one ui_state flag
-            // for all banner surfaces) but kept so we can split per-surface
-            // later without changing the banner contract.
-            void surface;
-          }}
         />
 
         {/* Notifications */}
@@ -1609,17 +1576,9 @@ function BillingSection() {
 function GuardrailsSection({
   settings,
   onUpdate,
-  tenantId,
-  forumConfigPopulated,
-  bannerDismissedAt,
-  onBannerDismiss,
 }: {
   settings: TenantSettings;
   onUpdate: (s: TenantSettings) => void;
-  tenantId?: string;
-  forumConfigPopulated: ForumConfigPopulated;
-  bannerDismissedAt: string | null;
-  onBannerDismiss: (surface: LegacyBannerSurface) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [guardrails, setGuardrails] = useState<GuardrailsConfig>(
@@ -1682,12 +1641,11 @@ function GuardrailsSection({
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6">
-      <h2 className="text-lg font-semibold text-slate-900">
-        Guardrails & Personas
-      </h2>
+      <h2 className="text-lg font-semibold text-slate-900">Audiences</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Configure audience detection and conversation personas. Topic
-        boundaries are now managed in Chat Config &gt; Topic scope.
+        URL-routed audience targeting. Each audience matches one or more page
+        URL patterns and is consumed by chat (and future surfaces like blog)
+        for per-audience CTAs and tone.
       </p>
 
       {/* Audiences */}
@@ -1771,29 +1729,6 @@ function GuardrailsSection({
                       className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     />
                   </FormField>
-                  <FormField label="Persona" hint="System prompt personality and instructions for this audience.">
-                    {/* CON-192 — superseded by Chatbot Behaviour > Persona. */}
-                    <LegacyDeprecationBanner
-                      surface="audience-persona"
-                      tenantId={tenantId}
-                      forumConfigPopulated={forumConfigPopulated}
-                      dismissedAtFromServer={bannerDismissedAt}
-                      onDismissPersist={onBannerDismiss}
-                      className="mt-2"
-                    />
-                    <textarea
-                      value={audience.persona}
-                      onChange={(e) =>
-                        updateAudience(idx, {
-                          ...audience,
-                          persona: e.target.value,
-                        })
-                      }
-                      rows={4}
-                      placeholder="Describe how the AI should behave for this audience..."
-                      className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                  </FormField>
                   <FormField
                     label="CTA Messages"
                     hint="One per line. These will be naturally inserted after the turn threshold."
@@ -1835,8 +1770,7 @@ function GuardrailsSection({
 
           {guardrails.audiences.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">
-              No audiences configured. Add one to enable persona-based
-              conversations.
+              No audiences configured. Add one to enable URL-routed targeting.
             </div>
           )}
         </div>
@@ -1856,7 +1790,7 @@ function GuardrailsSection({
           disabled={saving}
           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
         >
-          {saving ? "Saving..." : "Save Guardrails"}
+          {saving ? "Saving..." : "Save Audiences"}
         </button>
       </div>
     </section>
