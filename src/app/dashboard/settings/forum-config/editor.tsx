@@ -45,36 +45,40 @@ function AutoCopiedNotice({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
+/**
+ * CON-200 tab order (Cam, 19 Jun): tenants flow Persona → what the bot can
+ * talk about → what it asks visitors → conversation length → what happens
+ * after. Allowed topics and Topic boundaries are stacked inside one
+ * "Topic scope" tab to drop the count from six to five and put both
+ * scope controls in one place.
+ */
 const TABS: { key: EditorTabKey; label: string; description: string }[] = [
   {
     key: "ai_persona",
     label: "Persona",
-    description: "Tone, voice, banned words.",
+    description: "How your bot speaks — tone, voice, banned words.",
+  },
+  {
+    key: "topic_scope",
+    label: "Topic scope",
+    description:
+      "What your bot will and won't discuss — allowed topics and boundary rules.",
   },
   {
     key: "qualifying_questions",
-    label: "Qualifying questions",
-    description: "What the bot asks visitors up front.",
-  },
-  {
-    key: "allowed_topics",
-    label: "Allowed topics",
-    description: "What the bot will and won't talk about.",
-  },
-  {
-    key: "topic_boundaries",
-    label: "Topic boundaries",
-    description: "Deflect rules and hard-block topics.",
-  },
-  {
-    key: "follow_up",
-    label: "Follow-up",
-    description: "Rules, capture policies, contact methods, destinations.",
+    label: "Qualifying",
+    description: "Multiple-choice questions the bot asks every new visitor.",
   },
   {
     key: "conversation_limits",
     label: "Limits",
-    description: "Maximum turns before CTA and idle timeout.",
+    description: "Maximum turns before the bot offers a CTA, and idle timeout.",
+  },
+  {
+    key: "follow_up",
+    label: "Follow-up",
+    description:
+      "What happens when a visitor needs a human — capture, escalate, route.",
   },
 ];
 
@@ -115,6 +119,16 @@ export function ForumConfigEditor({
   const [topicBoundaries, setTopicBoundaries] = useState(initialTopicBoundaries);
   const [showAutoCopiedNotice, setShowAutoCopiedNotice] = useState(autoCopied);
 
+  // CON-200: track per-slice dirty state so tabs can show an unsaved-changes
+  // dot when a tenant edits one tab and clicks across to another.
+  const [dirty, setDirty] = useState<Record<string, boolean>>({});
+  const setSliceDirty = useCallback((sliceKey: string, isDirty: boolean) => {
+    setDirty((prev) => {
+      if (prev[sliceKey] === isDirty) return prev;
+      return { ...prev, [sliceKey]: isDirty };
+    });
+  }, []);
+
   const handleSliceSaved = useCallback(
     (slice: AuthoringSliceKey, value: unknown) => {
       setForumConfig((prev) => ({ ...prev, [slice]: value }));
@@ -123,6 +137,15 @@ export function ForumConfigEditor({
     },
     [],
   );
+
+  // A "topic_scope" tab is dirty if either of its two child slices are dirty.
+  const tabDirty: Record<EditorTabKey, boolean> = {
+    ai_persona: !!dirty.ai_persona,
+    topic_scope: !!dirty.allowed_topics || !!dirty.topic_boundaries,
+    qualifying_questions: !!dirty.qualifying_questions,
+    conversation_limits: !!dirty.conversation_limits,
+    follow_up: !!dirty.follow_up,
+  };
 
   return (
     <div>
@@ -137,6 +160,7 @@ export function ForumConfigEditor({
       >
         {TABS.map((t) => {
           const active = t.key === activeTab;
+          const isDirty = tabDirty[t.key];
           return (
             <button
               key={t.key}
@@ -147,13 +171,20 @@ export function ForumConfigEditor({
               id={`tab-${t.key}`}
               onClick={() => setActiveTab(t.key)}
               className={
-                "px-4 py-2 -mb-px text-sm font-medium border-b-2 transition-colors " +
+                "inline-flex items-center gap-1.5 px-4 py-2 -mb-px text-sm font-medium border-b-2 transition-colors " +
                 (active
                   ? "border-[#FF6B2C] text-zinc-900"
                   : "border-transparent text-zinc-500 hover:text-zinc-900")
               }
             >
               {t.label}
+              {isDirty && (
+                <span
+                  aria-label="unsaved changes"
+                  title="Unsaved changes"
+                  className="inline-block h-2 w-2 rounded-full bg-[#FF6B2C]"
+                />
+              )}
             </button>
           );
         })}
@@ -173,6 +204,26 @@ export function ForumConfigEditor({
             <PersonaPanel
               initialValue={forumConfig.ai_persona}
               onSaved={(v) => handleSliceSaved("ai_persona", v)}
+              onDirtyChange={(d) => setSliceDirty("ai_persona", d)}
+            />
+          </div>
+        )}
+        {activeTab === "topic_scope" && (
+          <div
+            role="tabpanel"
+            id="panel-topic_scope"
+            aria-labelledby="tab-topic_scope"
+            className="space-y-6"
+          >
+            <AllowedTopicsPanel
+              initialValue={forumConfig.allowed_topics}
+              onSaved={(v) => handleSliceSaved("allowed_topics", v)}
+              onDirtyChange={(d) => setSliceDirty("allowed_topics", d)}
+            />
+            <TopicBoundariesPanel
+              initialValue={topicBoundaries}
+              onSaved={setTopicBoundaries}
+              onDirtyChange={(d) => setSliceDirty("topic_boundaries", d)}
             />
           </div>
         )}
@@ -185,42 +236,7 @@ export function ForumConfigEditor({
             <QualifyingPanel
               initialValue={forumConfig.qualifying_questions}
               onSaved={(v) => handleSliceSaved("qualifying_questions", v)}
-            />
-          </div>
-        )}
-        {activeTab === "allowed_topics" && (
-          <div
-            role="tabpanel"
-            id="panel-allowed_topics"
-            aria-labelledby="tab-allowed_topics"
-          >
-            <AllowedTopicsPanel
-              initialValue={forumConfig.allowed_topics}
-              onSaved={(v) => handleSliceSaved("allowed_topics", v)}
-            />
-          </div>
-        )}
-        {activeTab === "topic_boundaries" && (
-          <div
-            role="tabpanel"
-            id="panel-topic_boundaries"
-            aria-labelledby="tab-topic_boundaries"
-          >
-            <TopicBoundariesPanel
-              initialValue={topicBoundaries}
-              onSaved={setTopicBoundaries}
-            />
-          </div>
-        )}
-        {activeTab === "follow_up" && (
-          <div
-            role="tabpanel"
-            id="panel-follow_up"
-            aria-labelledby="tab-follow_up"
-          >
-            <FollowUpPanel
-              initialValue={forumConfig.follow_up}
-              onSaved={(v) => handleSliceSaved("follow_up", v)}
+              onDirtyChange={(d) => setSliceDirty("qualifying_questions", d)}
             />
           </div>
         )}
@@ -233,6 +249,20 @@ export function ForumConfigEditor({
             <ConversationLimitsPanel
               initialValue={conversationLimits}
               onSaved={setConversationLimits}
+              onDirtyChange={(d) => setSliceDirty("conversation_limits", d)}
+            />
+          </div>
+        )}
+        {activeTab === "follow_up" && (
+          <div
+            role="tabpanel"
+            id="panel-follow_up"
+            aria-labelledby="tab-follow_up"
+          >
+            <FollowUpPanel
+              initialValue={forumConfig.follow_up}
+              onSaved={(v) => handleSliceSaved("follow_up", v)}
+              onDirtyChange={(d) => setSliceDirty("follow_up", d)}
             />
           </div>
         )}

@@ -7,10 +7,17 @@ export type AuthoringSliceKey =
   | "allowed_topics"
   | "follow_up";
 
+/**
+ * CON-200 tab grouping: "Allowed topics" + "Topic boundaries" share a single
+ * "Topic scope" tab so tenants see one place for "what the bot will and
+ * won't talk about". The underlying slices stay split (different APIs).
+ */
 export type EditorTabKey =
-  | AuthoringSliceKey
-  | "topic_boundaries"
-  | "conversation_limits";
+  | "ai_persona"
+  | "topic_scope"
+  | "qualifying_questions"
+  | "conversation_limits"
+  | "follow_up";
 
 /** Raw forumConfig as it comes off the jsonb column — fully unknown-typed. */
 export type ForumConfigRaw = Record<string, unknown>;

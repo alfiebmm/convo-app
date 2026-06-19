@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   followUpSchema,
   type FollowUp,
@@ -43,9 +43,11 @@ function normalise(initial: unknown): FollowUp {
 export function FollowUpPanel({
   initialValue,
   onSaved,
+  onDirtyChange,
 }: {
   initialValue: unknown;
   onSaved: (value: FollowUp) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const initial = useMemo(() => normalise(initialValue), [initialValue]);
   const [value, setValue] = useState<FollowUp>(initial);
@@ -54,6 +56,10 @@ export function FollowUpPanel({
   const [error, setError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(initial) !== JSON.stringify(value);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
@@ -96,7 +102,7 @@ export function FollowUpPanel({
     <PanelCard>
       <PanelHeader
         title="Follow-up"
-        description="The full follow-up policy: when to escalate, when to capture details, where qualified leads go."
+        description="What happens when a visitor needs a human: when to escalate, what details to capture, and where qualified leads are sent."
       />
 
       <div className="space-y-5">
@@ -104,7 +110,7 @@ export function FollowUpPanel({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field
               label="Enabled"
-              hint="Master switch. Off → bot never triggers any follow-up rule."
+              hint="Master switch. When off, the bot never triggers any follow-up."
             >
               <Select
                 value={value.enabled ? "true" : "false"}
@@ -118,7 +124,7 @@ export function FollowUpPanel({
             </Field>
             <Field
               label="Default sensitivity"
-              hint="How eager the bot is to escalate or capture by default."
+              hint="How readily the bot escalates or captures details. Conservative = waits for clear signals; proactive = acts on softer cues."
             >
               <Select
                 value={value.default_sensitivity}
@@ -139,7 +145,7 @@ export function FollowUpPanel({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field
               label="Silent staff-review flagging"
-              hint="If on, the bot can flag a conversation for staff review without interrupting the visitor."
+              hint="When allowed, the bot can flag a conversation for your team to review later without interrupting the visitor."
             >
               <Select
                 value={
@@ -161,7 +167,7 @@ export function FollowUpPanel({
             </Field>
             <Field
               label="Persona source"
-              hint="Where the bot's view of the visitor comes from. V1 only supports qualifying answers."
+              hint="Where the bot gets context about the visitor. Today this is set from their qualifying answers."
             >
               <Select value={value.persona_source} disabled>
                 <option value="qualifying">Qualifying answers</option>
@@ -224,7 +230,7 @@ function ContactMethodsEditor({
   return (
     <SubSection
       title="Contact methods"
-      description="The approved ways the bot may refer a visitor to a human (email, phone, callback, URL, form)."
+      description="The approved ways the bot can hand a visitor over to your team — email, phone, callback request, a booking URL, or a form."
       action={
         <GhostButton
           onClick={() =>
@@ -245,7 +251,10 @@ function ContactMethodsEditor({
       }
     >
       {value.length === 0 ? (
-        <p className="text-sm text-zinc-500">No contact methods yet.</p>
+        <p className="text-sm text-zinc-500">
+          No contact methods yet. Add at least one so the bot has somewhere
+          to send visitors when they want to speak to a human.
+        </p>
       ) : (
         value.map((cm, i) => (
           <div
@@ -263,7 +272,7 @@ function ContactMethodsEditor({
               </DangerButton>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="ID" hint="Short unique key (e.g. sales_email).">
+              <Field label="ID" hint="A short unique name, lowercase with underscores (e.g. sales_email).">
                 <TextInput
                   value={cm.id}
                   onChange={(e) => {
@@ -273,7 +282,7 @@ function ContactMethodsEditor({
                   }}
                 />
               </Field>
-              <Field label="Label" hint="Shown to the visitor.">
+              <Field label="Label" hint="The friendly name your visitor sees (e.g. Email our sales team).">
                 <TextInput
                   value={cm.label}
                   onChange={(e) => {
@@ -305,11 +314,15 @@ function ContactMethodsEditor({
               <Field
                 label={cm.type === "url" || cm.type === "form" ? "URL" : "Value"}
                 hint={
-                  cm.type === "url" || cm.type === "form"
-                    ? "Required for url/form types."
-                    : cm.type === "email" || cm.type === "phone"
-                      ? "Required for email/phone types."
-                      : "Optional for callback."
+                  cm.type === "url"
+                    ? "The destination URL the visitor is sent to."
+                    : cm.type === "form"
+                      ? "The form URL the visitor is sent to."
+                      : cm.type === "email"
+                        ? "The email address visitors are referred to."
+                        : cm.type === "phone"
+                          ? "The phone number visitors are referred to."
+                          : "Optional reference value for callback handling."
                 }
               >
                 {cm.type === "url" || cm.type === "form" ? (
@@ -337,7 +350,7 @@ function ContactMethodsEditor({
             <div className="mt-3">
               <Field
                 label="Available for"
-                hint="Which case types this method is offered for."
+                hint="Which case types this contact method handles — customer support, lead handoff, or both."
               >
                 <div className="flex gap-3">
                   {(["cx_support", "lead"] as const).map((ct) => (
@@ -385,7 +398,7 @@ function CapturePoliciesEditor({
   return (
     <SubSection
       title="Capture policies"
-      description="What the chatbot may collect from a visitor and how it must be disclosed."
+      description="What details the bot may collect from a visitor, and the privacy notice they see first."
       action={
         <GhostButton
           onClick={() =>
@@ -407,7 +420,10 @@ function CapturePoliciesEditor({
       }
     >
       {value.length === 0 ? (
-        <p className="text-sm text-zinc-500">No capture policies yet.</p>
+        <p className="text-sm text-zinc-500">
+          No capture policies yet. Add one for each case type you want the
+          bot to gather details for (e.g. one for leads, one for support).
+        </p>
       ) : (
         value.map((p, i) => (
           <div
@@ -425,7 +441,7 @@ function CapturePoliciesEditor({
               </DangerButton>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="ID" hint="Short unique key (e.g. lead_basic).">
+              <Field label="ID" hint="A short unique name, lowercase with underscores (e.g. lead_basic).">
                 <TextInput
                   value={p.id}
                   onChange={(e) => {
@@ -455,7 +471,7 @@ function CapturePoliciesEditor({
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field
                 label="Required fields"
-                hint="e.g. name, email, mobile, postcode."
+                hint="Details the bot must collect before completing capture (e.g. name, email)."
               >
                 <ChipInput
                   values={p.required_fields as string[]}
@@ -467,7 +483,10 @@ function CapturePoliciesEditor({
                   placeholder="Add a field and press Enter"
                 />
               </Field>
-              <Field label="Optional fields" hint="Collected if offered.">
+              <Field
+                label="Optional fields"
+                hint="Details the bot asks for but won't insist on (e.g. postcode, company)."
+              >
                 <ChipInput
                   values={p.optional_fields as string[]}
                   onChange={(optional_fields) => {
@@ -482,7 +501,7 @@ function CapturePoliciesEditor({
             <div className="mt-3">
               <Field
                 label="Privacy notice"
-                hint="Shown to the visitor before capture starts."
+                hint="Shown to the visitor before they share any details. Keep it plain English."
               >
                 <TextArea
                   rows={2}
@@ -531,7 +550,7 @@ function RulesEditor({
   return (
     <SubSection
       title="Rules"
-      description="When the bot triggers a follow-up action and what action to take. Evaluated in priority order at runtime."
+      description="Triggers the bot watches for, and what it does when one fires. Rules are evaluated in priority order."
       action={
         <GhostButton
           onClick={() =>
@@ -556,7 +575,11 @@ function RulesEditor({
       }
     >
       {value.length === 0 ? (
-        <p className="text-sm text-zinc-500">No rules yet.</p>
+        <p className="text-sm text-zinc-500">
+          No rules yet. A typical starter set is one lead-capture rule and one
+          support-escalation rule — both pointing at the capture policies and
+          contact methods you defined above.
+        </p>
       ) : (
         value.map((r, i) => (
           <div
@@ -574,7 +597,7 @@ function RulesEditor({
               </DangerButton>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="ID" hint="Short unique key.">
+              <Field label="ID" hint="A short unique name, lowercase with underscores (e.g. lead_capture).">
                 <TextInput
                   value={r.id}
                   onChange={(e) => {
@@ -584,7 +607,7 @@ function RulesEditor({
                   }}
                 />
               </Field>
-              <Field label="Name" hint="Human-readable label.">
+              <Field label="Name" hint="A friendly label for your own reference (e.g. Capture lead details).">
                 <TextInput
                   value={r.name}
                   onChange={(e) => {
@@ -660,7 +683,7 @@ function RulesEditor({
               </Field>
               <Field
                 label="Confidence threshold"
-                hint="0–1. Bot only triggers if classifier confidence ≥ this."
+                hint="How sure the bot must be before triggering this rule. 0 = always; 1 = only when certain. Most rules sit at 0.6–0.8."
               >
                 <TextInput
                   type="number"
@@ -682,7 +705,7 @@ function RulesEditor({
               </Field>
               <Field
                 label="Routing key"
-                hint="Identifier used by destinations to filter which cases go where."
+                hint="A label that connects this rule to a destination below. Use the same value in both to wire them together."
               >
                 <TextInput
                   value={r.routing_key}
@@ -695,7 +718,7 @@ function RulesEditor({
               </Field>
               <Field
                 label="Offer title"
-                hint="(offer_follow_up only) Text shown to the visitor on the offer button."
+                hint="Used with the “Offer follow-up” action. The text shown on the button the visitor taps."
               >
                 <TextInput
                   value={r.offer_title ?? ""}
@@ -711,7 +734,7 @@ function RulesEditor({
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field
                 label="Capture policy"
-                hint="Required for offer_follow_up / capture_details_then_flag."
+                hint="Required for “Offer follow-up” and “Capture details then flag” actions."
               >
                 <Select
                   value={r.capture_policy_id ?? ""}
@@ -735,7 +758,7 @@ function RulesEditor({
               </Field>
               <Field
                 label="Contact method"
-                hint="Required for refer_to_approved_contact_method."
+                hint="Required for the “Refer to contact method” action."
               >
                 <Select
                   value={r.contact_method_id ?? ""}
@@ -761,7 +784,7 @@ function RulesEditor({
             <div className="mt-3">
               <Field
                 label="Enabled"
-                hint="Toggle off to keep the rule but skip it at runtime."
+                hint="Turn off to pause this rule without deleting it."
               >
                 <Select
                   value={r.enabled ? "true" : "false"}
@@ -795,7 +818,7 @@ function DestinationsEditor({
   return (
     <SubSection
       title="Destinations"
-      description="Where captured cases are pushed (webhook or CSV export). Filtered by routing_key match against rules."
+      description="Where captured cases end up — a webhook into your CRM, or a CSV export. Match the routing key to a rule above to wire it up."
       action={
         <GhostButton
           onClick={() =>
@@ -816,7 +839,10 @@ function DestinationsEditor({
       }
     >
       {value.length === 0 ? (
-        <p className="text-sm text-zinc-500">No destinations yet.</p>
+        <p className="text-sm text-zinc-500">
+          No destinations yet. Add one per place you want captured cases sent
+          (e.g. one webhook to your CRM, one CSV export for review).
+        </p>
       ) : (
         value.map((d, i) => (
           <div
@@ -890,7 +916,7 @@ function DestinationsEditor({
             <div className="mt-3">
               <Field
                 label="Config (JSON)"
-                hint="Connector-specific config — e.g. webhook URL + headers. Free-form JSON object."
+                hint='Connector-specific settings. For a webhook: {"url": "https://...", "headers": {"Authorization": "..."}}.'
               >
                 <ConfigJsonEditor
                   value={d.config ?? {}}

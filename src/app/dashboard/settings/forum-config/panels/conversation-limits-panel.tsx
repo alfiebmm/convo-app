@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { z } from "zod";
 import {
   Field,
@@ -33,9 +33,11 @@ function normalise(initial: unknown): ConversationLimitsValue {
 export function ConversationLimitsPanel({
   initialValue,
   onSaved,
+  onDirtyChange,
 }: {
   initialValue: unknown;
   onSaved: (value: ConversationLimitsValue) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const initial = useMemo(() => normalise(initialValue), [initialValue]);
   const [value, setValue] = useState<ConversationLimitsValue>(initial);
@@ -44,6 +46,10 @@ export function ConversationLimitsPanel({
   const [error, setError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(initial) !== JSON.stringify(value);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
@@ -92,14 +98,14 @@ export function ConversationLimitsPanel({
     <PanelCard>
       <PanelHeader
         title="Conversation limits"
-        description="Set when the bot should offer a call to action and how long an idle chat stays active."
+        description="When the bot offers a call to action, and how long an idle chat stays open."
       />
 
       <div className="grid max-w-xl gap-4 sm:grid-cols-2">
         <Field
           label="Max turns before CTA"
           htmlFor="max-turns-before-cta"
-          hint="A conversation turn is one visitor message and one bot reply."
+          hint="One turn = one visitor message and one bot reply. Most tenants pick 4–6."
         >
           <TextInput
             id="max-turns-before-cta"
@@ -116,9 +122,9 @@ export function ConversationLimitsPanel({
           />
         </Field>
         <Field
-          label="Idle timeout"
+          label="Idle timeout (minutes)"
           htmlFor="idle-timeout-minutes"
-          hint="Minutes before an inactive conversation is considered idle."
+          hint="How long an inactive chat stays open before it's marked idle."
         >
           <TextInput
             id="idle-timeout-minutes"
