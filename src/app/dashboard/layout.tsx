@@ -11,6 +11,7 @@ import { UserMenu } from "./user-menu";
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: "📊" },
   { href: "/dashboard/conversations", label: "Conversations", icon: "💬" },
+  { href: "/dashboard/contacts", label: "Contacts", icon: "👥" },
   { href: "/dashboard/content", label: "Content", icon: "📝" },
   { href: "/dashboard/knowledge", label: "Knowledge", icon: "📚" },
   { href: "/dashboard/widget", label: "Widget", icon: "⚡" },

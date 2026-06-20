@@ -19,18 +19,24 @@
 import { assertTenantId, assertUuid } from "../cases/tenant-guard";
 import {
   getDefaultContactsStore,
+  type ContactListItemRow,
+  type ContactListSort,
   type ContactRow,
   type ContactsStore,
   type ConversationContactLinkRow,
   type LinkContactInput,
+  type ListContactsByTenantFilters,
   type UpsertContactInput,
 } from "./store";
 
 export type {
+  ContactListItemRow,
+  ContactListSort,
   ContactRow,
   ContactsStore,
   ConversationContactLinkRow,
   LinkContactInput,
+  ListContactsByTenantFilters,
   UpsertContactInput,
 } from "./store";
 
@@ -50,7 +56,9 @@ function resolveStore(opts?: ContactHelperOptions): ContactsStore {
  * Normalise an email for the `email_normalised` column. Trims surrounding
  * whitespace and lowercases. Returns `null` for empty/`undefined`/`null`.
  */
-export function normaliseEmail(email: string | null | undefined): string | null {
+export function normaliseEmail(
+  email: string | null | undefined,
+): string | null {
   if (email === null || email === undefined) return null;
   const trimmed = email.trim().toLowerCase();
   return trimmed === "" ? null : trimmed;
@@ -60,7 +68,9 @@ export function normaliseEmail(email: string | null | undefined): string | null 
  * Pass-through phone normaliser. Trims surrounding whitespace; does NOT
  * attempt to parse E.164. Callers responsible for canonical format.
  */
-export function normalisePhone(phone: string | null | undefined): string | null {
+export function normalisePhone(
+  phone: string | null | undefined,
+): string | null {
   if (phone === null || phone === undefined) return null;
   const trimmed = phone.trim();
   return trimmed === "" ? null : trimmed;
@@ -90,16 +100,12 @@ export function normalisePhone(phone: string | null | undefined): string | null 
 export async function upsertContact(
   tenantId: string,
   input: UpsertContactInput,
-  opts?: ContactHelperOptions
+  opts?: ContactHelperOptions,
 ): Promise<{ contact: ContactRow; created: boolean }> {
   assertTenantId(tenantId);
-  if (
-    !input.emailNormalised &&
-    !input.phoneNormalised &&
-    !input.displayName
-  ) {
+  if (!input.emailNormalised && !input.phoneNormalised && !input.displayName) {
     throw new Error(
-      "upsertContact requires at least one of emailNormalised, phoneNormalised, or displayName"
+      "upsertContact requires at least one of emailNormalised, phoneNormalised, or displayName",
     );
   }
 
@@ -127,7 +133,7 @@ export async function upsertContact(
 export async function linkContactToConversation(
   tenantId: string,
   input: LinkContactInput,
-  opts?: ContactHelperOptions
+  opts?: ContactHelperOptions,
 ): Promise<ConversationContactLinkRow> {
   assertTenantId(tenantId);
   assertUuid(input.conversationId, "conversationId");
@@ -156,10 +162,68 @@ export async function linkContactToConversation(
 export async function getContactById(
   tenantId: string,
   contactId: string,
-  opts?: ContactHelperOptions
+  opts?: ContactHelperOptions,
 ): Promise<ContactRow | null> {
   assertTenantId(tenantId);
   assertUuid(contactId, "contactId");
 
   return resolveStore(opts).findContactById(tenantId, contactId);
+}
+
+// ---------------------------------------------------------------------------
+// listContactsByTenant
+// ---------------------------------------------------------------------------
+
+const CONTACT_LIST_SORTS = new Set<ContactListSort>([
+  "name-asc",
+  "name-desc",
+  "last-seen-desc",
+  "last-seen-asc",
+]);
+
+function cleanText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function cleanDate(value: Date | undefined): Date | undefined {
+  if (!value) return undefined;
+  return Number.isNaN(value.getTime()) ? undefined : value;
+}
+
+/**
+ * List contacts for a tenant with server-side filters, 50/page pagination,
+ * and a stable total count. Persona, marketplace side, company, location,
+ * and service/product are read from `contacts.attributes` so the contact list
+ * remains contact-native; related case type/status comes from the latest
+ * active follow-up case joined in the store.
+ *
+ * @param tenantId Tenant UUID — REQUIRED.
+ * @param filters Search, filter, page, and sort controls.
+ * @returns 50-row page plus total matching contact count.
+ */
+export async function listContactsByTenant(
+  tenantId: string,
+  filters: ListContactsByTenantFilters = {},
+  opts?: ContactHelperOptions,
+): Promise<{ rows: ContactListItemRow[]; totalCount: number }> {
+  assertTenantId(tenantId);
+
+  const page = filters.page && filters.page > 0 ? Math.floor(filters.page) : 1;
+  const sort =
+    filters.sort && CONTACT_LIST_SORTS.has(filters.sort)
+      ? filters.sort
+      : "last-seen-desc";
+
+  return resolveStore(opts).listContactsByTenant(tenantId, {
+    q: cleanText(filters.q),
+    persona: cleanText(filters.persona),
+    mktSide: cleanText(filters.mktSide),
+    caseType: cleanText(filters.caseType),
+    caseStatus: cleanText(filters.caseStatus),
+    from: cleanDate(filters.from),
+    to: cleanDate(filters.to),
+    page,
+    sort,
+  });
 }
