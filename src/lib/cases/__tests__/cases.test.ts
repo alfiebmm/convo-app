@@ -23,6 +23,7 @@ import {
   getCaseById,
   getCaseByConversation,
   listCasesByTenant,
+  listCasesByTenantWithActivity,
   updateCaseStatus,
 } from "../index";
 import { setCaseAttribute, getCaseAttributes } from "../attributes";
@@ -465,6 +466,118 @@ async function runAllTests() {
       "tenantId is required",
       "empty tenantId"
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // listCasesByTenantWithActivity — CON-173 conversations inbox helper
+  // -------------------------------------------------------------------------
+
+  await test("listCasesByTenantWithActivity: tenant A query never returns tenant B cases", async () => {
+    const store = createInMemoryCasesStore();
+    await createCase(
+      TENANT_A,
+      {
+        conversationId: CONVO_A,
+        caseType: "lead",
+        priority: "high",
+        routingKey: "sales",
+        ruleId: "lead-capture",
+      },
+      { store }
+    );
+    await createCase(
+      TENANT_B,
+      {
+        conversationId: CONVO_B,
+        caseType: "lead",
+        priority: "high",
+        routingKey: "sales",
+        ruleId: "lead-capture",
+      },
+      { store }
+    );
+
+    const aList = await listCasesByTenantWithActivity(
+      TENANT_A,
+      {
+        caseType: "lead",
+        priority: "high",
+        routingKey: "sales",
+        ruleId: "lead-capture",
+      },
+      { store }
+    );
+
+    assertEq(aList.length, 1, "only tenant A's matching case is returned");
+    assertEq(aList[0].tenantId, TENANT_A, "returned row belongs to tenant A");
+  });
+
+  await test("listCasesByTenantWithActivity: combined filters narrow by case fields and attributes", async () => {
+    const store = createInMemoryCasesStore();
+    const included = await createCase(
+      TENANT_A,
+      {
+        conversationId: CONVO_A,
+        caseType: "lead",
+        priority: "urgent",
+        routingKey: "sales",
+        ruleId: "lead-capture",
+        assignedTo: USER_X,
+      },
+      { store }
+    );
+    const excluded = await createCase(
+      TENANT_A,
+      {
+        conversationId: "f0000000-0000-4000-8000-000000000003",
+        caseType: "lead",
+        priority: "urgent",
+        routingKey: "support",
+        ruleId: "lead-capture",
+        assignedTo: USER_X,
+      },
+      { store }
+    );
+    await setCaseAttribute(
+      TENANT_A,
+      { caseId: included.id, key: "persona", value: "buyer" },
+      { store }
+    );
+    await setCaseAttribute(
+      TENANT_A,
+      { caseId: included.id, key: "marketplace_side", value: "demand" },
+      { store }
+    );
+    await setCaseAttribute(
+      TENANT_A,
+      { caseId: included.id, key: "topic", value: "pricing" },
+      { store }
+    );
+    await setCaseAttribute(
+      TENANT_A,
+      { caseId: excluded.id, key: "persona", value: "seller" },
+      { store }
+    );
+
+    const rows = await listCasesByTenantWithActivity(
+      TENANT_A,
+      {
+        caseType: "lead",
+        followUpRequired: true,
+        status: "open",
+        priority: "urgent",
+        assignedTo: USER_X,
+        routingKey: "sales",
+        ruleId: "lead-capture",
+        persona: "buyer",
+        marketplaceSide: "demand",
+        topic: "pricing",
+      },
+      { store }
+    );
+
+    assertEq(rows.length, 1, "combined filters return one row");
+    assertEq(rows[0].id, included.id, "included case returned");
   });
 
   // -------------------------------------------------------------------------

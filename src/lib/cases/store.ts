@@ -19,13 +19,18 @@
  *     test fake naturally rejects cross-tenant access.
  */
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 
 import { db as defaultDb } from "@/lib/db";
 import {
+  connectorOutbox,
+  contacts,
+  conversations,
   followUpCaseAttributes,
   followUpCases,
   followUpEvents,
+  messages,
+  users,
 } from "@/lib/db/schema";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +91,40 @@ export interface ListCasesFilters {
   assignedTo?: string | null;
   limit?: number;
   offset?: number;
+}
+
+export interface ListCasesWithActivityFilters {
+  caseType?: string;
+  followUpRequired?: boolean;
+  status?: CaseStatus;
+  priority?: string;
+  assignedTo?: string | null;
+  routingKey?: string;
+  ruleId?: string;
+  persona?: string;
+  marketplaceSide?: string;
+  topic?: string;
+  connectorDestination?: string;
+  connectorDeliveryState?: string;
+  from?: Date;
+  to?: Date;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CaseListItemRow extends CaseRow {
+  conversationStatus: string;
+  conversationVisitorId: string | null;
+  conversationMessageCount: number;
+  conversationStartedAt: Date;
+  latestMessageAt: Date | null;
+  latestCaseEventAt: Date | null;
+  lastActivityAt: Date;
+  contactDisplayName: string | null;
+  assignedOwnerName: string | null;
+  latestConnectorType: string | null;
+  latestConnectorDestinationId: string | null;
+  latestConnectorStatus: string | null;
 }
 
 export interface CaseEventRow {
@@ -179,6 +218,11 @@ export interface CasesStore {
   ): Promise<CaseRow | null>;
 
   listCases(tenantId: string, filters: ListCasesFilters): Promise<CaseRow[]>;
+
+  listCasesWithActivity(
+    tenantId: string,
+    filters: ListCasesWithActivityFilters
+  ): Promise<CaseListItemRow[]>;
 
   insertEvent(tenantId: string, input: RecordCaseEventInput): Promise<CaseEventRow>;
 
@@ -299,6 +343,216 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
         .limit(limit)
         .offset(offset);
       return rows as CaseRow[];
+    },
+
+    async listCasesWithActivity(tenantId, filters) {
+      const where: SQL[] = [sql`base.tenant_id = ${tenantId}`];
+
+      if (filters.caseType) {
+        where.push(sql`base.case_type = ${filters.caseType}`);
+      }
+      if (filters.followUpRequired !== undefined) {
+        if (filters.followUpRequired) {
+          where.push(sql`base.status NOT IN ('resolved', 'dismissed')`);
+        } else {
+          where.push(sql`base.status IN ('resolved', 'dismissed')`);
+        }
+      }
+      if (filters.status) {
+        where.push(sql`base.status = ${filters.status}`);
+      }
+      if (filters.priority) {
+        where.push(sql`base.priority = ${filters.priority}`);
+      }
+      if (filters.assignedTo !== undefined) {
+        if (filters.assignedTo === null) {
+          where.push(sql`base.assigned_to IS NULL`);
+        } else {
+          where.push(sql`base.assigned_to = ${filters.assignedTo}::uuid`);
+        }
+      }
+      if (filters.routingKey) {
+        where.push(sql`base.routing_key = ${filters.routingKey}`);
+      }
+      if (filters.ruleId) {
+        where.push(sql`base.rule_id = ${filters.ruleId}`);
+      }
+      if (filters.persona) {
+        where.push(sql`base.persona = ${filters.persona}`);
+      }
+      if (filters.marketplaceSide) {
+        where.push(sql`base.marketplace_side = ${filters.marketplaceSide}`);
+      }
+      if (filters.topic) {
+        where.push(sql`base.topic = ${filters.topic}`);
+      }
+      if (filters.connectorDestination) {
+        where.push(
+          sql`base.latest_connector_destination_id = ${filters.connectorDestination}`
+        );
+      }
+      if (filters.connectorDeliveryState) {
+        where.push(sql`base.latest_connector_status = ${filters.connectorDeliveryState}`);
+      }
+      if (filters.from) {
+        where.push(sql`base.last_activity_at >= ${filters.from}`);
+      }
+      if (filters.to) {
+        where.push(sql`base.last_activity_at <= ${filters.to}`);
+      }
+
+      const limit = filters.limit ?? 100;
+      const offset = filters.offset ?? 0;
+
+      const result = await db.execute(sql`
+        WITH latest_messages AS (
+          SELECT ${messages.conversationId} AS conversation_id,
+                 MAX(${messages.createdAt}) AS latest_message_at
+            FROM ${messages}
+           GROUP BY ${messages.conversationId}
+        ),
+        latest_case_events AS (
+          SELECT ${followUpEvents.caseId} AS case_id,
+                 MAX(${followUpEvents.createdAt}) AS latest_case_event_at
+            FROM ${followUpEvents}
+           WHERE ${followUpEvents.tenantId} = ${tenantId}
+           GROUP BY ${followUpEvents.caseId}
+        ),
+        latest_connectors AS (
+          SELECT DISTINCT ON (${connectorOutbox.caseId})
+                 ${connectorOutbox.caseId} AS case_id,
+                 ${connectorOutbox.connectorType} AS connector_type,
+                 ${connectorOutbox.destinationId} AS destination_id,
+                 ${connectorOutbox.status} AS status
+            FROM ${connectorOutbox}
+           WHERE ${connectorOutbox.tenantId} = ${tenantId}
+           ORDER BY ${connectorOutbox.caseId}, ${connectorOutbox.createdAt} DESC
+        ),
+        case_attributes AS (
+          SELECT ${followUpCaseAttributes.caseId} AS case_id,
+                 MAX(${followUpCaseAttributes.value} #>> '{}')
+                   FILTER (WHERE ${followUpCaseAttributes.key} = 'persona') AS persona,
+                 MAX(${followUpCaseAttributes.value} #>> '{}')
+                   FILTER (WHERE ${followUpCaseAttributes.key} = 'marketplace_side') AS marketplace_side,
+                 MAX(${followUpCaseAttributes.value} #>> '{}')
+                   FILTER (WHERE ${followUpCaseAttributes.key} = 'topic') AS topic
+            FROM ${followUpCaseAttributes}
+           WHERE ${followUpCaseAttributes.tenantId} = ${tenantId}
+             AND ${followUpCaseAttributes.key} IN ('persona', 'marketplace_side', 'topic')
+           GROUP BY ${followUpCaseAttributes.caseId}
+        ),
+        base AS (
+          SELECT ${followUpCases.id} AS "id",
+                 ${followUpCases.tenantId} AS "tenant_id",
+                 ${followUpCases.conversationId} AS "conversation_id",
+                 ${followUpCases.contactId} AS "contact_id",
+                 ${followUpCases.caseType} AS "case_type",
+                 ${followUpCases.status} AS "status",
+                 ${followUpCases.priority} AS "priority",
+                 ${followUpCases.routingKey} AS "routing_key",
+                 ${followUpCases.title} AS "title",
+                 ${followUpCases.summary} AS "summary",
+                 ${followUpCases.reason} AS "reason",
+                 ${followUpCases.source} AS "source",
+                 ${followUpCases.ruleId} AS "rule_id",
+                 ${followUpCases.classifierConfidence} AS "classifier_confidence",
+                 ${followUpCases.assignedTo} AS "assigned_to",
+                 ${followUpCases.externalSystem} AS "external_system",
+                 ${followUpCases.externalId} AS "external_id",
+                 ${followUpCases.createdAt} AS "created_at",
+                 ${followUpCases.updatedAt} AS "updated_at",
+                 ${followUpCases.resolvedAt} AS "resolved_at",
+                 ${conversations.status} AS "conversation_status",
+                 ${conversations.visitorId} AS "conversation_visitor_id",
+                 ${conversations.messageCount} AS "conversation_message_count",
+                 ${conversations.startedAt} AS "conversation_started_at",
+                 latest_messages.latest_message_at AS "latest_message_at",
+                 latest_case_events.latest_case_event_at AS "latest_case_event_at",
+                 GREATEST(
+                   COALESCE(latest_messages.latest_message_at, ${conversations.startedAt}),
+                   COALESCE(latest_case_events.latest_case_event_at, ${conversations.startedAt})
+                 ) AS "last_activity_at",
+                 ${contacts.displayName} AS "contact_display_name",
+                 ${users.name} AS "assigned_owner_name",
+                 latest_connectors.connector_type AS "latest_connector_type",
+                 latest_connectors.destination_id AS "latest_connector_destination_id",
+                 latest_connectors.status AS "latest_connector_status",
+                 case_attributes.persona AS "persona",
+                 case_attributes.marketplace_side AS "marketplace_side",
+                 case_attributes.topic AS "topic"
+            FROM ${followUpCases}
+            INNER JOIN ${conversations}
+              ON ${conversations.id} = ${followUpCases.conversationId}
+             AND ${conversations.tenantId} = ${tenantId}
+            LEFT JOIN latest_messages
+              ON latest_messages.conversation_id = ${followUpCases.conversationId}
+            LEFT JOIN latest_case_events
+              ON latest_case_events.case_id = ${followUpCases.id}
+            LEFT JOIN ${contacts}
+              ON ${contacts.id} = ${followUpCases.contactId}
+             AND ${contacts.tenantId} = ${tenantId}
+            LEFT JOIN ${users}
+              ON ${users.id} = ${followUpCases.assignedTo}
+            LEFT JOIN latest_connectors
+              ON latest_connectors.case_id = ${followUpCases.id}
+            LEFT JOIN case_attributes
+              ON case_attributes.case_id = ${followUpCases.id}
+           WHERE ${followUpCases.tenantId} = ${tenantId}
+        )
+        SELECT *
+          FROM base
+         WHERE ${and(...where)}
+         ORDER BY base.last_activity_at DESC, base.created_at DESC
+         LIMIT ${limit}
+        OFFSET ${offset}
+      `);
+
+      const raw =
+        (result as unknown as { rows?: Record<string, unknown>[] }).rows ??
+        (result as unknown as Record<string, unknown>[]);
+
+      return raw.map((row) => ({
+        id: String(row.id),
+        tenantId: String(row.tenant_id),
+        conversationId: String(row.conversation_id),
+        contactId: (row.contact_id as string | null) ?? null,
+        caseType: String(row.case_type),
+        status: row.status as CaseStatus,
+        priority: (row.priority as string | null) ?? null,
+        routingKey: (row.routing_key as string | null) ?? null,
+        title: (row.title as string | null) ?? null,
+        summary: (row.summary as string | null) ?? null,
+        reason: (row.reason as string | null) ?? null,
+        source: (row.source as string | null) ?? null,
+        ruleId: (row.rule_id as string | null) ?? null,
+        classifierConfidence:
+          row.classifier_confidence === null || row.classifier_confidence === undefined
+            ? null
+            : Number(row.classifier_confidence),
+        assignedTo: (row.assigned_to as string | null) ?? null,
+        externalSystem: (row.external_system as string | null) ?? null,
+        externalId: (row.external_id as string | null) ?? null,
+        createdAt: new Date(String(row.created_at)),
+        updatedAt: new Date(String(row.updated_at)),
+        resolvedAt: row.resolved_at ? new Date(String(row.resolved_at)) : null,
+        conversationStatus: String(row.conversation_status),
+        conversationVisitorId: (row.conversation_visitor_id as string | null) ?? null,
+        conversationMessageCount: Number(row.conversation_message_count ?? 0),
+        conversationStartedAt: new Date(String(row.conversation_started_at)),
+        latestMessageAt: row.latest_message_at
+          ? new Date(String(row.latest_message_at))
+          : null,
+        latestCaseEventAt: row.latest_case_event_at
+          ? new Date(String(row.latest_case_event_at))
+          : null,
+        lastActivityAt: new Date(String(row.last_activity_at)),
+        contactDisplayName: (row.contact_display_name as string | null) ?? null,
+        assignedOwnerName: (row.assigned_owner_name as string | null) ?? null,
+        latestConnectorType: (row.latest_connector_type as string | null) ?? null,
+        latestConnectorDestinationId:
+          (row.latest_connector_destination_id as string | null) ?? null,
+        latestConnectorStatus: (row.latest_connector_status as string | null) ?? null,
+      }));
     },
 
     async insertEvent(tenantId, input) {
