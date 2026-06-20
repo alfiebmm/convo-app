@@ -22,12 +22,14 @@ import {
   createCase,
   getCaseById,
   getCaseByConversation,
+  getCaseDetailById,
   listCasesByTenant,
   listCasesByTenantWithActivity,
   updateCaseStatus,
 } from "../index";
 import { setCaseAttribute, getCaseAttributes } from "../attributes";
 import { recordCaseEvent } from "../events";
+import { revealCasePiiForTenant } from "../pii";
 import { createInMemoryCasesStore } from "./in-memory-store";
 
 // ---------------------------------------------------------------------------
@@ -578,6 +580,97 @@ async function runAllTests() {
 
     assertEq(rows.length, 1, "combined filters return one row");
     assertEq(rows[0].id, included.id, "included case returned");
+  });
+
+  // -------------------------------------------------------------------------
+  // getCaseDetailById — CON-174 detail graph
+  // -------------------------------------------------------------------------
+
+  await test("getCaseDetailById: returns the tenant-scoped detail graph for the owning tenant", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      {
+        conversationId: CONVO_A,
+        caseType: "lead",
+        title: "Buyer enquiry",
+        ruleId: "lead-capture",
+      },
+      { store }
+    );
+    await setCaseAttribute(
+      TENANT_A,
+      { caseId: created.id, key: "topic", value: "pricing" },
+      { store }
+    );
+    await recordCaseEvent(
+      TENANT_A,
+      {
+        caseId: created.id,
+        conversationId: CONVO_A,
+        actorType: "system",
+        eventType: "case.created",
+      },
+      { store }
+    );
+
+    const detail = await getCaseDetailById(TENANT_A, created.id, { store });
+    assert(detail !== null, "detail returned");
+    assertEq(detail!.case.id, created.id, "case included");
+    assertEq(detail!.attributes.length, 1, "attributes included");
+    assertEq(detail!.events.length, 1, "events included");
+  });
+
+  await test("getCaseDetailById: tenant B cannot read tenant A's detail graph", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    const detail = await getCaseDetailById(TENANT_B, created.id, { store });
+    assertEq(detail, null, "cross-tenant detail lookup returns null");
+  });
+
+  await test("revealCasePiiForTenant: returns the requested field and writes pii_reveal audit event", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+    store._seedCaseDetail(created.id, {
+      contact: {
+        id: "99999999-9999-4999-8999-999999999999",
+        displayName: "Case Contact",
+        emailNormalised: "case@example.com",
+        phoneNormalised: "+61400000000",
+        preferredContactMethod: "email",
+        attributes: {},
+        consentState: "captured",
+        privacyNoticeVersion: "v1",
+        privacyNoticeRecordedAt: new Date("2026-06-20T10:00:00Z"),
+      },
+    });
+
+    const revealed = await revealCasePiiForTenant(
+      TENANT_A,
+      created.id,
+      "emailNormalised",
+      USER_X,
+      { store }
+    );
+    assert(revealed !== null, "value returned");
+    assertEq(revealed!.value, "case@example.com", "email revealed");
+
+    const audit = store
+      ._dump()
+      .events.find((event) => event.eventType === "pii_reveal");
+    assert(audit, "audit event written");
+    assertEq(audit!.tenantId, TENANT_A, "audit tenant scoped");
+    assertEq(audit!.payload.field as string, "emailNormalised", "field logged");
+    assertEq(audit!.payload.actor_id as string, USER_X, "actor logged");
   });
 
   // -------------------------------------------------------------------------

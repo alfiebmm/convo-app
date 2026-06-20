@@ -30,6 +30,7 @@ import {
   followUpCases,
   followUpEvents,
   messages,
+  tenants,
   users,
 } from "@/lib/db/schema";
 
@@ -125,6 +126,60 @@ export interface CaseListItemRow extends CaseRow {
   latestConnectorType: string | null;
   latestConnectorDestinationId: string | null;
   latestConnectorStatus: string | null;
+}
+
+export interface CaseDetailMessageRow {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: Date;
+}
+
+export interface CaseDetailContactRow {
+  id: string;
+  displayName: string | null;
+  emailNormalised: string | null;
+  phoneNormalised: string | null;
+  preferredContactMethod: string | null;
+  attributes: Record<string, unknown>;
+  consentState: string | null;
+  privacyNoticeVersion: string | null;
+  privacyNoticeRecordedAt: Date | null;
+}
+
+export interface CaseDetailConnectorRow {
+  id: string;
+  connectorType: string;
+  destinationId: string | null;
+  payloadVersion: string;
+  payload: Record<string, unknown>;
+  status: string;
+  attemptCount: number;
+  lastError: string | null;
+  nextAttemptAt: Date;
+  createdAt: Date;
+  deliveredAt: Date | null;
+}
+
+export interface CaseDetailRow {
+  case: CaseRow;
+  conversation: {
+    id: string;
+    status: string;
+    visitorId: string | null;
+    messageCount: number;
+    metadata: Record<string, unknown>;
+    startedAt: Date;
+    completedAt: Date | null;
+    createdAt: Date;
+  };
+  contact: CaseDetailContactRow | null;
+  assignedOwnerName: string | null;
+  tenantSettings: Record<string, unknown> | null;
+  messages: CaseDetailMessageRow[];
+  attributes: CaseAttributeRow[];
+  events: CaseEventRow[];
+  connectors: CaseDetailConnectorRow[];
 }
 
 export interface CaseEventRow {
@@ -223,6 +278,11 @@ export interface CasesStore {
     tenantId: string,
     filters: ListCasesWithActivityFilters
   ): Promise<CaseListItemRow[]>;
+
+  getCaseDetailById(
+    tenantId: string,
+    caseId: string
+  ): Promise<CaseDetailRow | null>;
 
   insertEvent(tenantId: string, input: RecordCaseEventInput): Promise<CaseEventRow>;
 
@@ -553,6 +613,256 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
           (row.latest_connector_destination_id as string | null) ?? null,
         latestConnectorStatus: (row.latest_connector_status as string | null) ?? null,
       }));
+    },
+
+    async getCaseDetailById(tenantId, caseId) {
+      const result = await db.execute(sql`
+        WITH base AS (
+          SELECT ${followUpCases.id} AS "id",
+                 ${followUpCases.tenantId} AS "tenant_id",
+                 ${followUpCases.conversationId} AS "conversation_id",
+                 ${followUpCases.contactId} AS "contact_id",
+                 ${followUpCases.caseType} AS "case_type",
+                 ${followUpCases.status} AS "status",
+                 ${followUpCases.priority} AS "priority",
+                 ${followUpCases.routingKey} AS "routing_key",
+                 ${followUpCases.title} AS "title",
+                 ${followUpCases.summary} AS "summary",
+                 ${followUpCases.reason} AS "reason",
+                 ${followUpCases.source} AS "source",
+                 ${followUpCases.ruleId} AS "rule_id",
+                 ${followUpCases.classifierConfidence} AS "classifier_confidence",
+                 ${followUpCases.assignedTo} AS "assigned_to",
+                 ${followUpCases.externalSystem} AS "external_system",
+                 ${followUpCases.externalId} AS "external_id",
+                 ${followUpCases.createdAt} AS "created_at",
+                 ${followUpCases.updatedAt} AS "updated_at",
+                 ${followUpCases.resolvedAt} AS "resolved_at",
+                 ${conversations.status} AS "conversation_status",
+                 ${conversations.visitorId} AS "conversation_visitor_id",
+                 ${conversations.messageCount} AS "conversation_message_count",
+                 ${conversations.metadata} AS "conversation_metadata",
+                 ${conversations.startedAt} AS "conversation_started_at",
+                 ${conversations.completedAt} AS "conversation_completed_at",
+                 ${conversations.createdAt} AS "conversation_created_at",
+                 ${contacts.id} AS "contact_row_id",
+                 ${contacts.displayName} AS "contact_display_name",
+                 ${contacts.emailNormalised} AS "contact_email_normalised",
+                 ${contacts.phoneNormalised} AS "contact_phone_normalised",
+                 ${contacts.preferredContactMethod} AS "contact_preferred_contact_method",
+                 ${contacts.attributes} AS "contact_attributes",
+                 ${contacts.consentState} AS "contact_consent_state",
+                 ${contacts.privacyNoticeVersion} AS "contact_privacy_notice_version",
+                 ${contacts.updatedAt} AS "contact_updated_at",
+                 ${users.name} AS "assigned_owner_name",
+                 ${tenants.settings} AS "tenant_settings"
+            FROM ${followUpCases}
+            INNER JOIN ${conversations}
+              ON ${conversations.id} = ${followUpCases.conversationId}
+             AND ${conversations.tenantId} = ${tenantId}
+            INNER JOIN ${tenants}
+              ON ${tenants.id} = ${followUpCases.tenantId}
+            LEFT JOIN ${contacts}
+              ON ${contacts.id} = ${followUpCases.contactId}
+             AND ${contacts.tenantId} = ${tenantId}
+            LEFT JOIN ${users}
+              ON ${users.id} = ${followUpCases.assignedTo}
+           WHERE ${followUpCases.tenantId} = ${tenantId}
+             AND ${followUpCases.id} = ${caseId}
+           LIMIT 1
+        )
+        SELECT base.*,
+               COALESCE((
+                 SELECT json_agg(json_build_object(
+                   'id', ${messages.id},
+                   'role', ${messages.role},
+                   'content', ${messages.content},
+                   'createdAt', ${messages.createdAt}
+                 ) ORDER BY ${messages.createdAt} ASC)
+                   FROM ${messages}
+                  WHERE ${messages.conversationId} = base.conversation_id
+               ), '[]'::json) AS "messages_json",
+               COALESCE((
+                 SELECT json_agg(json_build_object(
+                   'tenantId', ${followUpCaseAttributes.tenantId},
+                   'caseId', ${followUpCaseAttributes.caseId},
+                   'key', ${followUpCaseAttributes.key},
+                   'value', ${followUpCaseAttributes.value},
+                   'source', ${followUpCaseAttributes.source},
+                   'confidence', ${followUpCaseAttributes.confidence},
+                   'detectedAt', ${followUpCaseAttributes.detectedAt}
+                 ) ORDER BY ${followUpCaseAttributes.key} ASC)
+                   FROM ${followUpCaseAttributes}
+                  WHERE ${followUpCaseAttributes.tenantId} = ${tenantId}
+                    AND ${followUpCaseAttributes.caseId} = base.id
+               ), '[]'::json) AS "attributes_json",
+               COALESCE((
+                 SELECT json_agg(json_build_object(
+                   'id', ${followUpEvents.id},
+                   'tenantId', ${followUpEvents.tenantId},
+                   'caseId', ${followUpEvents.caseId},
+                   'conversationId', ${followUpEvents.conversationId},
+                   'actorType', ${followUpEvents.actorType},
+                   'actorId', ${followUpEvents.actorId},
+                   'eventType', ${followUpEvents.eventType},
+                   'payload', ${followUpEvents.payload},
+                   'createdAt', ${followUpEvents.createdAt}
+                 ) ORDER BY ${followUpEvents.createdAt} DESC)
+                   FROM ${followUpEvents}
+                  WHERE ${followUpEvents.tenantId} = ${tenantId}
+                    AND ${followUpEvents.caseId} = base.id
+               ), '[]'::json) AS "events_json",
+               COALESCE((
+                 SELECT json_agg(json_build_object(
+                   'id', ${connectorOutbox.id},
+                   'connectorType', ${connectorOutbox.connectorType},
+                   'destinationId', ${connectorOutbox.destinationId},
+                   'payloadVersion', ${connectorOutbox.payloadVersion},
+                   'payload', ${connectorOutbox.payload},
+                   'status', ${connectorOutbox.status},
+                   'attemptCount', ${connectorOutbox.attemptCount},
+                   'lastError', ${connectorOutbox.lastError},
+                   'nextAttemptAt', ${connectorOutbox.nextAttemptAt},
+                   'createdAt', ${connectorOutbox.createdAt},
+                   'deliveredAt', ${connectorOutbox.deliveredAt}
+                 ) ORDER BY ${connectorOutbox.createdAt} DESC)
+                   FROM ${connectorOutbox}
+                  WHERE ${connectorOutbox.tenantId} = ${tenantId}
+                    AND ${connectorOutbox.caseId} = base.id
+               ), '[]'::json) AS "connectors_json"
+          FROM base
+      `);
+
+      const rawRows =
+        (result as unknown as { rows?: Record<string, unknown>[] }).rows ??
+        (result as unknown as Record<string, unknown>[]);
+      const row = rawRows[0];
+      if (!row) return null;
+
+      const parseJsonArray = <T>(value: unknown): T[] => {
+        if (Array.isArray(value)) return value as T[];
+        if (typeof value === "string") return JSON.parse(value) as T[];
+        return [];
+      };
+      const asRecord = (value: unknown): Record<string, unknown> =>
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {};
+
+      const caseRow: CaseRow = {
+        id: String(row.id),
+        tenantId: String(row.tenant_id),
+        conversationId: String(row.conversation_id),
+        contactId: (row.contact_id as string | null) ?? null,
+        caseType: String(row.case_type),
+        status: row.status as CaseStatus,
+        priority: (row.priority as string | null) ?? null,
+        routingKey: (row.routing_key as string | null) ?? null,
+        title: (row.title as string | null) ?? null,
+        summary: (row.summary as string | null) ?? null,
+        reason: (row.reason as string | null) ?? null,
+        source: (row.source as string | null) ?? null,
+        ruleId: (row.rule_id as string | null) ?? null,
+        classifierConfidence:
+          row.classifier_confidence === null || row.classifier_confidence === undefined
+            ? null
+            : Number(row.classifier_confidence),
+        assignedTo: (row.assigned_to as string | null) ?? null,
+        externalSystem: (row.external_system as string | null) ?? null,
+        externalId: (row.external_id as string | null) ?? null,
+        createdAt: new Date(String(row.created_at)),
+        updatedAt: new Date(String(row.updated_at)),
+        resolvedAt: row.resolved_at ? new Date(String(row.resolved_at)) : null,
+      };
+
+      return {
+        case: caseRow,
+        conversation: {
+          id: String(row.conversation_id),
+          status: String(row.conversation_status),
+          visitorId: (row.conversation_visitor_id as string | null) ?? null,
+          messageCount: Number(row.conversation_message_count ?? 0),
+          metadata: asRecord(row.conversation_metadata),
+          startedAt: new Date(String(row.conversation_started_at)),
+          completedAt: row.conversation_completed_at
+            ? new Date(String(row.conversation_completed_at))
+            : null,
+          createdAt: new Date(String(row.conversation_created_at)),
+        },
+        contact: row.contact_row_id
+          ? {
+              id: String(row.contact_row_id),
+              displayName: (row.contact_display_name as string | null) ?? null,
+              emailNormalised:
+                (row.contact_email_normalised as string | null) ?? null,
+              phoneNormalised:
+                (row.contact_phone_normalised as string | null) ?? null,
+              preferredContactMethod:
+                (row.contact_preferred_contact_method as string | null) ?? null,
+              attributes: asRecord(row.contact_attributes),
+              consentState: (row.contact_consent_state as string | null) ?? null,
+              privacyNoticeVersion:
+                (row.contact_privacy_notice_version as string | null) ?? null,
+              privacyNoticeRecordedAt: row.contact_updated_at
+                ? new Date(String(row.contact_updated_at))
+                : null,
+            }
+          : null,
+        assignedOwnerName: (row.assigned_owner_name as string | null) ?? null,
+        tenantSettings: asRecord(row.tenant_settings),
+        messages: parseJsonArray<Record<string, unknown>>(row.messages_json).map(
+          (message) => ({
+            id: String(message.id),
+            role: String(message.role),
+            content: String(message.content),
+            createdAt: new Date(String(message.createdAt)),
+          })
+        ),
+        attributes: parseJsonArray<Record<string, unknown>>(
+          row.attributes_json
+        ).map((attribute) => ({
+          tenantId: String(attribute.tenantId),
+          caseId: String(attribute.caseId),
+          key: String(attribute.key),
+          value: attribute.value,
+          source: (attribute.source as string | null) ?? null,
+          confidence:
+            attribute.confidence === null || attribute.confidence === undefined
+              ? null
+              : Number(attribute.confidence),
+          detectedAt: new Date(String(attribute.detectedAt)),
+        })),
+        events: parseJsonArray<Record<string, unknown>>(row.events_json).map(
+          (event) => ({
+            id: String(event.id),
+            tenantId: String(event.tenantId),
+            caseId: String(event.caseId),
+            conversationId: String(event.conversationId),
+            actorType: String(event.actorType),
+            actorId: (event.actorId as string | null) ?? null,
+            eventType: String(event.eventType),
+            payload: asRecord(event.payload),
+            createdAt: new Date(String(event.createdAt)),
+          })
+        ),
+        connectors: parseJsonArray<Record<string, unknown>>(
+          row.connectors_json
+        ).map((connector) => ({
+          id: String(connector.id),
+          connectorType: String(connector.connectorType),
+          destinationId: (connector.destinationId as string | null) ?? null,
+          payloadVersion: String(connector.payloadVersion),
+          payload: asRecord(connector.payload),
+          status: String(connector.status),
+          attemptCount: Number(connector.attemptCount ?? 0),
+          lastError: (connector.lastError as string | null) ?? null,
+          nextAttemptAt: new Date(String(connector.nextAttemptAt)),
+          createdAt: new Date(String(connector.createdAt)),
+          deliveredAt: connector.deliveredAt
+            ? new Date(String(connector.deliveredAt))
+            : null,
+        })),
+      };
     },
 
     async insertEvent(tenantId, input) {
