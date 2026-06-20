@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { APP_CONFIG } from "@/config/app";
-import { LegacyDeprecationBanner } from "../settings/legacy-deprecation-banner";
 
 type WidgetPosition = "bottom-left" | "bottom-right";
 type WidgetSize = "sm" | "md" | "lg";
@@ -40,11 +39,6 @@ interface TenantInfo {
   domain: string | null;
 }
 
-type ForumConfigPopulated = {
-  ai_persona?: boolean;
-  allowed_topics?: boolean;
-};
-
 const DEFAULT_WIDGET: WidgetConfig = {
   chatbotName: APP_CONFIG.name,
   welcomeMessage: "Hi! How can I help you today?",
@@ -68,24 +62,15 @@ function normaliseSize(v: unknown): WidgetSize {
 export default function WidgetPage() {
   const [config, setConfig] = useState<WidgetConfig>(DEFAULT_WIDGET);
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
-  const [forumConfigPopulated, setForumConfigPopulated] =
-    useState<ForumConfigPopulated>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/settings").then((r) => r.json()),
-      fetch("/api/settings/forum-config")
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
-    ])
-      .then(([data, forumConfigData]) => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
         if (data.tenant) setTenant(data.tenant);
-        setForumConfigPopulated(
-          deriveForumConfigPopulated(forumConfigData?.forumConfigRaw),
-        );
         const w = data.settings?.widget as Partial<WidgetConfig> | undefined;
         if (w) {
           setConfig({
@@ -233,26 +218,6 @@ export default function WidgetPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700">
-              Persona / System Prompt
-            </label>
-            {/* CON-192 — superseded by Chatbot Behaviour > Persona. */}
-            <LegacyDeprecationBanner
-              surface="widget-prompt"
-              tenantId={tenant?.id}
-              forumConfigPopulated={forumConfigPopulated}
-              className="mt-2 max-w-md"
-            />
-            <textarea
-              rows={4}
-              value={config.systemPrompt}
-              onChange={(e) =>
-                setConfig((c) => ({ ...c, systemPrompt: e.target.value }))
-              }
-              className="mt-2 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
               Primary Colour
             </label>
             <div className="mt-1 flex flex-wrap items-center gap-3">
@@ -375,26 +340,3 @@ export default function WidgetPage() {
   );
 }
 
-function deriveForumConfigPopulated(raw: unknown): ForumConfigPopulated {
-  const forumConfig =
-    typeof raw === "object" && raw !== null && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
-  const aiPersona =
-    typeof forumConfig.ai_persona === "object" &&
-    forumConfig.ai_persona !== null &&
-    !Array.isArray(forumConfig.ai_persona)
-      ? (forumConfig.ai_persona as Record<string, unknown>)
-      : null;
-
-  return {
-    ai_persona:
-      !!aiPersona &&
-      (typeof aiPersona.voice_description === "string"
-        ? aiPersona.voice_description.trim().length > 0
-        : Object.keys(aiPersona).length > 0),
-    allowed_topics:
-      Array.isArray(forumConfig.allowed_topics) &&
-      forumConfig.allowed_topics.length > 0,
-  };
-}
