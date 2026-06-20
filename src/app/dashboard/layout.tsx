@@ -27,7 +27,7 @@ export default async function DashboardLayout({
   const userTenants = await getUserTenantsForCurrentUser();
 
   return (
-    <div className="flex min-h-screen">
+    <div className="dashboard-shell flex min-h-screen">
       {/* Sidebar */}
       <aside className="w-64 border-r border-slate-200 bg-white">
         <div className="flex h-16 items-center gap-2 border-b border-slate-200 px-6">
