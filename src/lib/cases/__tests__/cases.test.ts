@@ -18,18 +18,24 @@
  */
 
 import {
+  addCaseNote,
   assignCase,
+  assignCaseWithAudit,
   createCase,
+  dismissCaseWithAudit,
   getCaseById,
   getCaseByConversation,
   getCaseDetailById,
   listCasesByTenant,
   listCasesByTenantWithActivity,
+  requeueOutboxRow,
+  resolveCaseWithAudit,
   updateCaseStatus,
 } from "../index";
 import { setCaseAttribute, getCaseAttributes } from "../attributes";
 import { recordCaseEvent } from "../events";
 import { revealCasePiiForTenant } from "../pii";
+import { sanitizeCaseNoteHtml } from "../sanitize";
 import { createInMemoryCasesStore } from "./in-memory-store";
 
 // ---------------------------------------------------------------------------
@@ -95,6 +101,7 @@ const TENANT_B = "b2222222-2222-4222-9222-222222222222";
 const CONVO_A = "cccccccc-cccc-4ccc-accc-cccccccccccc";
 const CONVO_B = "dddddddd-dddd-4ddd-addd-dddddddddddd";
 const USER_X = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const OUTBOX_A = "77777777-7777-4777-8777-777777777777";
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -377,6 +384,282 @@ async function runAllTests() {
       "assigneeUserId must be a UUID",
       "garbage assignee"
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // Operational action helpers — CON-177
+  // -------------------------------------------------------------------------
+
+  await test("assignCaseWithAudit: happy path writes assignedTo and emits case_assigned", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead", assignedTo: null },
+      { store }
+    );
+
+    const updated = await assignCaseWithAudit(
+      TENANT_A,
+      created.id,
+      USER_X,
+      USER_X,
+      { store }
+    );
+
+    assert(updated !== null, "assignment returned row");
+    assertEq(updated!.assignedTo, USER_X, "assignedTo set");
+    const event = store._dump().events.find((row) => row.eventType === "case_assigned");
+    assert(event, "audit event emitted");
+    assertEq(event!.payload.assigned_to as string, USER_X, "new assignee logged");
+    assertEq(event!.payload.prev_assigned_to as null, null, "previous assignee logged");
+    assertEq(event!.payload.actor_id as string, USER_X, "actor logged");
+  });
+
+  await test("assignCaseWithAudit: tenant B cannot assign tenant A's case or emit an event", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    const result = await assignCaseWithAudit(
+      TENANT_B,
+      created.id,
+      USER_X,
+      USER_X,
+      { store }
+    );
+
+    assertEq(result, null, "cross-tenant assign returns null");
+    assertEq(store._dump().events.length, 0, "no cross-tenant event emitted");
+    const peek = await getCaseById(TENANT_A, created.id, { store });
+    assertEq(peek!.assignedTo, null, "tenant A row untouched");
+  });
+
+  await test("resolveCaseWithAudit: happy path resolves and emits case_resolved", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    const resolved = await resolveCaseWithAudit(TENANT_A, created.id, USER_X, {
+      store,
+    });
+
+    assert(resolved !== null, "resolve returned row");
+    assertEq(resolved!.status, "resolved", "status set");
+    assert(resolved!.resolvedAt !== null, "resolvedAt stamped");
+    const event = store._dump().events.find((row) => row.eventType === "case_resolved");
+    assert(event, "audit event emitted");
+    assertEq(event!.payload.actor_id as string, USER_X, "actor logged");
+  });
+
+  await test("resolveCaseWithAudit: tenant B cannot resolve tenant A's case", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    const result = await resolveCaseWithAudit(TENANT_B, created.id, USER_X, {
+      store,
+    });
+
+    assertEq(result, null, "cross-tenant resolve returns null");
+    assertEq(store._dump().events.length, 0, "no event emitted");
+  });
+
+  await test("dismissCaseWithAudit: happy path dismisses and emits case_dismissed with reason", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    const dismissed = await dismissCaseWithAudit(
+      TENANT_A,
+      created.id,
+      "Duplicate enquiry",
+      USER_X,
+      { store }
+    );
+
+    assert(dismissed !== null, "dismiss returned row");
+    assertEq(dismissed!.status, "dismissed", "status set");
+    const event = store._dump().events.find((row) => row.eventType === "case_dismissed");
+    assert(event, "audit event emitted");
+    assertEq(event!.payload.reason as string, "Duplicate enquiry", "reason logged");
+  });
+
+  await test("dismissCaseWithAudit: requires a 1-1000 character reason", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    await assertThrows(
+      () => dismissCaseWithAudit(TENANT_A, created.id, "", USER_X, { store }),
+      "Dismiss reason must be 1-1000 characters",
+      "empty reason"
+    );
+  });
+
+  await test("addCaseNote: happy path stores a sanitised note_added event", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    const event = await addCaseNote(
+      TENANT_A,
+      created.id,
+      `<p><b>Call</b> <i>back</i> <a href="https://example.com" onclick="x()">link</a><script>alert(1)</script></p>`,
+      USER_X,
+      { store }
+    );
+
+    assert(event !== null, "note event returned");
+    assertEq(event!.eventType, "note_added", "event type set");
+    const body = event!.payload.body_html as string;
+    assert(body.includes("<strong>Call</strong>"), "bold preserved as strong");
+    assert(body.includes("<em>back</em>"), "italic preserved as em");
+    assert(body.includes('href="https://example.com"'), "safe link preserved");
+    assert(!body.includes("onclick"), "event handler stripped");
+    assert(!body.includes("script"), "script stripped");
+  });
+
+  await test("addCaseNote: tenant B cannot append to tenant A's case", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+
+    const result = await addCaseNote(TENANT_B, created.id, "<p>Hidden</p>", USER_X, {
+      store,
+    });
+
+    assertEq(result, null, "cross-tenant note returns null");
+    assertEq(store._dump().events.length, 0, "no event emitted");
+  });
+
+  await test("requeueOutboxRow: failed row is requeued and emits sync_retried", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+    store._seedConnector({
+      id: OUTBOX_A,
+      tenantId: TENANT_A,
+      caseId: created.id,
+      connectorType: "hubspot",
+      destinationId: "main",
+      payloadVersion: "1",
+      payload: {},
+      status: "failed",
+      attemptCount: 2,
+      lastError: "timeout",
+      nextAttemptAt: new Date("2026-06-20T00:00:00Z"),
+      createdAt: new Date("2026-06-20T00:00:00Z"),
+      deliveredAt: null,
+      idempotencyKey: "tenant-a:case-a",
+    });
+
+    const result = await requeueOutboxRow(TENANT_A, OUTBOX_A, USER_X, { store });
+
+    assert(result !== null, "result returned");
+    assertEq(result!.requeued, true, "marked requeued");
+    assertEq(result!.row.status, "pending", "status set pending");
+    const event = store._dump().events.find((row) => row.eventType === "sync_retried");
+    assert(event, "audit event emitted");
+    assertEq(event!.payload.outbox_id as string, OUTBOX_A, "outbox id logged");
+  });
+
+  await test("requeueOutboxRow: pending or sent rows no-op without emitting sync_retried", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+    store._seedConnector({
+      id: OUTBOX_A,
+      tenantId: TENANT_A,
+      caseId: created.id,
+      connectorType: "hubspot",
+      destinationId: "main",
+      payloadVersion: "1",
+      payload: {},
+      status: "pending",
+      attemptCount: 1,
+      lastError: null,
+      nextAttemptAt: new Date(),
+      createdAt: new Date(),
+      deliveredAt: null,
+      idempotencyKey: "tenant-a:case-a",
+    });
+
+    const result = await requeueOutboxRow(TENANT_A, OUTBOX_A, USER_X, { store });
+
+    assert(result !== null, "result returned");
+    assertEq(result!.requeued, false, "marked no-op");
+    assertEq(store._dump().events.length, 0, "no event emitted");
+  });
+
+  await test("requeueOutboxRow: tenant B cannot requeue tenant A's outbox row", async () => {
+    const store = createInMemoryCasesStore();
+    const created = await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead" },
+      { store }
+    );
+    store._seedConnector({
+      id: OUTBOX_A,
+      tenantId: TENANT_A,
+      caseId: created.id,
+      connectorType: "hubspot",
+      destinationId: "main",
+      payloadVersion: "1",
+      payload: {},
+      status: "failed",
+      attemptCount: 1,
+      lastError: "timeout",
+      nextAttemptAt: new Date(),
+      createdAt: new Date(),
+      deliveredAt: null,
+      idempotencyKey: "tenant-a:case-a",
+    });
+
+    const result = await requeueOutboxRow(TENANT_B, OUTBOX_A, USER_X, { store });
+
+    assertEq(result, null, "cross-tenant retry returns null");
+    assertEq(store._dump().connectors[0].status, "failed", "row untouched");
+    assertEq(store._dump().events.length, 0, "no event emitted");
+  });
+
+  await test("sanitizeCaseNoteHtml: strips XSS payloads and data URLs", () => {
+    const html = sanitizeCaseNoteHtml(
+      `<p style="color:red"><strong>Safe</strong><img src=x onerror=alert(1)><a href="javascript:alert(1)">bad</a><a href="data:text/html,hi">data</a><a href="mailto:test@example.com">mail</a></p>`
+    );
+
+    assert(html.includes("<strong>Safe</strong>"), "allowed strong preserved");
+    assert(html.includes('href="mailto:test@example.com"'), "mailto preserved");
+    assert(!html.includes("style="), "style stripped");
+    assert(!html.includes("img"), "image stripped");
+    assert(!html.includes("javascript:"), "javascript URL stripped");
+    assert(!html.includes("data:"), "data URL stripped");
   });
 
   // -------------------------------------------------------------------------

@@ -161,6 +161,12 @@ export interface CaseDetailConnectorRow {
   deliveredAt: Date | null;
 }
 
+export interface ConnectorOutboxRow extends CaseDetailConnectorRow {
+  tenantId: string;
+  caseId: string;
+  idempotencyKey: string;
+}
+
 export interface CaseDetailRow {
   case: CaseRow;
   conversation: {
@@ -292,6 +298,16 @@ export interface CasesStore {
   ): Promise<CaseAttributeRow>;
 
   listAttributes(tenantId: string, caseId: string): Promise<CaseAttributeRow[]>;
+
+  findConnectorOutboxRow(
+    tenantId: string,
+    outboxId: string
+  ): Promise<ConnectorOutboxRow | null>;
+
+  requeueFailedConnectorOutboxRow(
+    tenantId: string,
+    outboxId: string
+  ): Promise<ConnectorOutboxRow | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -922,6 +938,38 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
           )
         );
       return rows as CaseAttributeRow[];
+    },
+
+    async findConnectorOutboxRow(tenantId, outboxId) {
+      const [row] = await db
+        .select()
+        .from(connectorOutbox)
+        .where(
+          and(
+            eq(connectorOutbox.tenantId, tenantId),
+            eq(connectorOutbox.id, outboxId)
+          )
+        )
+        .limit(1);
+      return row ? (row as ConnectorOutboxRow) : null;
+    },
+
+    async requeueFailedConnectorOutboxRow(tenantId, outboxId) {
+      const [row] = await db
+        .update(connectorOutbox)
+        .set({
+          status: "pending",
+          nextAttemptAt: new Date(),
+        })
+        .where(
+          and(
+            eq(connectorOutbox.tenantId, tenantId),
+            eq(connectorOutbox.id, outboxId),
+            eq(connectorOutbox.status, "failed")
+          )
+        )
+        .returning();
+      return row ? (row as ConnectorOutboxRow) : null;
     },
   };
 }

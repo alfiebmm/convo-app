@@ -1,7 +1,15 @@
 import type { ReactNode } from "react";
 import type { CaseDetail } from "@/lib/cases";
 import { ConversationTranscript } from "./conversation-transcript";
-import { CasePanelCloseButton, PiiRevealField } from "./case-detail-controls";
+import {
+  AssignmentControl,
+  CaseActionButtons,
+  CasePanelCloseButton,
+  InternalNoteForm,
+  PiiRevealField,
+  RetrySyncButton,
+  type TenantUserOption,
+} from "./case-detail-controls";
 
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-green-100 text-green-800",
@@ -51,6 +59,11 @@ function formatJsonValue(value: unknown) {
   return JSON.stringify(value);
 }
 
+function getNoteBodyHtml(payload: Record<string, unknown>) {
+  const value = payload.body_html;
+  return typeof value === "string" ? value : "";
+}
+
 function Pill({
   children,
   className,
@@ -91,7 +104,13 @@ function groupEventsByDay(detail: CaseDetail) {
   return Array.from(groups.entries());
 }
 
-export default function CaseDetailPanel({ detail }: { detail: CaseDetail }) {
+export default function CaseDetailPanel({
+  detail,
+  tenantUsers,
+}: {
+  detail: CaseDetail;
+  tenantUsers: TenantUserOption[];
+}) {
   const kase = detail.case;
   const title =
     kase.title ??
@@ -323,7 +342,12 @@ export default function CaseDetailPanel({ detail }: { detail: CaseDetail }) {
                     key={event.id}
                     className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
                   >
-                    <p>{formatJsonValue(event.payload)}</p>
+                    <div
+                      className="prose prose-sm max-w-none text-slate-700"
+                      dangerouslySetInnerHTML={{
+                        __html: getNoteBodyHtml(event.payload),
+                      }}
+                    />
                     <p className="mt-1 text-xs text-slate-500">
                       {formatDateTime(event.createdAt)}
                     </p>
@@ -331,11 +355,17 @@ export default function CaseDetailPanel({ detail }: { detail: CaseDetail }) {
                 ))}
               </ul>
             )}
+            <InternalNoteForm caseId={kase.id} />
           </Section>
 
           <Section title="Assignment">
-            <p className="text-sm text-slate-800">
-              {detail.assignedOwnerName ?? "Unassigned"}
+            <AssignmentControl
+              caseId={kase.id}
+              assignedTo={kase.assignedTo}
+              users={tenantUsers}
+            />
+            <p className="mt-2 text-sm text-slate-500">
+              Current owner: {detail.assignedOwnerName ?? "Unassigned"}
             </p>
           </Section>
 
@@ -428,6 +458,10 @@ export default function CaseDetailPanel({ detail }: { detail: CaseDetail }) {
                         {connector.lastError}
                       </p>
                     )}
+                    <RetrySyncButton
+                      outboxId={connector.id}
+                      disabled={connector.status === "abandoned"}
+                    />
                   </div>
                 ))}
               </div>
@@ -435,22 +469,7 @@ export default function CaseDetailPanel({ detail }: { detail: CaseDetail }) {
           </Section>
 
           <Section title="Actions">
-            <div className="flex flex-wrap gap-2">
-              {["Resolve", "Dismiss", "Retry sync", "Assign"].map((label) => (
-                <span key={label} title="Actions ship in CON-177">
-                  <button
-                    type="button"
-                    disabled
-                    className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-400"
-                  >
-                    {label}
-                  </button>
-                </span>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-slate-500">
-              Actions ship in CON-177.
-            </p>
+            <CaseActionButtons caseId={kase.id} />
           </Section>
         </div>
       </aside>

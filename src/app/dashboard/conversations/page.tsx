@@ -2,7 +2,10 @@ import ConversationList from "./conversation-list";
 import CaseDetailPanel from "./case-detail-panel";
 import { ConversationFilters } from "./conversation-filters";
 import { Suspense } from "react";
-import { getCurrentTenant } from "@/lib/auth-context";
+import {
+  getCurrentTenant,
+  listTenantUsersForCurrentUser,
+} from "@/lib/auth-context";
 import { redirect } from "next/navigation";
 import {
   type ConversationFilterState,
@@ -79,6 +82,7 @@ export default async function ConversationsPage({
     tenant.id,
     toCaseListFilters(activeFilters)
   );
+  const tenantUsers = await listTenantUsersForCurrentUser(tenant.id);
   const selectedCaseDetail = selectedCaseId
     ? await getCaseDetailById(tenant.id, selectedCaseId)
     : null;
@@ -111,7 +115,9 @@ export default async function ConversationsPage({
         />
       )}
 
-      {selectedCaseDetail && <CaseDetailPanel detail={selectedCaseDetail} />}
+      {selectedCaseDetail && (
+        <CaseDetailPanel detail={selectedCaseDetail} tenantUsers={tenantUsers} />
+      )}
     </div>
   );
 }
