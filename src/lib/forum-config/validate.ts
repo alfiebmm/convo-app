@@ -3,6 +3,7 @@ import {
   aiPersonaSchema,
   ctaRulesSchema,
   qualifyingQuestionsSchema,
+  welcomeSchema,
   leadCaptureSchema,
   allowedTopicsSchema,
   exclusionListSchema,
@@ -15,6 +16,7 @@ import type {
   ForumConfig,
   AiPersona,
   CtaRule,
+  Welcome,
   SeoDefaults,
   Connectors,
   Limits,
@@ -195,6 +197,13 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     has("qualifying_questions"),
   );
 
+  const welcome = parseSlice<Welcome>(
+    welcomeSchema,
+    raw.welcome,
+    DEFAULT_FORUM_CONFIG.welcome,
+    has("welcome"),
+  );
+
   const lead_capture = parseSlice<LeadCapture>(
     leadCaptureSchema,
     raw.lead_capture,
@@ -249,6 +258,7 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     ai_persona,
     cta_rules,
     qualifying_questions,
+    welcome,
     lead_capture,
     allowed_topics,
     exclusion_list,
@@ -295,6 +305,13 @@ export function parseSliceSafe<K extends SliceKey>(
         qualifyingQuestionsSchema,
         input,
         fallback as ForumConfig["qualifying_questions"],
+        true,
+      ) as ForumConfig[K];
+    case "welcome":
+      return parseSlice(
+        welcomeSchema,
+        input,
+        fallback as Welcome,
         true,
       ) as ForumConfig[K];
     case "lead_capture":

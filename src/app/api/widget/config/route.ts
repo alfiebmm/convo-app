@@ -4,6 +4,11 @@ import { tenants } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { pickStreamingOverrides } from "@/lib/widget/streaming-config";
 import { getConfiguredQuestions } from "@/lib/qualifying/resolve";
+import {
+  hasStoredQualifyingQuestions,
+  resolvePublicWelcomeConfig,
+  shouldShowWelcomeOnOpen,
+} from "@/lib/widget/welcome";
 
 /**
  * GET /api/widget/config?tenant=<tenantId>
@@ -65,10 +70,6 @@ export async function GET(req: NextRequest) {
       tenant.name ||
       "Convo";
 
-    const welcome =
-      (typeof widget.welcomeMessage === "string" && widget.welcomeMessage.trim()) ||
-      null;
-
     const color =
       (typeof widget.primaryColor === "string" && widget.primaryColor.trim()) ||
       null;
@@ -97,11 +98,18 @@ export async function GET(req: NextRequest) {
     // them as quick-reply buttons. The model never sees this menu — answers
     // come back via POST /api/conversations/qualifying, server-validated.
     const qualifyingQuestions = getConfiguredQuestions(settings);
+    const qualifyingQuestionsPopulated = hasStoredQualifyingQuestions(settings);
+    const welcomeConfig = resolvePublicWelcomeConfig(settings, widget);
+    const welcomeEnabled = shouldShowWelcomeOnOpen(
+      welcomeConfig,
+      qualifyingQuestionsPopulated,
+    );
 
     return NextResponse.json(
       {
         name,
-        welcome,
+        welcome: welcomeEnabled ? welcomeConfig.copy : null,
+        welcomeEnabled,
         color,
         position,
         size,

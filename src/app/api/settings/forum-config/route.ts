@@ -1,10 +1,10 @@
 /**
  * GET   /api/settings/forum-config   — returns the tenant's current forumConfig
- * PATCH /api/settings/forum-config   — partial update (any subset of the four authoring slices)
+ * PATCH /api/settings/forum-config   — partial update (any subset of the authoring slices)
  *
  * CON-191 (Epic — Dashboard authoring UI for forumConfig).
  *
- * Authoring scope (V1): `ai_persona`, `qualifying_questions`, `allowed_topics`, `follow_up`.
+ * Authoring scope (V1): `ai_persona`, `welcome`, `qualifying_questions`, `allowed_topics`, `follow_up`.
  * Other slices on the root forumConfig (`cta_rules`, `lead_capture`, `seo_defaults`,
  * `connectors`, `limits`, `schema_version`, `exclusion_list`) are NOT writable
  * through this endpoint — they're preserved untouched by deep-merge.

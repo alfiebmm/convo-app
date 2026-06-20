@@ -14,6 +14,7 @@
  */
 import {
   aiPersonaSchema,
+  welcomeSchema,
   qualifyingQuestionsSchema,
   allowedTopicsSchema,
   followUpSchema,
@@ -60,6 +61,26 @@ test("persona rejects unknown tone (mirrors server)", () => {
     voice_description: "x",
   });
   assert(!r.success, "should reject");
+});
+
+// ─── Welcome ──────────────────────────────────────────────
+
+test("welcome default shape is schema-valid", () => {
+  const r = welcomeSchema.safeParse({
+    copy: "Hi there, how can I help you today?",
+    enabled: true,
+    show_with_questions: false,
+  });
+  assert(r.success, "welcome defaults parse");
+});
+
+test("welcome empty {} normalises with defaults", () => {
+  const r = welcomeSchema.safeParse({});
+  assert(r.success, "empty parses");
+  if (r.success) {
+    assert(r.data.enabled === true, "enabled default");
+    assert(r.data.show_with_questions === false, "show_with_questions default");
+  }
 });
 
 // ─── Qualifying ───────────────────────────────────────────

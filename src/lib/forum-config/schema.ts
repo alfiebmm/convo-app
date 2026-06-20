@@ -59,6 +59,16 @@ export const qualifyingQuestionsSchema = z.object({
 });
 
 // ============================================================
+// Welcome Message Configuration
+// ============================================================
+
+export const welcomeSchema = z.object({
+  copy: z.string().default(""),
+  enabled: z.boolean().default(true),
+  show_with_questions: z.boolean().default(false),
+});
+
+// ============================================================
 // Topic Configuration
 // ============================================================
 
@@ -461,6 +471,7 @@ export const forumConfigSchema = z.object({
   ai_persona: aiPersonaSchema.prefault({}),
   cta_rules: ctaRulesSchema,
   qualifying_questions: qualifyingQuestionsSchema.prefault({}),
+  welcome: welcomeSchema.prefault({}),
   lead_capture: leadCaptureSchema.prefault({}),
   allowed_topics: allowedTopicsSchema,
   exclusion_list: exclusionListSchema,
@@ -478,6 +489,7 @@ export type ForumConfig = z.infer<typeof forumConfigSchema>;
 export type AiPersona = z.infer<typeof aiPersonaSchema>;
 export type CtaRule = z.infer<typeof ctaRuleSchema>;
 export type QualifyingQuestion = z.infer<typeof qualifyingQuestionSchema>;
+export type Welcome = z.infer<typeof welcomeSchema>;
 export type SeoDefaults = z.infer<typeof seoDefaultsSchema>;
 export type Connectors = z.infer<typeof connectorsSchema>;
 export type Limits = z.infer<typeof limitsSchema>;
