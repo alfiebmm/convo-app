@@ -41,7 +41,7 @@ interface TenantInfo {
 
 const DEFAULT_WIDGET: WidgetConfig = {
   chatbotName: APP_CONFIG.name,
-  welcomeMessage: "Hi! How can I help you today?",
+  welcomeMessage: "Hi there, how can I help you today?",
   systemPrompt:
     "You are a helpful assistant for this website. Answer questions based on the site content. Be friendly and concise.",
   primaryColor: APP_CONFIG.branding.primary,
@@ -205,19 +205,6 @@ export default function WidgetPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700">
-              Welcome Message
-            </label>
-            <input
-              type="text"
-              value={config.welcomeMessage}
-              onChange={(e) =>
-                setConfig((c) => ({ ...c, welcomeMessage: e.target.value }))
-              }
-              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
               Primary Colour
             </label>
             <div className="mt-1 flex flex-wrap items-center gap-3">
@@ -312,13 +299,13 @@ export default function WidgetPage() {
             </p>
           </div>
           <p className="text-xs text-slate-400">
-            Looking for topic restrictions, deflect rules, or audience
-            personas? Those live under{" "}
+            Looking for welcome copy, topic restrictions, deflect rules, or
+            audience personas? Those live under{" "}
             <Link
-              href="/dashboard/settings"
+              href="/dashboard/settings/forum-config"
               className="text-blue-600 underline hover:text-blue-700"
             >
-              Settings → Topic Boundaries
+              Settings → Forum config
             </Link>
             .
           </p>
@@ -339,4 +326,3 @@ export default function WidgetPage() {
     </div>
   );
 }
-

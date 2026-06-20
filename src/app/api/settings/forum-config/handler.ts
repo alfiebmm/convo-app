@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   aiPersonaSchema,
   qualifyingQuestionsSchema,
+  welcomeSchema,
   allowedTopicsSchema,
   followUpSchema,
   forumConfigSchema,
@@ -29,6 +30,7 @@ export type ForumConfigDeps = {
 export const AUTHORING_SLICES = [
   "ai_persona",
   "qualifying_questions",
+  "welcome",
   "allowed_topics",
   "follow_up",
 ] as const;
@@ -45,6 +47,7 @@ export type AuthoringSlice = (typeof AUTHORING_SLICES)[number];
 const SLICE_SCHEMAS: Record<AuthoringSlice, z.ZodTypeAny> = {
   ai_persona: aiPersonaSchema,
   qualifying_questions: qualifyingQuestionsSchema,
+  welcome: welcomeSchema,
   allowed_topics: allowedTopicsSchema,
   follow_up: followUpSchema,
 };

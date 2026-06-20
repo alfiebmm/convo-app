@@ -3,6 +3,7 @@
  *
  * Pure function. Maps the three pre-CON-191 settings surfaces
  *   - settings.widget.systemPrompt          (free-text persona prose)
+ *   - settings.widget.welcomeMessage        (legacy widget greeting)
  *   - settings.widget.allowedTopics         (comma-separated topic list)
  *   - settings.guardrails.audiences[].persona   (per-audience persona)
  *   - settings.guardrails.topicBoundaries.allow (structured topic list)
@@ -14,6 +15,7 @@
  * Rules
  *   - voice_description prefers `widget.systemPrompt` (legacy primary), then
  *     falls back to `guardrails.audiences[0].persona`.
+ *   - welcome.copy prefers `widget.welcomeMessage`.
  *   - allowed_topics = `guardrails.topicBoundaries.allow ∪ widget.allowedTopics`
  *     (deduped, order-preserving, structured-first).
  *   - tone defaults to "professional" — there is no legacy field that
@@ -27,12 +29,13 @@
  * read returns an empty/default value rather than throwing.
  */
 
-import type { AiPersona } from "./schema";
+import type { AiPersona, Welcome } from "./schema";
 
 /** The legacy fields we care about, as they sit on `tenant.settings`. */
 export interface LegacySettings {
   widget?: {
     systemPrompt?: unknown;
+    welcomeMessage?: unknown;
     allowedTopics?: unknown;
   };
   guardrails?: {
@@ -43,11 +46,13 @@ export interface LegacySettings {
   };
   persona?: unknown;
   systemPrompt?: unknown;
+  welcomeMessage?: unknown;
 }
 
 /** The partial forumConfig draft we produce. */
 export interface ForumConfigDraft {
   ai_persona: AiPersona;
+  welcome: Welcome;
   allowed_topics: string[];
 }
 
@@ -56,6 +61,7 @@ export function hasLegacySignal(settings: unknown): boolean {
   const draft = buildLegacyDraft(settings);
   return (
     draft.ai_persona.voice_description.length > 0 ||
+    draft.welcome.copy.length > 0 ||
     draft.allowed_topics.length > 0
   );
 }
@@ -122,6 +128,12 @@ function pickLegacyTopics(settings: LegacySettings): string[] {
   return out;
 }
 
+function pickLegacyWelcome(settings: LegacySettings): string {
+  const widgetWelcome = readString(settings.widget?.welcomeMessage);
+  if (widgetWelcome) return widgetWelcome;
+  return readString(settings.welcomeMessage);
+}
+
 /**
  * Build a forumConfig draft from legacy settings. Always returns a
  * structurally valid draft — empty fields if no legacy signal is found.
@@ -136,6 +148,11 @@ export function buildLegacyDraft(settings: unknown): ForumConfigDraft {
       locale: "en-AU",
       banned_words: [],
       voice_description: pickLegacyVoice(s),
+    },
+    welcome: {
+      copy: pickLegacyWelcome(s),
+      enabled: true,
+      show_with_questions: false,
     },
     allowed_topics: pickLegacyTopics(s),
   };
@@ -162,6 +179,13 @@ export function isForumConfigEmpty(forumConfig: unknown): boolean {
 
   const topics = fc.allowed_topics;
   if (Array.isArray(topics) && topics.length > 0) return false;
+
+  const welcome = fc.welcome as Record<string, unknown> | undefined;
+  if (welcome) {
+    if (readString(welcome.copy)) return false;
+    if (welcome.enabled === false) return false;
+    if (welcome.show_with_questions === true) return false;
+  }
 
   const qq = fc.qualifying_questions as Record<string, unknown> | undefined;
   if (qq) {
@@ -227,6 +251,23 @@ export function mergeLegacyIntoForumConfig(
       }
     }
     base.allowed_topics = merged;
+  }
+
+  const existingWelcome = (base.welcome ?? {}) as Record<string, unknown>;
+  const existingWelcomeCopy = readString(existingWelcome.copy);
+  if (!existingWelcomeCopy && legacy.welcome.copy) {
+    base.welcome = {
+      ...existingWelcome,
+      copy: legacy.welcome.copy,
+      enabled:
+        typeof existingWelcome.enabled === "boolean"
+          ? existingWelcome.enabled
+          : legacy.welcome.enabled,
+      show_with_questions:
+        typeof existingWelcome.show_with_questions === "boolean"
+          ? existingWelcome.show_with_questions
+          : legacy.welcome.show_with_questions,
+    };
   }
 
   return base;

@@ -86,6 +86,12 @@ const validQualifying = {
   additional: [],
 };
 
+const validWelcome = {
+  copy: "Hi there, how can I help you today?",
+  enabled: true,
+  show_with_questions: false,
+};
+
 const validAllowedTopics = ["dog training", "puppy advice", "vet referrals"];
 
 const validFollowUp = {
@@ -346,12 +352,13 @@ async function run() {
 
   // ── PATCH: happy path full round-trip ──────────────────────
 
-  await test("PATCH happy path — full four-slice save round-trips", async () => {
+  await test("PATCH happy path — full authoring save round-trips", async () => {
     const deps = makeDeps({ "tenant-a": {} });
     const res = await handleForumConfigPatch(
       "tenant-a",
       {
         ai_persona: validPersona,
+        welcome: validWelcome,
         qualifying_questions: validQualifying,
         allowed_topics: validAllowedTopics,
         follow_up: validFollowUp,
@@ -361,7 +368,7 @@ async function run() {
     assertEq(res.status, 200, "status");
     const body = await readJson(res);
     const applied = body.appliedSlices as string[];
-    assertEq(applied.length, 4, "all four slices applied");
+    assertEq(applied.length, 5, "all authoring slices applied");
 
     // Confirm next GET returns the same authoring data (raw object)
     const getRes = await handleForumConfigGet("tenant-a", deps);
@@ -371,6 +378,8 @@ async function run() {
     assertEq(persona.tone, "friendly", "persona round-tripped");
     const topics = cfg.allowed_topics as string[];
     assertEq(topics[0], "dog training", "topics round-tripped");
+    const welcome = cfg.welcome as Record<string, unknown>;
+    assertEq(welcome.copy, validWelcome.copy, "welcome round-tripped");
   });
 
   await test("PATCH ignores unknown top-level keys (forwards-compat)", async () => {

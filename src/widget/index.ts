@@ -6,7 +6,7 @@
  *     src="https://your-domain.com/widget.js"
  *     data-tenant="tenant-uuid"
  *     data-color="#FF6B2C"
- *     data-welcome="Hi there! How can I help?"
+ *     data-welcome="Hi there, how can I help?"
  *     data-name="Convo"
  *     data-position="bottom-right"
  *     data-size="md"
@@ -37,6 +37,7 @@ interface ConvoConfig {
   tenantId: string;
   color: string;
   welcome: string;
+  welcomeEnabled: boolean;
   name: string;
   position: WidgetPosition;
   size: WidgetSize;
@@ -115,7 +116,8 @@ function getConfig(): ConvoConfig {
   return {
     tenantId: get("tenant", ""),
     color: get("color", "#FF6B2C"),
-    welcome: get("welcome", "Hi there! How can I help you today?"),
+    welcome: get("welcome", "Hi there, how can I help you today?"),
+    welcomeEnabled: true,
     name: get("name", "Convo"),
     position: normalisePosition(get("position", "bottom-right")),
     size: normaliseSize(get("size", "md")),
@@ -795,6 +797,7 @@ class ConvoWidget {
       const data = (await res.json()) as {
         name?: string | null;
         welcome?: string | null;
+        welcomeEnabled?: boolean | null;
         color?: string | null;
         position?: string | null;
         size?: string | null;
@@ -809,6 +812,9 @@ class ConvoWidget {
       }
       if (typeof data.welcome === "string" && data.welcome.trim()) {
         this.config.welcome = data.welcome;
+      }
+      if (typeof data.welcomeEnabled === "boolean") {
+        this.config.welcomeEnabled = data.welcomeEnabled;
       }
       if (typeof data.color === "string" && data.color.trim()) {
         this.config.color = data.color;
@@ -1126,7 +1132,7 @@ class ConvoWidget {
       for (const m of this.messages) {
         this.addMessageToUI(m.role, m.content);
       }
-    } else {
+    } else if (this.config.welcomeEnabled && this.config.welcome.trim()) {
       this.addMessageToUI("assistant", this.config.welcome);
     }
 

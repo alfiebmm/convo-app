@@ -41,6 +41,12 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
     additional: [],
   },
 
+  welcome: {
+    copy: "Hi there, how can I help you today?",
+    enabled: true,
+    show_with_questions: false,
+  },
+
   lead_capture: {
     enabled: true,
     detection: {

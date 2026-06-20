@@ -53,7 +53,7 @@ test("forumConfigSchema parses a partial ai_persona slice without tone", () => {
 });
 
 test("forumConfigSchema parses successfully without seo_defaults present", () => {
-  // The AgPages production shape: only the four authoring slices, no
+  // The AgPages production shape: only dashboard-authored slices, no
   // seo_defaults. Before CON-201 this failed strict root parse.
   const result = forumConfigSchema.safeParse({
     ai_persona: { tone: "expert", voice_description: "v" },

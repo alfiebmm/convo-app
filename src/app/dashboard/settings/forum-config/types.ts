@@ -4,6 +4,7 @@
 export type AuthoringSliceKey =
   | "ai_persona"
   | "qualifying_questions"
+  | "welcome"
   | "allowed_topics"
   | "follow_up";
 
@@ -14,6 +15,7 @@ export type AuthoringSliceKey =
  */
 export type EditorTabKey =
   | "ai_persona"
+  | "welcome"
   | "topic_scope"
   | "qualifying_questions"
   | "conversation_limits"

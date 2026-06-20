@@ -5,10 +5,11 @@ import {
   buildLegacyDraft,
   hasLegacySignal,
   isForumConfigEmpty,
+  mergeLegacyIntoForumConfig,
 } from "@/lib/forum-config/transform-legacy";
 
 /**
- * Settings → Forum config (four-slice authoring UI).
+ * Settings → Forum config (tabbed authoring UI).
  *
  * CON-191 — surfaces what was previously DB-paste-only:
  *   - ai_persona
@@ -19,7 +20,8 @@ import {
  * CON-192 add-on (Cam, 17 Jun) — auto-copy from legacy: when the tenant
  * has NOT yet engaged with forumConfig but DOES have legacy values in
  * `widget.systemPrompt` / `guardrails.audiences[].persona` /
- * `guardrails.topicBoundaries.allow` / `widget.allowedTopics`, we
+ * `guardrails.topicBoundaries.allow` / `widget.allowedTopics` /
+ * `widget.welcomeMessage`, we
  * pre-fill the editor's initial form state from those legacy sources
  * and surface an inline notice so the tenant can review and save without
  * re-typing. Clicking Save persists the pre-filled values as the
@@ -56,12 +58,12 @@ export default async function ForumConfigPage() {
 
   let initialForumConfig: Record<string, unknown> = existingForumConfig;
   let autoCopied = false;
+  const legacyDraft = buildLegacyDraft(settings);
   if (shouldAutoCopy) {
-    const draft = buildLegacyDraft(settings);
-    initialForumConfig = {
-      ai_persona: draft.ai_persona,
-      allowed_topics: draft.allowed_topics,
-    };
+    initialForumConfig = mergeLegacyIntoForumConfig({}, legacyDraft);
+    autoCopied = true;
+  } else if (!hasWelcomeSlice(existingForumConfig) && legacyDraft.welcome.copy) {
+    initialForumConfig = mergeLegacyIntoForumConfig(existingForumConfig, legacyDraft);
     autoCopied = true;
   }
 
@@ -119,4 +121,9 @@ function normaliseTopicBoundaries(raw: Record<string, unknown>) {
       ? raw.hardBlock.filter((topic): topic is string => typeof topic === "string")
       : [],
   };
+}
+
+function hasWelcomeSlice(forumConfig: Record<string, unknown>): boolean {
+  const welcome = forumConfig.welcome;
+  return typeof welcome === "object" && welcome !== null && !Array.isArray(welcome);
 }

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { PersonaPanel } from "./panels/persona-panel";
+import { WelcomePanel } from "./panels/welcome-panel";
 import { QualifyingPanel } from "./panels/qualifying-panel";
 import { AllowedTopicsPanel } from "./panels/allowed-topics-panel";
 import { FollowUpPanel } from "./panels/follow-up-panel";
@@ -27,7 +28,7 @@ function AutoCopiedNotice({ onDismiss }: { onDismiss: () => void }) {
       <div className="flex-1">
         <p className="font-medium">Pre-filled from your existing chatbot settings.</p>
         <p className="mt-1 text-amber-800">
-          We&apos;ve copied your persona prompt and allowed topics from the
+          We&apos;ve copied your welcome message, persona prompt, and allowed topics from the
           legacy Settings page. Review each tab and click Save on the panels
           you want to keep — once saved, this becomes the source of truth and
           the legacy fields are ignored.
@@ -57,6 +58,11 @@ const TABS: { key: EditorTabKey; label: string; description: string }[] = [
     key: "ai_persona",
     label: "Persona",
     description: "How your bot speaks — tone, voice, banned words.",
+  },
+  {
+    key: "welcome",
+    label: "Welcome",
+    description: "The greeting visitors see when the widget opens.",
   },
   {
     key: "topic_scope",
@@ -141,6 +147,7 @@ export function ForumConfigEditor({
   // A "topic_scope" tab is dirty if either of its two child slices are dirty.
   const tabDirty: Record<EditorTabKey, boolean> = {
     ai_persona: !!dirty.ai_persona,
+    welcome: !!dirty.welcome,
     topic_scope: !!dirty.allowed_topics || !!dirty.topic_boundaries,
     qualifying_questions: !!dirty.qualifying_questions,
     conversation_limits: !!dirty.conversation_limits,
@@ -224,6 +231,19 @@ export function ForumConfigEditor({
               initialValue={topicBoundaries}
               onSaved={setTopicBoundaries}
               onDirtyChange={(d) => setSliceDirty("topic_boundaries", d)}
+            />
+          </div>
+        )}
+        {activeTab === "welcome" && (
+          <div
+            role="tabpanel"
+            id="panel-welcome"
+            aria-labelledby="tab-welcome"
+          >
+            <WelcomePanel
+              initialValue={forumConfig.welcome}
+              onSaved={(v) => handleSliceSaved("welcome", v)}
+              onDirtyChange={(d) => setSliceDirty("welcome", d)}
             />
           </div>
         )}

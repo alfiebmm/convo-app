@@ -44,6 +44,7 @@ function assertEq<T>(actual: T, expected: T, label: string) {
 test("buildLegacyDraft: empty settings → empty draft", () => {
   const d = buildLegacyDraft({});
   assertEq(d.ai_persona.voice_description, "", "voice empty");
+  assertEq(d.welcome.copy, "", "welcome empty");
   assertEq(d.allowed_topics, [], "topics empty");
   assertEq(d.ai_persona.tone, "professional", "tone default");
   assertEq(d.ai_persona.locale, "en-AU", "locale default");
@@ -115,6 +116,15 @@ test("buildLegacyDraft: widget.allowedTopics as array also accepted", () => {
   assertEq(d.allowed_topics, ["a", "b", "c"], "array form");
 });
 
+test("buildLegacyDraft: copies legacy widget welcome message", () => {
+  const d = buildLegacyDraft({
+    widget: { welcomeMessage: "  Welcome to Doggo  " },
+  });
+  assertEq(d.welcome.copy, "Welcome to Doggo", "welcome copy");
+  assertEq(d.welcome.enabled, true, "welcome enabled");
+  assertEq(d.welcome.show_with_questions, false, "default show_with_questions");
+});
+
 test("buildLegacyDraft: malformed audiences array ignored without throwing", () => {
   const d = buildLegacyDraft({
     guardrails: { audiences: "not an array" as unknown as never },
@@ -144,6 +154,10 @@ test("hasLegacySignal: topics only → true", () => {
 
 test("hasLegacySignal: widget.allowedTopics legacy string → true", () => {
   assert(hasLegacySignal({ widget: { allowedTopics: "a,b" } }), "string topics");
+});
+
+test("hasLegacySignal: welcome only → true", () => {
+  assert(hasLegacySignal({ widget: { welcomeMessage: "hello" } }), "welcome");
 });
 
 // ─── isForumConfigEmpty ──────────────────────────────────────
@@ -190,6 +204,10 @@ test("isForumConfigEmpty: allowed_topics set → NOT empty", () => {
   assert(!isForumConfigEmpty({ allowed_topics: ["x"] }), "topics");
 });
 
+test("isForumConfigEmpty: welcome copy set → NOT empty", () => {
+  assert(!isForumConfigEmpty({ welcome: { copy: "hello" } }), "welcome");
+});
+
 test("isForumConfigEmpty: qualifying_questions.preset set → NOT empty", () => {
   assert(
     !isForumConfigEmpty({
@@ -229,11 +247,18 @@ test("mergeLegacyIntoForumConfig: empty existing → returns legacy slices", () 
       banned_words: [],
       voice_description: "Barry",
     },
+    welcome: {
+      copy: "Welcome",
+      enabled: true,
+      show_with_questions: false,
+    },
     allowed_topics: ["farming"],
   };
   const merged = mergeLegacyIntoForumConfig({}, legacy);
   const persona = merged.ai_persona as Record<string, unknown>;
   assertEq(persona.voice_description, "Barry", "voice");
+  const welcome = merged.welcome as Record<string, unknown>;
+  assertEq(welcome.copy, "Welcome", "welcome");
   assertEq(merged.allowed_topics, ["farming"], "topics");
 });
 
@@ -244,6 +269,11 @@ test("mergeLegacyIntoForumConfig: existing voice preserved (no clobber)", () => 
       locale: "en-AU",
       banned_words: [],
       voice_description: "LEGACY",
+    },
+    welcome: {
+      copy: "",
+      enabled: true,
+      show_with_questions: false,
     },
     allowed_topics: [],
   };
@@ -263,6 +293,11 @@ test("mergeLegacyIntoForumConfig: topics unioned, existing-first, deduped", () =
       banned_words: [],
       voice_description: "",
     },
+    welcome: {
+      copy: "",
+      enabled: true,
+      show_with_questions: false,
+    },
     allowed_topics: ["farming", "irrigation"],
   };
   const merged = mergeLegacyIntoForumConfig(
@@ -280,6 +315,11 @@ test("mergeLegacyIntoForumConfig: preserves unrelated forumConfig slices", () =>
       banned_words: [],
       voice_description: "Barry",
     },
+    welcome: {
+      copy: "",
+      enabled: true,
+      show_with_questions: false,
+    },
     allowed_topics: [],
   };
   const existing = {
@@ -289,6 +329,30 @@ test("mergeLegacyIntoForumConfig: preserves unrelated forumConfig slices", () =>
   const merged = mergeLegacyIntoForumConfig(existing, legacy);
   assertEq(merged.cta_rules, existing.cta_rules, "cta preserved");
   assertEq(merged.schema_version, 1, "version preserved");
+});
+
+test("mergeLegacyIntoForumConfig: existing welcome preserved", () => {
+  const legacy = {
+    ai_persona: {
+      tone: "professional" as const,
+      locale: "en-AU",
+      banned_words: [],
+      voice_description: "",
+    },
+    welcome: {
+      copy: "LEGACY",
+      enabled: true,
+      show_with_questions: false,
+    },
+    allowed_topics: [],
+  };
+  const merged = mergeLegacyIntoForumConfig(
+    { welcome: { copy: "EXISTING", enabled: true, show_with_questions: true } },
+    legacy,
+  );
+  const welcome = merged.welcome as Record<string, unknown>;
+  assertEq(welcome.copy, "EXISTING", "no clobber");
+  assertEq(welcome.show_with_questions, true, "override preserved");
 });
 
 // ─── Summary ─────────────────────────────────────────────────
