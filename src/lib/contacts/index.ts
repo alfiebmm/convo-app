@@ -19,6 +19,7 @@
 import { assertTenantId, assertUuid } from "../cases/tenant-guard";
 import {
   getDefaultContactsStore,
+  type ContactDetailRow,
   type ContactListItemRow,
   type ContactListSort,
   type ContactRow,
@@ -30,6 +31,12 @@ import {
 } from "./store";
 
 export type {
+  ContactAuditEventRow,
+  ContactCaseHistoryRow,
+  ContactConnectorSummaryRow,
+  ContactConversationHistoryRow,
+  ContactDetailRow,
+  ContactIdentifierRow,
   ContactListItemRow,
   ContactListSort,
   ContactRow,
@@ -168,6 +175,32 @@ export async function getContactById(
   assertUuid(contactId, "contactId");
 
   return resolveStore(opts).findContactById(tenantId, contactId);
+}
+
+// ---------------------------------------------------------------------------
+// getContactDetailById
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the full person-centric contact graph for a tenant-scoped contact.
+ * Returns `null` when the contact does not exist OR belongs to a different
+ * tenant. The Drizzle store resolves the graph in one CTE-style query:
+ * contact row, identifiers, conversation links, case history, connector
+ * summaries, and follow-up event timeline.
+ *
+ * @param tenantId Tenant UUID — REQUIRED.
+ * @param contactId Contact UUID — REQUIRED.
+ * @returns The contact detail graph, or `null` if not found in this tenant.
+ */
+export async function getContactDetailById(
+  tenantId: string,
+  contactId: string,
+  opts?: ContactHelperOptions,
+): Promise<ContactDetailRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(contactId, "contactId");
+
+  return resolveStore(opts).getContactDetailById(tenantId, contactId);
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,12 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  ContactAuditEventRow,
+  ContactCaseHistoryRow,
+  ContactConnectorSummaryRow,
+  ContactConversationHistoryRow,
+  ContactDetailRow,
+  ContactIdentifierRow,
   ContactListItemRow,
   ContactRow,
   ContactsStore,
@@ -16,6 +22,50 @@ import type {
 } from "../store";
 
 export interface InMemoryContactsStore extends ContactsStore {
+  _addIdentifier(input: {
+    tenantId: string;
+    contactId: string;
+    type: string;
+    valueNormalised: string;
+    source?: string | null;
+    verifiedAt?: Date | null;
+  }): ContactIdentifierRow;
+  _addConversation(input: {
+    tenantId: string;
+    contactId: string;
+    conversationId: string;
+    status?: string;
+    messageCount?: number;
+    caseId?: string | null;
+    caseType?: string | null;
+    caseStatus?: string | null;
+  }): ContactConversationHistoryRow;
+  _addCase(input: {
+    tenantId: string;
+    contactId: string;
+    conversationId: string;
+    caseId?: string;
+    caseType: string;
+    status: string;
+    title?: string | null;
+    summary?: string | null;
+    updatedAt?: Date;
+  }): ContactCaseHistoryRow;
+  _addConnector(input: {
+    connectorType: string;
+    status: string;
+    destinationId?: string | null;
+    caseId: string;
+    createdAt?: Date;
+  }): ContactConnectorSummaryRow;
+  _addEvent(input: {
+    tenantId: string;
+    caseId: string;
+    conversationId: string;
+    eventType: string;
+    payload?: Record<string, unknown>;
+    createdAt?: Date;
+  }): ContactAuditEventRow;
   _addOpenCase(input: {
     tenantId: string;
     contactId: string;
@@ -33,6 +83,11 @@ export interface InMemoryContactsStore extends ContactsStore {
 export function createInMemoryContactsStore(): InMemoryContactsStore {
   const contacts: ContactRow[] = [];
   const links: ConversationContactLinkRow[] = [];
+  const identifiers: ContactIdentifierRow[] = [];
+  const conversations: ContactConversationHistoryRow[] = [];
+  const cases: ContactCaseHistoryRow[] = [];
+  const connectors: ContactConnectorSummaryRow[] = [];
+  const events: ContactAuditEventRow[] = [];
   const openCases: Array<{
     tenantId: string;
     contactId: string;
@@ -209,6 +264,62 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
       };
     },
 
+    async getContactDetailById(
+      tenantId,
+      contactId,
+    ): Promise<ContactDetailRow | null> {
+      const contact = contacts.find(
+        (c) => c.tenantId === tenantId && c.id === contactId,
+      );
+      if (!contact) return null;
+
+      const contactCases = cases
+        .filter((item) => item.tenantId === tenantId && item.contactId === contactId)
+        .sort(
+          (a, b) =>
+            b.updatedAt.getTime() - a.updatedAt.getTime() ||
+            b.createdAt.getTime() - a.createdAt.getTime(),
+        );
+      const caseIds = new Set(contactCases.map((item) => item.id));
+
+      return {
+        contact: { ...contact },
+        identifiers: identifiers
+          .filter(
+            (item) => item.tenantId === tenantId && item.contactId === contactId,
+          )
+          .map((item) => ({ ...item })),
+        conversations: conversations
+          .filter(
+            (item) =>
+              item.id &&
+              item.relationship &&
+              item.caseId !== undefined &&
+              item.startedAt &&
+              item.status &&
+              item.visitorId !== undefined,
+          )
+          .filter((item) =>
+            links.some(
+              (link) =>
+                link.tenantId === tenantId &&
+                link.contactId === contactId &&
+                link.conversationId === item.id,
+            ),
+          )
+          .map((item) => ({ ...item })),
+        cases: contactCases.map((item) => ({ ...item })),
+        connectors: connectors
+          .filter((item) => caseIds.has(item.caseId))
+          .sort((a, b) => a.connectorType.localeCompare(b.connectorType))
+          .map((item) => ({ ...item })),
+        events: events
+          .filter((item) => item.tenantId === tenantId && caseIds.has(item.caseId))
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .map((item) => ({ ...item })),
+      };
+    },
+
     async linkContactToConversation(
       tenantId,
       input: LinkContactInput,
@@ -234,6 +345,99 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
         createdAt: new Date(),
       };
       links.push(row);
+      return { ...row };
+    },
+
+    _addIdentifier(input) {
+      const row: ContactIdentifierRow = {
+        id: randomUUID(),
+        tenantId: input.tenantId,
+        contactId: input.contactId,
+        type: input.type,
+        valueNormalised: input.valueNormalised,
+        verifiedAt: input.verifiedAt ?? null,
+        source: input.source ?? null,
+        createdAt: new Date(),
+      };
+      identifiers.push(row);
+      return { ...row };
+    },
+
+    _addConversation(input) {
+      const row: ContactConversationHistoryRow = {
+        id: input.conversationId,
+        status: input.status ?? "active",
+        visitorId: null,
+        messageCount: input.messageCount ?? 0,
+        startedAt: new Date(),
+        completedAt: null,
+        createdAt: new Date(),
+        relationship: "primary",
+        linkedAt: new Date(),
+        caseId: input.caseId ?? null,
+        caseType: input.caseType ?? null,
+        caseStatus: input.caseStatus ?? null,
+      };
+      conversations.push(row);
+      links.push({
+        tenantId: input.tenantId,
+        conversationId: input.conversationId,
+        contactId: input.contactId,
+        relationship: "primary",
+        createdAt: row.linkedAt,
+      });
+      return { ...row };
+    },
+
+    _addCase(input) {
+      const now = new Date();
+      const row: ContactCaseHistoryRow = {
+        id: input.caseId ?? randomUUID(),
+        tenantId: input.tenantId,
+        conversationId: input.conversationId,
+        contactId: input.contactId,
+        caseType: input.caseType,
+        status: input.status,
+        priority: null,
+        title: input.title ?? null,
+        summary: input.summary ?? null,
+        reason: null,
+        createdAt: now,
+        updatedAt: input.updatedAt ?? now,
+        resolvedAt: input.status === "resolved" ? input.updatedAt ?? now : null,
+      };
+      cases.push(row);
+      return { ...row };
+    },
+
+    _addConnector(input) {
+      const row: ContactConnectorSummaryRow = {
+        connectorType: input.connectorType,
+        status: input.status,
+        destinationId: input.destinationId ?? null,
+        caseId: input.caseId,
+        attemptCount: 0,
+        lastError: null,
+        createdAt: input.createdAt ?? new Date(),
+        deliveredAt: input.status === "sent" ? (input.createdAt ?? new Date()) : null,
+      };
+      connectors.push(row);
+      return { ...row };
+    },
+
+    _addEvent(input) {
+      const row: ContactAuditEventRow = {
+        id: randomUUID(),
+        tenantId: input.tenantId,
+        caseId: input.caseId,
+        conversationId: input.conversationId,
+        actorType: "system",
+        actorId: null,
+        eventType: input.eventType,
+        payload: input.payload ?? {},
+        createdAt: input.createdAt ?? new Date(),
+      };
+      events.push(row);
       return { ...row };
     },
 
