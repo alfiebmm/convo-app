@@ -16,6 +16,7 @@
 import {
   getContactById,
   linkContactToConversation,
+  listContactsByTenant,
   normaliseEmail,
   normalisePhone,
   upsertContact,
@@ -51,7 +52,7 @@ function assert(cond: unknown, msg: string): asserts cond {
 function assertEq<T>(actual: T, expected: T, msg: string) {
   if (actual !== expected) {
     throw new Error(
-      `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+      `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
     );
   }
 }
@@ -59,7 +60,7 @@ function assertEq<T>(actual: T, expected: T, msg: string) {
 async function assertThrows(
   fn: () => Promise<unknown>,
   expectedSubstring: string,
-  msg: string
+  msg: string,
 ) {
   let threw = false;
   let errMsg = "";
@@ -72,7 +73,7 @@ async function assertThrows(
   assert(threw, `${msg} — expected throw, got success`);
   assert(
     errMsg.includes(expectedSubstring),
-    `${msg} — expected error to include "${expectedSubstring}", got "${errMsg}"`
+    `${msg} — expected error to include "${expectedSubstring}", got "${errMsg}"`,
   );
 }
 
@@ -117,7 +118,7 @@ async function runAllTests() {
     const { contact, created } = await upsertContact(
       TENANT_A,
       { emailNormalised: "alice@example.com", displayName: "Alice" },
-      { store }
+      { store },
     );
     assert(created, "newly created");
     assertEq(contact.tenantId, TENANT_A, "tenantId stamped");
@@ -131,7 +132,7 @@ async function runAllTests() {
     const first = await upsertContact(
       TENANT_A,
       { emailNormalised: "bob@example.com" },
-      { store }
+      { store },
     );
     const second = await upsertContact(
       TENANT_A,
@@ -140,7 +141,7 @@ async function runAllTests() {
         displayName: "Bob",
         phoneNormalised: "+61400000000",
       },
-      { store }
+      { store },
     );
     assert(!second.created, "second call was an update");
     assertEq(second.contact.id, first.contact.id, "same row");
@@ -148,7 +149,7 @@ async function runAllTests() {
     assertEq(
       second.contact.phoneNormalised,
       "+61400000000",
-      "phone backfilled"
+      "phone backfilled",
     );
     assertEq(store._dump().contacts.length, 1, "still one row");
   });
@@ -158,12 +159,12 @@ async function runAllTests() {
     const a = await upsertContact(
       TENANT_A,
       { emailNormalised: "shared@example.com" },
-      { store }
+      { store },
     );
     const b = await upsertContact(
       TENANT_B,
       { emailNormalised: "shared@example.com" },
-      { store }
+      { store },
     );
     assert(a.created, "A created");
     assert(b.created, "B created (NOT a hit on A's row)");
@@ -178,31 +179,21 @@ async function runAllTests() {
     await assertThrows(
       () => upsertContact(TENANT_A, {}, { store }),
       "at least one of",
-      "anonymous payload rejected"
+      "anonymous payload rejected",
     );
   });
 
   await test("upsertContact: rejects bad tenantId", async () => {
     const store = createInMemoryContactsStore();
     await assertThrows(
-      () =>
-        upsertContact(
-          "bad",
-          { emailNormalised: "x@y.com" },
-          { store }
-        ),
+      () => upsertContact("bad", { emailNormalised: "x@y.com" }, { store }),
       "tenantId must be a UUID",
-      "bad tenantId"
+      "bad tenantId",
     );
     await assertThrows(
-      () =>
-        upsertContact(
-          "",
-          { emailNormalised: "x@y.com" },
-          { store }
-        ),
+      () => upsertContact("", { emailNormalised: "x@y.com" }, { store }),
       "tenantId is required",
-      "empty tenantId"
+      "empty tenantId",
     );
   });
 
@@ -215,7 +206,7 @@ async function runAllTests() {
     const { contact } = await upsertContact(
       TENANT_A,
       { emailNormalised: "carol@example.com" },
-      { store }
+      { store },
     );
     const fetched = await getContactById(TENANT_A, contact.id, { store });
     assert(fetched !== null, "found");
@@ -227,7 +218,7 @@ async function runAllTests() {
     const { contact } = await upsertContact(
       TENANT_A,
       { emailNormalised: "dave@example.com" },
-      { store }
+      { store },
     );
     const fetched = await getContactById(TENANT_B, contact.id, { store });
     assertEq(fetched, null, "tenant B sees null");
@@ -238,8 +229,133 @@ async function runAllTests() {
     await assertThrows(
       () => getContactById(TENANT_A, "nope", { store }),
       "contactId must be a UUID",
-      "garbage contactId"
+      "garbage contactId",
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // listContactsByTenant
+  // -------------------------------------------------------------------------
+
+  await test("listContactsByTenant: tenant isolation — tenant A never sees tenant B contacts", async () => {
+    const store = createInMemoryContactsStore();
+    await upsertContact(
+      TENANT_A,
+      { emailNormalised: "alice@example.com", displayName: "Alice" },
+      { store },
+    );
+    await upsertContact(
+      TENANT_B,
+      { emailNormalised: "betty@example.com", displayName: "Betty" },
+      { store },
+    );
+
+    const result = await listContactsByTenant(TENANT_A, {}, { store });
+    assertEq(result.totalCount, 1, "one tenant A row");
+    assertEq(result.rows.length, 1, "one visible row");
+    assertEq(result.rows[0].displayName, "Alice", "tenant B row hidden");
+  });
+
+  await test("listContactsByTenant: q search returns only matching rows", async () => {
+    const store = createInMemoryContactsStore();
+    await upsertContact(
+      TENANT_A,
+      {
+        emailNormalised: "alice@example.com",
+        displayName: "Alice Smith",
+        attributes: { company: "Acre Homes", location: "Sydney" },
+      },
+      { store },
+    );
+    await upsertContact(
+      TENANT_A,
+      {
+        emailNormalised: "charlie@example.com",
+        displayName: "Charlie Jones",
+        attributes: { company: "Harbour Repairs", location: "Melbourne" },
+      },
+      { store },
+    );
+
+    const result = await listContactsByTenant(
+      TENANT_A,
+      { q: "alice" },
+      { store },
+    );
+    assertEq(result.totalCount, 1, "one matching row");
+    assertEq(
+      result.rows[0].emailNormalised,
+      "alice@example.com",
+      "Alice match",
+    );
+  });
+
+  await test("listContactsByTenant: filters and sorts by contact attributes and latest open case", async () => {
+    const store = createInMemoryContactsStore();
+    const buyer = await upsertContact(
+      TENANT_A,
+      {
+        emailNormalised: "buyer@example.com",
+        displayName: "Buyer Contact",
+        attributes: {
+          persona: "buyer",
+          marketplace_side: "demand",
+          service_or_product: "consulting",
+        },
+      },
+      { store },
+    );
+    const supplier = await upsertContact(
+      TENANT_A,
+      {
+        emailNormalised: "supplier@example.com",
+        displayName: "Supplier Contact",
+        attributes: {
+          persona: "supplier",
+          marketplace_side: "supply",
+          product: "directory listing",
+        },
+      },
+      { store },
+    );
+    store._setContactLastSeenAt(
+      buyer.contact.id,
+      new Date("2026-06-20T00:00:00.000Z"),
+    );
+    store._setContactLastSeenAt(
+      supplier.contact.id,
+      new Date("2026-06-19T00:00:00.000Z"),
+    );
+    store._addOpenCase({
+      tenantId: TENANT_A,
+      contactId: buyer.contact.id,
+      caseType: "lead",
+      status: "open",
+    });
+    store._addOpenCase({
+      tenantId: TENANT_A,
+      contactId: supplier.contact.id,
+      caseType: "cx_support",
+      status: "waiting_on_customer",
+    });
+
+    const result = await listContactsByTenant(
+      TENANT_A,
+      {
+        persona: "buyer",
+        mktSide: "demand",
+        caseType: "lead",
+        caseStatus: "open",
+        sort: "last-seen-desc",
+      },
+      { store },
+    );
+
+    assertEq(result.totalCount, 1, "one filtered row");
+    assertEq(result.rows[0].displayName, "Buyer Contact", "buyer returned");
+    assertEq(result.rows[0].serviceOrProduct, "consulting", "service sourced");
+    assertEq(result.rows[0].relatedCaseType, "lead", "case type joined");
+    assertEq(result.rows[0].openCaseStatus, "open", "case status joined");
   });
 
   // -------------------------------------------------------------------------
@@ -251,7 +367,7 @@ async function runAllTests() {
     const { contact } = await upsertContact(
       TENANT_A,
       { emailNormalised: "eve@example.com" },
-      { store }
+      { store },
     );
     const link = await linkContactToConversation(
       TENANT_A,
@@ -260,7 +376,7 @@ async function runAllTests() {
         contactId: contact.id,
         relationship: "primary",
       },
-      { store }
+      { store },
     );
     assertEq(link.tenantId, TENANT_A, "tenantId stamped");
     assertEq(link.conversationId, CONVO_A, "convo stamped");
@@ -274,17 +390,21 @@ async function runAllTests() {
     const { contact } = await upsertContact(
       TENANT_A,
       { emailNormalised: "frank@example.com" },
-      { store }
+      { store },
     );
     await linkContactToConversation(
       TENANT_A,
-      { conversationId: CONVO_A, contactId: contact.id, relationship: "primary" },
-      { store }
+      {
+        conversationId: CONVO_A,
+        contactId: contact.id,
+        relationship: "primary",
+      },
+      { store },
     );
     const second = await linkContactToConversation(
       TENANT_A,
       { conversationId: CONVO_A, contactId: contact.id, relationship: "cc" },
-      { store }
+      { store },
     );
     assertEq(second.relationship, "cc", "relationship overwritten");
     assertEq(store._dump().links.length, 1, "still one link");
@@ -295,7 +415,7 @@ async function runAllTests() {
     const { contact } = await upsertContact(
       TENANT_A,
       { emailNormalised: "grace@example.com" },
-      { store }
+      { store },
     );
     // Tenant B tries to link tenant A's contact id to a convo of its own.
     // The link is stamped with tenant B; querying tenant A's links will
@@ -303,8 +423,12 @@ async function runAllTests() {
     // includes tenant_id on the upsert ON CONFLICT clause.)
     await linkContactToConversation(
       TENANT_B,
-      { conversationId: CONVO_B, contactId: contact.id, relationship: "primary" },
-      { store }
+      {
+        conversationId: CONVO_B,
+        contactId: contact.id,
+        relationship: "primary",
+      },
+      { store },
     );
     const links = store._dump().links;
     assertEq(links.length, 1, "one link recorded");
@@ -322,10 +446,10 @@ async function runAllTests() {
             contactId: "11111111-1111-4111-8111-111111111111",
             relationship: "",
           },
-          { store }
+          { store },
         ),
       "relationship is required",
-      "empty relationship"
+      "empty relationship",
     );
   });
 
@@ -340,10 +464,10 @@ async function runAllTests() {
             contactId: "11111111-1111-4111-8111-111111111111",
             relationship: "primary",
           },
-          { store }
+          { store },
         ),
       "tenantId is required",
-      "empty tenantId"
+      "empty tenantId",
     );
     await assertThrows(
       () =>
@@ -354,10 +478,10 @@ async function runAllTests() {
             contactId: "11111111-1111-4111-8111-111111111111",
             relationship: "primary",
           },
-          { store }
+          { store },
         ),
       "conversationId must be a UUID",
-      "garbage conversationId"
+      "garbage conversationId",
     );
     await assertThrows(
       () =>
@@ -368,10 +492,10 @@ async function runAllTests() {
             contactId: "nope",
             relationship: "primary",
           },
-          { store }
+          { store },
         ),
       "contactId must be a UUID",
-      "garbage contactId"
+      "garbage contactId",
     );
   });
 }
