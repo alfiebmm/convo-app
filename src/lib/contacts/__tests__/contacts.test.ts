@@ -14,6 +14,7 @@
  */
 
 import {
+  getContactDetailById,
   getContactById,
   linkContactToConversation,
   listContactsByTenant,
@@ -21,6 +22,12 @@ import {
   normalisePhone,
   upsertContact,
 } from "../index";
+import { revealContactIdentifierForTenant } from "../pii";
+import type {
+  CasesStore,
+  CaseEventRow,
+  RecordCaseEventInput,
+} from "@/lib/cases/store";
 import { createInMemoryContactsStore } from "./in-memory-store";
 
 // ---------------------------------------------------------------------------
@@ -85,6 +92,7 @@ const TENANT_A = "a1111111-1111-4111-8111-111111111111";
 const TENANT_B = "b2222222-2222-4222-9222-222222222222";
 const CONVO_A = "cccccccc-cccc-4ccc-accc-cccccccccccc";
 const CONVO_B = "dddddddd-dddd-4ddd-addd-dddddddddddd";
+const ACTOR_A = "eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee";
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -356,6 +364,147 @@ async function runAllTests() {
     assertEq(result.rows[0].serviceOrProduct, "consulting", "service sourced");
     assertEq(result.rows[0].relatedCaseType, "lead", "case type joined");
     assertEq(result.rows[0].openCaseStatus, "open", "case status joined");
+  });
+
+  // -------------------------------------------------------------------------
+  // getContactDetailById
+  // -------------------------------------------------------------------------
+
+  await test("getContactDetailById: returns the full contact graph for the owning tenant", async () => {
+    const store = createInMemoryContactsStore();
+    const { contact } = await upsertContact(
+      TENANT_A,
+      {
+        emailNormalised: "owner@example.com",
+        displayName: "Owner Contact",
+        attributes: { persona: "buyer", company: "Owner Co" },
+        consentState: "granted",
+        privacyNoticeVersion: "v1",
+      },
+      { store },
+    );
+    const identifier = store._addIdentifier({
+      tenantId: TENANT_A,
+      contactId: contact.id,
+      type: "email",
+      valueNormalised: "owner@example.com",
+    });
+    const kase = store._addCase({
+      tenantId: TENANT_A,
+      contactId: contact.id,
+      conversationId: CONVO_A,
+      caseType: "lead",
+      status: "open",
+      title: "Lead case",
+    });
+    store._addConversation({
+      tenantId: TENANT_A,
+      contactId: contact.id,
+      conversationId: CONVO_A,
+      caseId: kase.id,
+      caseType: kase.caseType,
+      caseStatus: kase.status,
+    });
+    store._addConnector({
+      connectorType: "hubspot",
+      status: "sent",
+      caseId: kase.id,
+    });
+    store._addEvent({
+      tenantId: TENANT_A,
+      caseId: kase.id,
+      conversationId: CONVO_A,
+      eventType: "case_created",
+    });
+
+    const detail = await getContactDetailById(TENANT_A, contact.id, { store });
+    assert(detail !== null, "detail found");
+    assertEq(detail!.contact.id, contact.id, "contact row returned");
+    assertEq(detail!.identifiers[0].id, identifier.id, "identifier returned");
+    assertEq(detail!.conversations[0].id, CONVO_A, "conversation returned");
+    assertEq(detail!.cases[0].id, kase.id, "case returned");
+    assertEq(detail!.connectors[0].connectorType, "hubspot", "connector returned");
+    assertEq(detail!.events[0].eventType, "case_created", "event returned");
+  });
+
+  await test("getContactDetailById: tenant isolation — tenant A query never returns tenant B contact", async () => {
+    const store = createInMemoryContactsStore();
+    const { contact } = await upsertContact(
+      TENANT_B,
+      { emailNormalised: "hidden@example.com", displayName: "Hidden" },
+      { store },
+    );
+
+    const detail = await getContactDetailById(TENANT_A, contact.id, { store });
+    assertEq(detail, null, "tenant A sees null for tenant B contact");
+  });
+
+  await test("revealContactIdentifierForTenant: reveals an identifier and emits pii_reveal audit", async () => {
+    const store = createInMemoryContactsStore();
+    const { contact } = await upsertContact(
+      TENANT_A,
+      { emailNormalised: "reveal@example.com", displayName: "Reveal Contact" },
+      { store },
+    );
+    const identifier = store._addIdentifier({
+      tenantId: TENANT_A,
+      contactId: contact.id,
+      type: "email",
+      valueNormalised: "reveal@example.com",
+    });
+    const latestCase = store._addCase({
+      tenantId: TENANT_A,
+      contactId: contact.id,
+      conversationId: CONVO_A,
+      caseType: "lead",
+      status: "resolved",
+      updatedAt: new Date("2026-06-20T02:00:00.000Z"),
+    });
+    store._addCase({
+      tenantId: TENANT_A,
+      contactId: contact.id,
+      conversationId: CONVO_B,
+      caseType: "support",
+      status: "open",
+      updatedAt: new Date("2026-06-20T01:00:00.000Z"),
+    });
+    const insertedEvents: CaseEventRow[] = [];
+    const casesStore = {
+      insertEvent: async (tenantId: string, input: RecordCaseEventInput) => {
+        const row: CaseEventRow = {
+          id: "ffffffff-ffff-4fff-afff-ffffffffffff",
+          tenantId,
+          caseId: input.caseId,
+          conversationId: input.conversationId,
+          actorType: input.actorType,
+          actorId: input.actorId ?? null,
+          eventType: input.eventType,
+          payload: input.payload ?? {},
+          createdAt: new Date(),
+        };
+        insertedEvents.push(row);
+        return row;
+      },
+    } as unknown as CasesStore;
+
+    const result = await revealContactIdentifierForTenant(
+      TENANT_A,
+      contact.id,
+      identifier.id,
+      ACTOR_A,
+      { contactsStore: store, casesStore },
+    );
+
+    assert(result !== null, "reveal result returned");
+    assertEq(result!.value, "reveal@example.com", "identifier value revealed");
+    assertEq(insertedEvents.length, 1, "one audit event emitted");
+    assertEq(insertedEvents[0].caseId, latestCase.id, "latest case used");
+    assertEq(insertedEvents[0].eventType, "pii_reveal", "audit event type");
+    assertEq(
+      insertedEvents[0].payload.contact_id as string,
+      contact.id,
+      "contact id included",
+    );
   });
 
   // -------------------------------------------------------------------------
