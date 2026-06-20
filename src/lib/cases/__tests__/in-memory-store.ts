@@ -13,6 +13,10 @@ import { randomUUID } from "node:crypto";
 
 import type {
   CaseAttributeRow,
+  CaseDetailContactRow,
+  CaseDetailConnectorRow,
+  CaseDetailMessageRow,
+  CaseDetailRow,
   CaseEventRow,
   CaseRow,
   CaseStatus,
@@ -26,6 +30,13 @@ import type {
 } from "../store";
 
 export interface InMemoryCasesStore extends CasesStore {
+  _seedCaseDetail(caseId: string, detail: {
+    contact?: CaseDetailContactRow | null;
+    messages?: CaseDetailMessageRow[];
+    connectors?: CaseDetailConnectorRow[];
+    assignedOwnerName?: string | null;
+    tenantSettings?: Record<string, unknown> | null;
+  }): void;
   /** Test affordance: dump everything currently stored. */
   _dump(): {
     cases: CaseRow[];
@@ -38,6 +49,16 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
   const cases: CaseRow[] = [];
   const events: CaseEventRow[] = [];
   const attributes: CaseAttributeRow[] = [];
+  const detailSeeds = new Map<
+    string,
+    {
+      contact?: CaseDetailContactRow | null;
+      messages?: CaseDetailMessageRow[];
+      connectors?: CaseDetailConnectorRow[];
+      assignedOwnerName?: string | null;
+      tenantSettings?: Record<string, unknown> | null;
+    }
+  >();
 
   return {
     async insertCase(tenantId, input: CreateCaseInput): Promise<CaseRow> {
@@ -215,6 +236,49 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         .map((r) => ({ ...r }));
     },
 
+    async getCaseDetailById(
+      tenantId,
+      caseId
+    ): Promise<CaseDetailRow | null> {
+      const row = cases.find(
+        (candidate) => candidate.tenantId === tenantId && candidate.id === caseId
+      );
+      if (!row) return null;
+
+      const seed = detailSeeds.get(caseId) ?? {};
+      const caseAttributes = attributes
+        .filter((a) => a.tenantId === tenantId && a.caseId === caseId)
+        .map((a) => ({ ...a }));
+      const caseEvents = events
+        .filter((e) => e.tenantId === tenantId && e.caseId === caseId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map((e) => ({ ...e }));
+
+      return {
+        case: { ...row },
+        conversation: {
+          id: row.conversationId,
+          status: "active",
+          visitorId: null,
+          messageCount: seed.messages?.length ?? 0,
+          metadata: {},
+          startedAt: row.createdAt,
+          completedAt: null,
+          createdAt: row.createdAt,
+        },
+        contact: seed.contact ?? null,
+        assignedOwnerName: seed.assignedOwnerName ?? null,
+        tenantSettings: seed.tenantSettings ?? null,
+        messages: (seed.messages ?? []).map((message) => ({ ...message })),
+        attributes: caseAttributes,
+        events: caseEvents,
+        connectors: (seed.connectors ?? []).map((connector) => ({
+          ...connector,
+          payload: { ...connector.payload },
+        })),
+      };
+    },
+
     async insertEvent(
       tenantId,
       input: RecordCaseEventInput
@@ -265,6 +329,10 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
       return attributes
         .filter((a) => a.tenantId === tenantId && a.caseId === caseId)
         .map((r) => ({ ...r }));
+    },
+
+    _seedCaseDetail(caseId, detail) {
+      detailSeeds.set(caseId, detail);
     },
 
     _dump() {

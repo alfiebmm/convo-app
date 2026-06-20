@@ -19,8 +19,10 @@
  */
 
 import { assertTenantId, assertUuid } from "./tenant-guard";
+import { resolveCta } from "@/lib/cta/resolve";
 import {
   getDefaultCasesStore,
+  type CaseDetailRow,
   type CaseRow,
   type CaseListItemRow,
   type CaseStatus,
@@ -31,6 +33,8 @@ import {
 } from "./store";
 
 export type {
+  CaseDetailMessageRow,
+  CaseDetailRow,
   CaseRow,
   CaseListItemRow,
   CaseStatus,
@@ -39,6 +43,16 @@ export type {
   ListCasesFilters,
   ListCasesWithActivityFilters,
 } from "./store";
+
+export interface CaseInternalLink {
+  text: string;
+  url: string;
+  tag: string;
+}
+
+export interface CaseDetail extends CaseDetailRow {
+  internalLinks: CaseInternalLink[];
+}
 
 /**
  * Optional override slot for callers (mostly tests) that want to inject a
@@ -282,4 +296,50 @@ export async function getCaseByConversation(
   assertUuid(conversationId, "conversationId");
 
   return resolveStore(opts).findCaseByConversation(tenantId, conversationId);
+}
+
+// ---------------------------------------------------------------------------
+// getCaseDetailById
+// ---------------------------------------------------------------------------
+
+function resolveInternalLinks(detail: CaseDetailRow): CaseInternalLink[] {
+  const lastAssistant = [...detail.messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  if (!lastAssistant) return [];
+
+  const result = resolveCta({
+    settings: detail.tenantSettings,
+    messages: detail.messages.map((message) => ({
+      role: message.role === "assistant" ? "assistant" : "user",
+      content: message.content,
+    })),
+    assistantResponse: lastAssistant.content,
+  });
+
+  return result.cta ? [result.cta] : [];
+}
+
+/**
+ * Fetch the complete case-detail graph for the conversations inbox panel.
+ * Returns `null` when the case is unknown or belongs to another tenant.
+ *
+ * The store performs one tenant-scoped query for the graph. This helper adds
+ * the derived CTA/internal-link view using the existing CTA resolver.
+ */
+export async function getCaseDetailById(
+  tenantId: string,
+  caseId: string,
+  opts?: CaseHelperOptions
+): Promise<CaseDetail | null> {
+  assertTenantId(tenantId);
+  assertUuid(caseId, "caseId");
+
+  const detail = await resolveStore(opts).getCaseDetailById(tenantId, caseId);
+  if (!detail) return null;
+
+  return {
+    ...detail,
+    internalLinks: resolveInternalLinks(detail),
+  };
 }

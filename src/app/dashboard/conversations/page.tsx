@@ -1,4 +1,5 @@
 import ConversationList from "./conversation-list";
+import CaseDetailPanel from "./case-detail-panel";
 import { ConversationFilters } from "./conversation-filters";
 import { Suspense } from "react";
 import { getCurrentTenant } from "@/lib/auth-context";
@@ -8,6 +9,7 @@ import {
   parseConversationFilters,
 } from "./filter-state";
 import {
+  getCaseDetailById,
   listCasesByTenantWithActivity,
   type CaseStatus,
   type ListCasesWithActivityFilters,
@@ -72,10 +74,14 @@ export default async function ConversationsPage({
     }
   }
   const activeFilters = parseConversationFilters(urlParams);
+  const selectedCaseId = typeof params.case === "string" ? params.case : undefined;
   const convoData = await listCasesByTenantWithActivity(
     tenant.id,
     toCaseListFilters(activeFilters)
   );
+  const selectedCaseDetail = selectedCaseId
+    ? await getCaseDetailById(tenant.id, selectedCaseId)
+    : null;
 
   return (
     <div>
@@ -99,8 +105,13 @@ export default async function ConversationsPage({
           </div>
         </div>
       ) : (
-        <ConversationList conversations={convoData} />
+        <ConversationList
+          conversations={convoData}
+          selectedCaseId={selectedCaseDetail?.case.id}
+        />
       )}
+
+      {selectedCaseDetail && <CaseDetailPanel detail={selectedCaseDetail} />}
     </div>
   );
 }
