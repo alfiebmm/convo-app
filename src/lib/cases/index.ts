@@ -22,18 +22,22 @@ import { assertTenantId, assertUuid } from "./tenant-guard";
 import {
   getDefaultCasesStore,
   type CaseRow,
+  type CaseListItemRow,
   type CaseStatus,
   type CasesStore,
   type CreateCaseInput,
   type ListCasesFilters,
+  type ListCasesWithActivityFilters,
 } from "./store";
 
 export type {
   CaseRow,
+  CaseListItemRow,
   CaseStatus,
   CasesStore,
   CreateCaseInput,
   ListCasesFilters,
+  ListCasesWithActivityFilters,
 } from "./store";
 
 /**
@@ -189,6 +193,37 @@ export async function listCasesByTenant(
   }
 
   return resolveStore(opts).listCases(tenantId, filters);
+}
+
+// ---------------------------------------------------------------------------
+// listCasesByTenantWithActivity
+// ---------------------------------------------------------------------------
+
+/**
+ * List tenant-scoped case rows for the conversations inbox, including the
+ * joined conversation/contact/owner/connector columns and computed activity.
+ *
+ * Last activity is calculated by the store as:
+ *   GREATEST(MAX(messages.created_at), MAX(follow_up_events.created_at))
+ * with `conversations.started_at` as the fallback when both sides are empty.
+ *
+ * @param tenantId Tenant UUID — REQUIRED.
+ * @param filters Case, attribute, connector and activity-date filters.
+ * @returns Array of enriched case rows in `lastActivityAt DESC` order.
+ *
+ * @throws Error when `tenantId` is missing or not a valid UUID.
+ */
+export async function listCasesByTenantWithActivity(
+  tenantId: string,
+  filters: ListCasesWithActivityFilters = {},
+  opts?: CaseHelperOptions
+): Promise<CaseListItemRow[]> {
+  assertTenantId(tenantId);
+  if (filters.assignedTo !== undefined && filters.assignedTo !== null) {
+    assertUuid(filters.assignedTo, "filters.assignedTo");
+  }
+
+  return resolveStore(opts).listCasesWithActivity(tenantId, filters);
 }
 
 // ---------------------------------------------------------------------------

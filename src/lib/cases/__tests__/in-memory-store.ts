@@ -16,9 +16,11 @@ import type {
   CaseEventRow,
   CaseRow,
   CaseStatus,
+  CaseListItemRow,
   CasesStore,
   CreateCaseInput,
   ListCasesFilters,
+  ListCasesWithActivityFilters,
   RecordCaseEventInput,
   SetCaseAttributeInput,
 } from "../store";
@@ -120,6 +122,97 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
       const offset = filters.offset ?? 0;
       const limit = filters.limit ?? 50;
       return rows.slice(offset, offset + limit).map((r) => ({ ...r }));
+    },
+
+    async listCasesWithActivity(
+      tenantId,
+      filters: ListCasesWithActivityFilters
+    ): Promise<CaseListItemRow[]> {
+      let rows = cases.filter((c) => c.tenantId === tenantId);
+      if (filters.caseType) {
+        rows = rows.filter((c) => c.caseType === filters.caseType);
+      }
+      if (filters.followUpRequired !== undefined) {
+        rows = rows.filter((c) =>
+          filters.followUpRequired
+            ? c.status !== "resolved" && c.status !== "dismissed"
+            : c.status === "resolved" || c.status === "dismissed"
+        );
+      }
+      if (filters.status) {
+        rows = rows.filter((c) => c.status === filters.status);
+      }
+      if (filters.priority) {
+        rows = rows.filter((c) => c.priority === filters.priority);
+      }
+      if (filters.assignedTo !== undefined) {
+        rows = rows.filter((c) => c.assignedTo === filters.assignedTo);
+      }
+      if (filters.routingKey) {
+        rows = rows.filter((c) => c.routingKey === filters.routingKey);
+      }
+      if (filters.ruleId) {
+        rows = rows.filter((c) => c.ruleId === filters.ruleId);
+      }
+      if (filters.persona || filters.marketplaceSide || filters.topic) {
+        rows = rows.filter((c) => {
+          const attrs = attributes.filter(
+            (a) => a.tenantId === tenantId && a.caseId === c.id
+          );
+          const attrValue = (key: string) =>
+            attrs.find((a) => a.key === key)?.value;
+          return (
+            (!filters.persona || attrValue("persona") === filters.persona) &&
+            (!filters.marketplaceSide ||
+              attrValue("marketplace_side") === filters.marketplaceSide) &&
+            (!filters.topic || attrValue("topic") === filters.topic)
+          );
+        });
+      }
+
+      const enriched = rows.map((c) => {
+        const latestCaseEventAt =
+          events
+            .filter((e) => e.tenantId === tenantId && e.caseId === c.id)
+            .map((e) => e.createdAt)
+            .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+        const lastActivityAt =
+          latestCaseEventAt && latestCaseEventAt > c.createdAt
+            ? latestCaseEventAt
+            : c.createdAt;
+        return {
+          ...c,
+          conversationStatus: "active",
+          conversationVisitorId: null,
+          conversationMessageCount: 0,
+          conversationStartedAt: c.createdAt,
+          latestMessageAt: null,
+          latestCaseEventAt,
+          lastActivityAt,
+          contactDisplayName: null,
+          assignedOwnerName: null,
+          latestConnectorType: null,
+          latestConnectorDestinationId: null,
+          latestConnectorStatus: null,
+        };
+      });
+
+      const filtered = enriched.filter((c) => {
+        if (filters.from && c.lastActivityAt < filters.from) return false;
+        if (filters.to && c.lastActivityAt > filters.to) return false;
+        return true;
+      });
+
+      const offset = filters.offset ?? 0;
+      const limit = filters.limit ?? 50;
+      return filtered
+        .sort(
+          (a, b) =>
+            b.lastActivityAt.getTime() - a.lastActivityAt.getTime() ||
+            b.createdAt.getTime() - a.createdAt.getTime()
+        )
+        .slice(offset, offset + limit)
+        .map((r) => ({ ...r }));
     },
 
     async insertEvent(
