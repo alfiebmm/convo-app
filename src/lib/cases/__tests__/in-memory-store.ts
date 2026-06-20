@@ -15,6 +15,7 @@ import type {
   CaseAttributeRow,
   CaseDetailContactRow,
   CaseDetailConnectorRow,
+  ConnectorOutboxRow,
   CaseDetailMessageRow,
   CaseDetailRow,
   CaseEventRow,
@@ -37,11 +38,13 @@ export interface InMemoryCasesStore extends CasesStore {
     assignedOwnerName?: string | null;
     tenantSettings?: Record<string, unknown> | null;
   }): void;
+  _seedConnector(row: ConnectorOutboxRow): void;
   /** Test affordance: dump everything currently stored. */
   _dump(): {
     cases: CaseRow[];
     events: CaseEventRow[];
     attributes: CaseAttributeRow[];
+    connectors: ConnectorOutboxRow[];
   };
 }
 
@@ -49,6 +52,7 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
   const cases: CaseRow[] = [];
   const events: CaseEventRow[] = [];
   const attributes: CaseAttributeRow[] = [];
+  const connectors: ConnectorOutboxRow[] = [];
   const detailSeeds = new Map<
     string,
     {
@@ -272,7 +276,13 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         messages: (seed.messages ?? []).map((message) => ({ ...message })),
         attributes: caseAttributes,
         events: caseEvents,
-        connectors: (seed.connectors ?? []).map((connector) => ({
+        connectors: [
+          ...connectors.filter(
+            (connector) =>
+              connector.tenantId === tenantId && connector.caseId === caseId
+          ),
+          ...(seed.connectors ?? []),
+        ].map((connector) => ({
           ...connector,
           payload: { ...connector.payload },
         })),
@@ -331,8 +341,35 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         .map((r) => ({ ...r }));
     },
 
+    async findConnectorOutboxRow(tenantId, outboxId) {
+      const row = connectors.find(
+        (connector) => connector.tenantId === tenantId && connector.id === outboxId
+      );
+      return row ? { ...row, payload: { ...row.payload } } : null;
+    },
+
+    async requeueFailedConnectorOutboxRow(tenantId, outboxId) {
+      const idx = connectors.findIndex(
+        (connector) =>
+          connector.tenantId === tenantId &&
+          connector.id === outboxId &&
+          connector.status === "failed"
+      );
+      if (idx === -1) return null;
+      connectors[idx] = {
+        ...connectors[idx],
+        status: "pending",
+        nextAttemptAt: new Date(),
+      };
+      return { ...connectors[idx], payload: { ...connectors[idx].payload } };
+    },
+
     _seedCaseDetail(caseId, detail) {
       detailSeeds.set(caseId, detail);
+    },
+
+    _seedConnector(row) {
+      connectors.push({ ...row, payload: { ...row.payload } });
     },
 
     _dump() {
@@ -340,6 +377,7 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         cases: cases.map((r) => ({ ...r })),
         events: events.map((r) => ({ ...r })),
         attributes: attributes.map((r) => ({ ...r })),
+        connectors: connectors.map((r) => ({ ...r, payload: { ...r.payload } })),
       };
     },
   };

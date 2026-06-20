@@ -60,6 +60,26 @@ export async function getUserTenantsForCurrentUser() {
     .where(eq(tenantMembers.userId, user.id));
 }
 
+export async function listTenantUsersForCurrentUser(tenantId: string) {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const membership = await getTenantMembership(user.id, tenantId);
+  if (!membership) return [];
+
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: tenantMembers.role,
+    })
+    .from(tenantMembers)
+    .innerJoin(users, eq(tenantMembers.userId, users.id))
+    .where(eq(tenantMembers.tenantId, tenantId))
+    .orderBy(users.name, users.email);
+}
+
 /**
  * Require auth — redirects to /login if not authenticated.
  * Returns the user and session.

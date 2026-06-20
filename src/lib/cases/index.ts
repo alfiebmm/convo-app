@@ -20,6 +20,7 @@
 
 import { assertTenantId, assertUuid } from "./tenant-guard";
 import { resolveCta } from "@/lib/cta/resolve";
+import { sanitizeCaseNoteHtml } from "./sanitize";
 import {
   getDefaultCasesStore,
   type CaseDetailRow,
@@ -27,6 +28,7 @@ import {
   type CaseListItemRow,
   type CaseStatus,
   type CasesStore,
+  type ConnectorOutboxRow,
   type CreateCaseInput,
   type ListCasesFilters,
   type ListCasesWithActivityFilters,
@@ -39,6 +41,7 @@ export type {
   CaseListItemRow,
   CaseStatus,
   CasesStore,
+  ConnectorOutboxRow,
   CreateCaseInput,
   ListCasesFilters,
   ListCasesWithActivityFilters,
@@ -178,6 +181,185 @@ export async function assignCase(
   return resolveStore(opts).updateCase(tenantId, caseId, {
     assignedTo: assigneeUserId,
   });
+}
+
+export async function assignCaseWithAudit(
+  tenantId: string,
+  caseId: string,
+  assigneeUserId: string | null,
+  actorId: string,
+  opts?: CaseHelperOptions
+): Promise<CaseRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(caseId, "caseId");
+  assertUuid(actorId, "actorId");
+  if (assigneeUserId !== null) {
+    assertUuid(assigneeUserId, "assigneeUserId");
+  }
+
+  const store = resolveStore(opts);
+  const current = await store.findCaseById(tenantId, caseId);
+  if (!current) return null;
+
+  const updated = await store.updateCase(tenantId, caseId, {
+    assignedTo: assigneeUserId,
+  });
+  if (!updated) return null;
+
+  await store.insertEvent(tenantId, {
+    caseId,
+    conversationId: current.conversationId,
+    actorType: "user",
+    actorId,
+    eventType: "case_assigned",
+    payload: {
+      assigned_to: assigneeUserId,
+      prev_assigned_to: current.assignedTo,
+      actor_id: actorId,
+    },
+  });
+
+  return updated;
+}
+
+export async function resolveCaseWithAudit(
+  tenantId: string,
+  caseId: string,
+  actorId: string,
+  opts?: CaseHelperOptions
+): Promise<CaseRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(caseId, "caseId");
+  assertUuid(actorId, "actorId");
+
+  const store = resolveStore(opts);
+  const current = await store.findCaseById(tenantId, caseId);
+  if (!current) return null;
+
+  const updated = await store.updateCase(tenantId, caseId, {
+    status: "resolved",
+    resolvedAt: new Date(),
+  });
+  if (!updated) return null;
+
+  await store.insertEvent(tenantId, {
+    caseId,
+    conversationId: current.conversationId,
+    actorType: "user",
+    actorId,
+    eventType: "case_resolved",
+    payload: { actor_id: actorId },
+  });
+
+  return updated;
+}
+
+export async function dismissCaseWithAudit(
+  tenantId: string,
+  caseId: string,
+  reason: string,
+  actorId: string,
+  opts?: CaseHelperOptions
+): Promise<CaseRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(caseId, "caseId");
+  assertUuid(actorId, "actorId");
+
+  const trimmedReason = reason.trim();
+  if (trimmedReason.length < 1 || trimmedReason.length > 1000) {
+    throw new Error("Dismiss reason must be 1-1000 characters");
+  }
+
+  const store = resolveStore(opts);
+  const current = await store.findCaseById(tenantId, caseId);
+  if (!current) return null;
+
+  const updated = await store.updateCase(tenantId, caseId, {
+    status: "dismissed",
+    resolvedAt: null,
+  });
+  if (!updated) return null;
+
+  await store.insertEvent(tenantId, {
+    caseId,
+    conversationId: current.conversationId,
+    actorType: "user",
+    actorId,
+    eventType: "case_dismissed",
+    payload: { reason: trimmedReason, actor_id: actorId },
+  });
+
+  return updated;
+}
+
+export async function addCaseNote(
+  tenantId: string,
+  caseId: string,
+  bodyHtml: string,
+  actorId: string,
+  opts?: CaseHelperOptions
+) {
+  assertTenantId(tenantId);
+  assertUuid(caseId, "caseId");
+  assertUuid(actorId, "actorId");
+
+  const sanitized = sanitizeCaseNoteHtml(bodyHtml);
+  if (!sanitized) {
+    throw new Error("Note body is required");
+  }
+
+  const store = resolveStore(opts);
+  const current = await store.findCaseById(tenantId, caseId);
+  if (!current) return null;
+
+  return store.insertEvent(tenantId, {
+    caseId,
+    conversationId: current.conversationId,
+    actorType: "user",
+    actorId,
+    eventType: "note_added",
+    payload: { body_html: sanitized, actor_id: actorId },
+  });
+}
+
+export interface RequeueOutboxResult {
+  row: ConnectorOutboxRow;
+  requeued: boolean;
+}
+
+export async function requeueOutboxRow(
+  tenantId: string,
+  outboxId: string,
+  actorId: string,
+  opts?: CaseHelperOptions
+): Promise<RequeueOutboxResult | null> {
+  assertTenantId(tenantId);
+  assertUuid(outboxId, "outboxId");
+  assertUuid(actorId, "actorId");
+
+  const store = resolveStore(opts);
+  const existing = await store.findConnectorOutboxRow(tenantId, outboxId);
+  if (!existing) return null;
+  if (existing.status !== "failed") {
+    return { row: existing, requeued: false };
+  }
+
+  const updated = await store.requeueFailedConnectorOutboxRow(tenantId, outboxId);
+  if (!updated) return { row: existing, requeued: false };
+
+  const kase = await store.findCaseById(tenantId, updated.caseId);
+  if (!kase) return { row: updated, requeued: true };
+
+  await store.insertEvent(tenantId, {
+    caseId: updated.caseId,
+    conversationId: kase.conversationId,
+    actorType: "user",
+    actorId,
+    eventType: "sync_retried",
+    payload: { outbox_id: outboxId, actor_id: actorId },
+  });
+
+  return { row: updated, requeued: true };
 }
 
 // ---------------------------------------------------------------------------
