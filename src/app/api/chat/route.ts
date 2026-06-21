@@ -44,6 +44,7 @@ import {
   emitCaseEvent,
   actionRequiresCasePersistence,
   type CaseSseCapturePolicy,
+  type CaseSseContactMethod,
 } from "@/lib/follow-up/lifecycle";
 import { createCase, getCaseByConversation } from "@/lib/cases";
 import { recordCaseEvent } from "@/lib/cases/events";
@@ -592,6 +593,47 @@ export async function POST(req: NextRequest) {
                 const { action } = lifecycleResult;
                 let persistedCaseId: string | null = null;
 
+                // CON-172 / D4 — resolve the contact method from
+                // the tenant's validated config so we can both inline
+                // it on the SSE `case` event (widget render) AND log
+                // `channels_shown` into the case audit event. The
+                // model never sees the address; resolution happens
+                // server-side from the validated `followUp.contact_methods`
+                // by id. The schema already enforced rule → method
+                // linkage at parse time, so a known contact_method_id
+                // MUST resolve here; if not (e.g. config drift), we
+                // omit the inlined object and log + carry on.
+                const contactMethodId =
+                  action.type === "refer_to_approved_contact_method" ||
+                  action.type === "immediate_escalation"
+                    ? action.contact_method_id
+                    : undefined;
+
+                let contactMethod: CaseSseContactMethod | undefined;
+                if (contactMethodId !== undefined) {
+                  const cm = followUp.contact_methods.find(
+                    (c) => c.id === contactMethodId,
+                  );
+                  if (cm) {
+                    contactMethod = {
+                      id: cm.id,
+                      type: cm.type,
+                      label: cm.label,
+                      value: cm.value,
+                      url: cm.url,
+                    };
+                  } else {
+                    console.error(
+                      "[follow-up] contact_method_id not resolvable from tenant config",
+                      {
+                        tenantId: tenant.id,
+                        conversationId: convoId,
+                        contact_method_id: contactMethodId,
+                      },
+                    );
+                  }
+                }
+
                 if (actionRequiresCasePersistence(action)) {
                   try {
                     const existing = await getCaseByConversation(
@@ -617,7 +659,27 @@ export async function POST(req: NextRequest) {
                     // effort — a failure to log does not block the
                     // widget event since the case row is already
                     // committed.
+                    //
+                    // CON-172 / D4: when the action is
+                    // `refer_to_approved_contact_method`, also include
+                    // `channels_shown` in the payload so the audit log
+                    // records exactly which approved methods the visitor
+                    // saw (id + type + label — NEVER the raw delivery
+                    // value; that stays inside the resolved tenant
+                    // config and the widget render).
                     try {
+                      const channelsShown =
+                        action.type === "refer_to_approved_contact_method" &&
+                        contactMethod !== undefined
+                          ? [
+                              {
+                                id: contactMethod.id,
+                                type: contactMethod.type,
+                                label: contactMethod.label,
+                              },
+                            ]
+                          : undefined;
+
                       await recordCaseEvent(tenant.id, {
                         caseId: persistedCaseId,
                         conversationId: convoId,
@@ -633,6 +695,9 @@ export async function POST(req: NextRequest) {
                           evidence: action.evidence,
                           classifier_output: lifecycleResult.classifierResult.output,
                           classifier_version: CLASSIFIER_VERSION,
+                          ...(channelsShown !== undefined
+                            ? { channels_shown: channelsShown }
+                            : {}),
                         },
                       });
                     } catch (eventErr) {
@@ -716,6 +781,7 @@ export async function POST(req: NextRequest) {
                   const caseEvent = buildCaseEvent(action, {
                     caseId: persistedCaseId,
                     capturePolicy,
+                    contactMethod,
                   });
                   if (caseEvent) {
                     emitCaseEvent(controller, encoder, caseEvent);

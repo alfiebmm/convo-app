@@ -249,20 +249,15 @@ const fakeEvidence = {
   sensitivity: "balanced" as const,
 };
 
+// CON-172 / D4: `refer_to_approved_contact_method` was previously a noop
+// for the widget. It NOW renders a widget surface (inline contact-method
+// card) and persists a case row + audit event. Moved into widgetActions
+// below.
 const noopActions: ReadonlyArray<ResolvedAction> = [
   { type: "continue_helping" },
   { type: "clarify_then_recheck" },
   {
     type: "flag_for_staff_review_without_interrupting_visitor",
-    rule_id: "r1",
-    routing_key: "rk",
-    case_type: "cx_support",
-    confidence: 0.9,
-    evidence: fakeEvidence,
-  },
-  {
-    type: "refer_to_approved_contact_method",
-    contact_method_id: "cm1",
     rule_id: "r1",
     routing_key: "rk",
     case_type: "cx_support",
@@ -297,6 +292,16 @@ const widgetActions: ReadonlyArray<ResolvedAction> = [
     routing_key: "rk",
     case_type: "cx_support",
     confidence: 0.95,
+    evidence: fakeEvidence,
+  },
+  // CON-172 / D4 — refer is a widget-rendering action now.
+  {
+    type: "refer_to_approved_contact_method",
+    contact_method_id: "cm1",
+    rule_id: "r1",
+    routing_key: "rk",
+    case_type: "cx_support",
+    confidence: 0.9,
     evidence: fakeEvidence,
   },
 ];
@@ -432,19 +437,12 @@ await test("actionRequiresCasePersistence covers every variant correctly", () =>
     "silent flag persists (PRD invariant: case may exist without contact)",
   );
 
-  // Non-persisting variants.
+  // Non-persisting variants. CON-172 / D4: refer_to_approved_contact_method
+  // is NO LONGER in this list — it now persists a case row so the staff
+  // inbox has audit visibility of out-of-chat referrals.
   const nonPersist: ResolvedAction[] = [
     { type: "continue_helping" },
     { type: "clarify_then_recheck" },
-    {
-      type: "refer_to_approved_contact_method",
-      contact_method_id: "cm1",
-      rule_id: "r1",
-      routing_key: "rk",
-      case_type: "cx_support",
-      confidence: 0.9,
-      evidence: fakeEvidence,
-    },
   ];
   for (const a of nonPersist) {
     assertEq(
@@ -501,6 +499,123 @@ await test("offer_follow_up WITHOUT offer_title → buildCaseEvent omits the fie
     "offer_title absent when action omitted it",
   );
 });
+
+// ---------------------------------------------------------------------------
+// CON-172 / D4 — refer_to_approved_contact_method buildCaseEvent shape
+// ---------------------------------------------------------------------------
+
+const FAKE_CONTACT_METHOD_EMAIL = {
+  id: "cm-support-email",
+  type: "email" as const,
+  label: "Email the support team",
+  value: "support@example.test",
+  url: undefined,
+};
+
+const FAKE_CONTACT_METHOD_URL = {
+  id: "cm-callback-form",
+  type: "url" as const,
+  label: "Book a callback",
+  value: undefined,
+  url: "https://example.test/callback",
+};
+
+await test(
+  "refer_to_approved_contact_method WITH inlined method → event carries contact_method + id",
+  () => {
+    const action: ResolvedAction = {
+      type: "refer_to_approved_contact_method",
+      contact_method_id: "cm-support-email",
+      rule_id: "r-refer",
+      routing_key: "rk-support",
+      case_type: "cx_support",
+      confidence: 0.87,
+      evidence: fakeEvidence,
+    };
+    const evt = buildCaseEvent(action, {
+      caseId: FAKE_CASE_ID,
+      contactMethod: FAKE_CONTACT_METHOD_EMAIL,
+    });
+    assert(evt !== null, "event built");
+    assertEq(evt.case.action, "refer_to_approved_contact_method", "action");
+    assertEq(evt.case.case_id, FAKE_CASE_ID, "case_id");
+    assertEq(evt.case.rule_id, "r-refer", "rule_id");
+    assertEq(evt.case.routing_key, "rk-support", "routing_key");
+    assertEq(evt.case.case_type, "cx_support", "case_type");
+    assertEq(evt.case.confidence, 0.87, "confidence");
+    assertEq(
+      evt.case.contact_method_id,
+      "cm-support-email",
+      "contact_method_id",
+    );
+    assert(
+      evt.case.contact_method !== undefined,
+      "contact_method inlined",
+    );
+    assertEq(
+      evt.case.contact_method!.value,
+      "support@example.test",
+      "contact_method.value preserved",
+    );
+    // Evidence MUST NOT leak to the widget surface.
+    assert(
+      !("evidence" in evt.case),
+      "evidence must not leak to widget",
+    );
+  },
+);
+
+await test(
+  "refer_to_approved_contact_method WITHOUT inlined method → event still carries id (graceful fallback)",
+  () => {
+    const action: ResolvedAction = {
+      type: "refer_to_approved_contact_method",
+      contact_method_id: "cm-missing",
+      rule_id: "r-refer",
+      routing_key: "rk-support",
+      case_type: "cx_support",
+      confidence: 0.87,
+      evidence: fakeEvidence,
+    };
+    const evt = buildCaseEvent(action, { caseId: FAKE_CASE_ID });
+    assert(evt !== null, "event built");
+    assertEq(evt.case.contact_method_id, "cm-missing", "id propagated");
+    assert(
+      !("contact_method" in evt.case),
+      "contact_method omitted when not resolved",
+    );
+  },
+);
+
+await test(
+  "refer_to_approved_contact_method supports url-type contact methods",
+  () => {
+    const action: ResolvedAction = {
+      type: "refer_to_approved_contact_method",
+      contact_method_id: "cm-callback-form",
+      rule_id: "r-refer",
+      routing_key: "rk-callback",
+      case_type: "cx_support",
+      confidence: 0.9,
+      evidence: fakeEvidence,
+    };
+    const evt = buildCaseEvent(action, {
+      caseId: FAKE_CASE_ID,
+      contactMethod: FAKE_CONTACT_METHOD_URL,
+    });
+    assert(evt !== null, "event built");
+    assert(
+      evt.case.contact_method !== undefined,
+      "contact_method inlined",
+    );
+    assertEq(evt.case.contact_method!.type, "url", "type");
+    assertEq(
+      evt.case.contact_method!.url,
+      "https://example.test/callback",
+      "url preserved",
+    );
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Tests — runReEvaluation orchestration

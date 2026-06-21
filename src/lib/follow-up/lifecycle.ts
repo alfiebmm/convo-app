@@ -46,6 +46,7 @@ import type { ClassifierMessage } from "@/lib/classifier/prompt";
 import type {
   CapturePolicy,
   CaseType,
+  ContactMethod,
   FollowUp,
 } from "@/lib/forum-config/schema";
 
@@ -108,6 +109,20 @@ export type CaseSseCapturePolicy = Pick<
 >;
 
 /**
+ * Inlined approved-contact-method payload emitted on the SSE `case`
+ * event (CON-172 / D4 — `refer_to_approved_contact_method`). The widget
+ * needs the full resolved method (label + delivery value / url) inline
+ * so it can render a `mailto:`, `tel:`, or button-to-URL surface
+ * without a second round-trip. The model never sees this payload —
+ * same architectural pattern as the CON-93 CTA. Resolved server-side
+ * from `followUp.contact_methods` by id.
+ */
+export type CaseSseContactMethod = Pick<
+  ContactMethod,
+  "id" | "type" | "label" | "value" | "url"
+>;
+
+/**
  * SSE `case` event payload emitted to the widget when a `ResolvedAction`
  * needs widget-side UI (Epic D consumes this). Pulled to a typed surface
  * here so the route file simply passes it to the encoder.
@@ -145,6 +160,13 @@ export type CaseSseEvent = {
     capture_policy_id?: string;
     capture_policy?: CaseSseCapturePolicy;
     contact_method_id?: string;
+    /**
+     * CON-172 (Epic D4): inlined contact method (resolved server-side
+     * from `followUp.contact_methods` by `contact_method_id`). Present
+     * only when the action variant carries a `contact_method_id` and
+     * the id resolved against the validated tenant config.
+     */
+    contact_method?: CaseSseContactMethod;
     // CON-169 (Epic D1): visitor-facing title for the `offer_follow_up`
     // card. Only populated when the matched rule sets `offer_title`.
     offer_title?: string;
@@ -161,9 +183,9 @@ export type CaseSseEvent = {
  *     if `capture_policy_id` present)
  *   - `flag_for_staff_review_without_interrupting_visitor` → NO (silent
  *     flag, case still created per acceptance criteria, no widget UI)
- *   - `refer_to_approved_contact_method` → NO at V1 (Epic D will decide
- *     whether to surface the contact via prompt vs widget; for now
- *     silent)
+ *   - `refer_to_approved_contact_method` → YES (CON-172 / D4 — surfaces
+ *     the tenant's approved contact method as an inline card; the
+ *     model never sees the address)
  *   - `continue_helping` → NO (the default; no case, no event)
  *   - `clarify_then_recheck` → NO (next turn handles it via classifier)
  */
@@ -172,9 +194,9 @@ export function actionRequiresWidget(action: ResolvedAction): boolean {
     case "offer_follow_up":
     case "capture_details_then_flag":
     case "immediate_escalation":
+    case "refer_to_approved_contact_method":
       return true;
     case "flag_for_staff_review_without_interrupting_visitor":
-    case "refer_to_approved_contact_method":
     case "continue_helping":
     case "clarify_then_recheck":
       return false;
@@ -199,6 +221,18 @@ export function actionRequiresWidget(action: ResolvedAction): boolean {
 export type BuildCaseEventOptions = {
   caseId: string;
   capturePolicy?: CaseSseCapturePolicy;
+  /**
+   * CON-172 (Epic D4) — resolved contact method for the
+   * `refer_to_approved_contact_method` action. The route layer looks
+   * it up from the tenant's validated `followUp.contact_methods` by
+   * `action.contact_method_id` and passes it through here. When the
+   * action variant carries a `contact_method_id` (refer, or
+   * `immediate_escalation` with a contact set), this MUST be supplied
+   * for the widget to render anything useful; if omitted, the event is
+   * still emitted with the id only and the widget falls back
+   * gracefully (no card rendered, transcript stands on its own).
+   */
+  contactMethod?: CaseSseContactMethod;
 };
 
 /**
@@ -273,6 +307,30 @@ export function buildCaseEvent(
           ...(action.contact_method_id !== undefined
             ? { contact_method_id: action.contact_method_id }
             : {}),
+          ...(action.contact_method_id !== undefined &&
+          opts.contactMethod !== undefined
+            ? { contact_method: opts.contactMethod }
+            : {}),
+        },
+      };
+    case "refer_to_approved_contact_method":
+      // CON-172 / D4 — surface the tenant's approved contact method.
+      // `contact_method_id` always present (schema-enforced); the
+      // inlined `contact_method` is present whenever the route layer
+      // resolved the id against the tenant's validated config.
+      return {
+        type: "case",
+        case: {
+          action: action.type,
+          case_id: opts.caseId,
+          rule_id: action.rule_id,
+          routing_key: action.routing_key,
+          case_type: action.case_type,
+          confidence: action.confidence,
+          contact_method_id: action.contact_method_id,
+          ...(opts.contactMethod !== undefined
+            ? { contact_method: opts.contactMethod }
+            : {}),
         },
       };
     /* c8 ignore next 4 — unreachable given actionRequiresWidget gate */
@@ -291,9 +349,12 @@ export function buildCaseEvent(
  * widget SSE event. This is the PRD-locked invariant: "a case may exist
  * without a contact".
  *
- * `refer_to_approved_contact_method` is intentionally excluded at V1 —
- * the resolver emits it as a visitor-side referral without staff inbox
- * follow-up. Future Epic E may revisit.
+ * CON-172 / D4: `refer_to_approved_contact_method` is NOW persisted —
+ * the case row gives staff visibility that the visitor was referred
+ * out-of-chat, and the `case_resolved` audit event carries the
+ * `channels_shown` payload (the contact method id + label the visitor
+ * actually saw). Per Linear acceptance criteria: "Case still created
+ * (with action audit and `contact_method_id` recorded on the case)."
  */
 export function actionRequiresCasePersistence(
   action: ResolvedAction,
@@ -304,7 +365,8 @@ export function actionRequiresCasePersistence(
       | "offer_follow_up"
       | "capture_details_then_flag"
       | "immediate_escalation"
-      | "flag_for_staff_review_without_interrupting_visitor";
+      | "flag_for_staff_review_without_interrupting_visitor"
+      | "refer_to_approved_contact_method";
   }
 > {
   switch (action.type) {
@@ -312,8 +374,8 @@ export function actionRequiresCasePersistence(
     case "capture_details_then_flag":
     case "immediate_escalation":
     case "flag_for_staff_review_without_interrupting_visitor":
-      return true;
     case "refer_to_approved_contact_method":
+      return true;
     case "continue_helping":
     case "clarify_then_recheck":
       return false;

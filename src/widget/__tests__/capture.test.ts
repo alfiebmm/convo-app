@@ -14,6 +14,8 @@
 
 import {
   shouldRunCaptureForAction,
+  shouldRenderContactMethodForAction,
+  resolveContactMethodHref,
   validateClientField,
 } from "../capture";
 
@@ -147,6 +149,98 @@ test("validateClientField: 5KB value rejected", () => {
   const big = "x".repeat(5000);
   const r = validateClientField("free_text_note", big);
   assert(!r.ok, "should reject");
+});
+
+// ---------------------------------------------------------------------------
+// CON-172 / D4 — refer_to_approved_contact_method dispatcher + href resolver
+// ---------------------------------------------------------------------------
+
+test(
+  "shouldRenderContactMethodForAction matches refer action only",
+  () => {
+    assert(
+      shouldRenderContactMethodForAction("refer_to_approved_contact_method"),
+      "refer must render contact-method card",
+    );
+    for (const other of [
+      "continue_helping",
+      "clarify_then_recheck",
+      "offer_follow_up",
+      "capture_details_then_flag",
+      "immediate_escalation",
+      "flag_for_staff_review_without_interrupting_visitor",
+      "unknown_future_action",
+    ]) {
+      assert(
+        !shouldRenderContactMethodForAction(other),
+        `${other} must NOT render contact-method card`,
+      );
+    }
+  },
+);
+
+test("resolveContactMethodHref: email type → mailto:", () => {
+  const r = resolveContactMethodHref({
+    type: "email",
+    value: "support@example.test",
+  });
+  assert(r !== null, "should resolve");
+  assertEq(r!.href, "mailto:support@example.test", "href");
+  assertEq(r!.external, false, "mailto is OS-handled, not external tab");
+});
+
+test("resolveContactMethodHref: phone type strips separators → tel:", () => {
+  const r = resolveContactMethodHref({
+    type: "phone",
+    value: "+61 (0)400-123-456",
+  });
+  assert(r !== null, "should resolve");
+  // Whitespace, parens, and hyphens stripped; `+` and digits retained.
+  assertEq(r!.href, "tel:+610400123456", "tel: with separators stripped");
+  assertEq(r!.external, false, "tel is OS-handled");
+});
+
+test("resolveContactMethodHref: url type marks external", () => {
+  const r = resolveContactMethodHref({
+    type: "url",
+    url: "https://example.test/help",
+  });
+  assert(r !== null, "should resolve");
+  assertEq(r!.href, "https://example.test/help", "href");
+  assertEq(r!.external, true, "url opens in new tab");
+});
+
+test("resolveContactMethodHref: form type marks external", () => {
+  const r = resolveContactMethodHref({
+    type: "form",
+    url: "https://example.test/contact",
+  });
+  assert(r !== null, "should resolve");
+  assertEq(r!.external, true, "form opens in new tab");
+});
+
+test("resolveContactMethodHref: callback with url → external link", () => {
+  const r = resolveContactMethodHref({
+    type: "callback",
+    url: "https://example.test/callback",
+  });
+  assert(r !== null, "should resolve");
+  assertEq(r!.external, true, "callback url opens in new tab");
+});
+
+test("resolveContactMethodHref: callback without url → null (label-only fallback)", () => {
+  const r = resolveContactMethodHref({ type: "callback" });
+  assert(r === null, "no actionable href when callback has no url");
+});
+
+test("resolveContactMethodHref: email without value → null", () => {
+  const r = resolveContactMethodHref({ type: "email" });
+  assert(r === null, "no actionable href when email has no value");
+});
+
+test("resolveContactMethodHref: phone without value → null", () => {
+  const r = resolveContactMethodHref({ type: "phone" });
+  assert(r === null, "no actionable href when phone has no value");
 });
 
 // ---------------------------------------------------------------------------
