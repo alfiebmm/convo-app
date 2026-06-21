@@ -682,6 +682,25 @@ async function runAll() {
     assertEq(world.events[0].payload.field, "postcode", "field in payload");
   });
 
+  await test("privacy_notice_shown writes audit only", async () => {
+    const world = makeWorld();
+    const res = await handleCaptureSubmit(
+      mockReq({
+        tenantId: TENANT_A,
+        visitorId: VISITOR_A,
+        conversationId: CONVO_A,
+        action: "privacy_notice_shown",
+      }),
+      CASE_A,
+      makeDeps(world),
+    );
+    assertEq(res.status, 200, "status");
+    assertEq(world.attributes.length, 0, "no attribute");
+    assertEq(world.contacts.length, 0, "no contact");
+    assertEq(world.events.length, 1, "one event");
+    assertEq(world.events[0].eventType, "privacy_notice_shown", "type");
+  });
+
   await test("decline writes audit only, no contact, locked invariant", async () => {
     const world = makeWorld();
     const res = await handleCaptureSubmit(
