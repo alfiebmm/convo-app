@@ -13,6 +13,7 @@
  */
 
 import {
+  CaptureFlow,
   shouldRunCaptureForAction,
   shouldRenderContactMethodForAction,
   resolveContactMethodHref,
@@ -47,6 +48,49 @@ function assertEq<T>(actual: T, expected: T, msg: string) {
       `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
     );
   }
+}
+
+class FakeElement {
+  public children: FakeElement[] = [];
+  public className = "";
+  public textContent = "";
+  public hidden = false;
+  public disabled = false;
+  public value = "";
+  public href = "";
+  public target = "";
+  public rel = "";
+  public type = "";
+  public id = "";
+  public htmlFor = "";
+  public placeholder = "";
+
+  constructor(public readonly tagName: string) {}
+
+  appendChild(child: FakeElement): FakeElement {
+    this.children.push(child);
+    return child;
+  }
+
+  replaceChildren(): void {
+    this.children = [];
+  }
+
+  setAttribute(name: string, value: string): void {
+    (this as unknown as Record<string, string>)[name] = value;
+  }
+
+  addEventListener(): void {}
+  focus(): void {}
+  select(): void {}
+  querySelectorAll(): FakeElement[] {
+    return [];
+  }
+}
+
+function textExists(node: FakeElement, text: string): boolean {
+  if (node.textContent === text) return true;
+  return node.children.some((child) => textExists(child, text));
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +131,65 @@ test("shouldRunCaptureForAction excludes silent / non-widget actions", () => {
     !shouldRunCaptureForAction("refer_to_approved_contact_method"),
     "refer is assistant-message-only at V1",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Privacy notice render + audit
+// ---------------------------------------------------------------------------
+
+test("CaptureFlow renders privacy header and emits privacy_notice_shown once", () => {
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const fetchBodies: Array<Record<string, unknown>> = [];
+
+  try {
+    globalThis.document = {
+      createElement: (tagName: string) => new FakeElement(tagName),
+    } as unknown as Document;
+    globalThis.fetch = ((_url: string, init?: RequestInit) => {
+      fetchBodies.push(JSON.parse(String(init?.body ?? "{}")));
+      return Promise.resolve({ ok: true } as Response);
+    }) as typeof fetch;
+
+    const mount = new FakeElement("div");
+    const flow = new CaptureFlow({
+      mount: mount as unknown as HTMLElement,
+      caseInfo: {
+        case_id: "11111111-1111-4111-8111-111111111111",
+        action: "offer_follow_up",
+      },
+      policy: {
+        id: "lead_basic",
+        case_type: "lead",
+        required_fields: ["email"],
+        optional_fields: [],
+        privacy_notice: "We use your details only to follow up on this enquiry.",
+        privacy_policy_url: "https://example.test/privacy",
+      },
+      config: {
+        apiBase: "https://app.example.test",
+        tenantId: "22222222-2222-4222-8222-222222222222",
+        visitorId: "visitor-a",
+        conversationId: "33333333-3333-4333-8333-333333333333",
+        primaryColor: "#FF6B2C",
+      },
+      onDone: () => {},
+    });
+
+    flow.start();
+    flow.start();
+
+    assert(
+      textExists(mount, "We use your details only to follow up on this enquiry."),
+      "privacy notice text rendered",
+    );
+    assert(textExists(mount, "Privacy policy"), "privacy policy link rendered");
+    assertEq(fetchBodies.length, 1, "one audit request");
+    assertEq(fetchBodies[0].action, "privacy_notice_shown", "event action");
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
 });
 
 // ---------------------------------------------------------------------------

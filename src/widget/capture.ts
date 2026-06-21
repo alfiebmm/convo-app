@@ -371,6 +371,8 @@ export class CaptureFlow {
     header.appendChild(notice);
     header.appendChild(link);
     this.block.appendChild(header);
+
+    void this.postCapture({ action: "privacy_notice_shown" });
   }
 
   private renderCurrentField(): void {
@@ -674,7 +676,7 @@ export class CaptureFlow {
   // -------------------------------------------------------------------------
 
   private async postCapture(body: {
-    action: "submit" | "skip" | "decline";
+    action: "submit" | "skip" | "decline" | "privacy_notice_shown";
     field?: string;
     value?: string;
   }): Promise<{ ok: boolean } | null> {

@@ -27,12 +27,12 @@
  *       value: string,          // raw visitor input
  *     }
  *
- *   Skip a single field OR decline the whole capture:
+ *   Show privacy notice, skip a single field, OR decline the whole capture:
  *     {
  *       tenantId: uuid,
  *       visitorId: string,
  *       conversationId: uuid,
- *       action: "skip" | "decline",
+ *       action: "privacy_notice_shown" | "skip" | "decline",
  *       field?: string,         // present for skip; ignored for decline
  *     }
  *
@@ -275,7 +275,12 @@ const defaultDeps: CaptureRouteDeps = {
 // Validation schema
 // ---------------------------------------------------------------------------
 
-const actionEnum = z.enum(["submit", "skip", "decline"]);
+const actionEnum = z.enum([
+  "submit",
+  "skip",
+  "decline",
+  "privacy_notice_shown",
+]);
 
 const baseBodySchema = z.object({
   tenantId: z.string().uuid(),
@@ -384,6 +389,9 @@ export async function handleCaptureSubmit(
   if (body.action === "decline") {
     return handleDecline(body, kase, deps);
   }
+  if (body.action === "privacy_notice_shown") {
+    return handlePrivacyNoticeShown(body, kase, deps);
+  }
   if (body.action === "skip") {
     return handleSkip(body, kase, deps);
   }
@@ -413,6 +421,23 @@ async function handleDecline(
   });
 
   return jsonResponse({ ok: true, action: "decline" }, 200);
+}
+
+async function handlePrivacyNoticeShown(
+  body: ParsedBody,
+  kase: CaseRow,
+  deps: CaptureRouteDeps,
+): Promise<Response> {
+  await deps.recordCaseEvent(body.tenantId, {
+    caseId: kase.id,
+    conversationId: kase.conversationId,
+    actorType: "visitor",
+    actorId: body.visitorId,
+    eventType: "privacy_notice_shown",
+    payload: {},
+  });
+
+  return jsonResponse({ ok: true, action: "privacy_notice_shown" }, 200);
 }
 
 async function handleSkip(
