@@ -713,6 +713,48 @@ export function shouldRunCaptureForAction(action: string): boolean {
   );
 }
 
+/**
+ * Pure predicate (CON-172 / D4) — true when the resolver action
+ * should surface the tenant's approved contact method as an inline
+ * referral card. Mirrors the dispatch decision in
+ * `WidgetUI.renderCaseEvent` and is exported so it can be unit-tested
+ * without a DOM.
+ */
+export function shouldRenderContactMethodForAction(
+  action: string,
+): boolean {
+  return action === "refer_to_approved_contact_method";
+}
+
+/**
+ * Pure resolver (CON-172 / D4) — returns the visitor-facing
+ * `{ href, label }` for a given contact-method payload, or `null`
+ * when the payload can't be rendered as an actionable link (e.g.
+ * `callback` with no URL). Exported for unit tests so the
+ * label/href contract is verifiable without spinning up a Shadow
+ * DOM.
+ */
+export function resolveContactMethodHref(cm: {
+  type: "email" | "phone" | "callback" | "url" | "form";
+  value?: string;
+  url?: string;
+}): { href: string; external: boolean } | null {
+  if (cm.type === "email" && cm.value) {
+    return { href: `mailto:${cm.value}`, external: false };
+  }
+  if (cm.type === "phone" && cm.value) {
+    const tel = cm.value.replace(/[\s()\-]/g, "");
+    return { href: `tel:${tel}`, external: false };
+  }
+  if ((cm.type === "url" || cm.type === "form") && cm.url) {
+    return { href: cm.url, external: true };
+  }
+  if (cm.type === "callback" && cm.url) {
+    return { href: cm.url, external: true };
+  }
+  return null;
+}
+
 export function startCaptureFlow(args: {
   mount: HTMLElement;
   caseInfo: CaptureCaseInfo;

@@ -22,6 +22,8 @@
 import {
   startCaptureFlow,
   shouldRunCaptureForAction,
+  shouldRenderContactMethodForAction,
+  resolveContactMethodHref,
   type CaptureCaseInfo,
   type CaptureFlowOutcome,
 } from "./capture";
@@ -1704,6 +1706,14 @@ class ConvoWidget {
         privacy_policy_url: string;
       };
       capture_policy_id?: string;
+      contact_method_id?: string;
+      contact_method?: {
+        id: string;
+        type: "email" | "phone" | "callback" | "url" | "form";
+        label: string;
+        value?: string;
+        url?: string;
+      };
     };
   }): void {
     const caseInfo = event.case;
@@ -1723,10 +1733,89 @@ class ConvoWidget {
       return;
     }
 
+    // CON-172 / D4 — refer the visitor to the tenant's approved
+    // contact method. The server already persisted the case + audit
+    // event; the widget renders an inline card with a `mailto:`,
+    // `tel:`, or button-to-URL surface. No PII captured client-side.
+    if (shouldRenderContactMethodForAction(caseInfo.action)) {
+      this.renderContactMethod(caseInfo);
+      return;
+    }
+
     if (shouldRunCaptureForAction(caseInfo.action)) {
       this.mountCaptureFlow(caseInfo as CaptureCaseInfo);
     }
     // Any other action: no widget surface.
+  }
+
+  /**
+   * Render the approved-contact-method card (CON-172 — Epic D4).
+   *
+   * Surfaces the tenant's pre-approved contact channel (email / phone /
+   * URL / form / callback) as an inline action card. The model never
+   * sees the contact address — same pattern as the CON-93 CTA. The
+   * widget reads the resolved `contact_method` inlined on the SSE
+   * `case` event by the chat route.
+   *
+   * No PII captured here. No round-trip on click — the audit event
+   * (`case_resolved` with `channels_shown`) was already persisted
+   * server-side when this SSE event fired.
+   */
+  private renderContactMethod(caseInfo: {
+    offer_title?: string;
+    contact_method?: {
+      type: "email" | "phone" | "callback" | "url" | "form";
+      label: string;
+      value?: string;
+      url?: string;
+    };
+  }): void {
+    const cm = caseInfo.contact_method;
+    if (!cm || typeof cm.type !== "string" || typeof cm.label !== "string") {
+      // No resolvable method — stay silent. The assistant turn copy
+      // stands on its own.
+      return;
+    }
+
+    const block = document.createElement("div");
+    block.className = "convo-offer-block";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "convo-offer-title";
+    titleEl.textContent =
+      typeof caseInfo.offer_title === "string" && caseInfo.offer_title.trim()
+        ? caseInfo.offer_title
+        : "For this kind of question, our team can help directly:";
+    block.appendChild(titleEl);
+
+    // Resolve href via the pure helper in `capture.ts` so the widget
+    // surface stays in lockstep with what the unit tests exercise.
+    const resolved = resolveContactMethodHref(cm);
+
+    if (resolved) {
+      const link = document.createElement("a");
+      link.href = resolved.href;
+      // Reuse the existing CTA-button class (CON-93) — brand-coloured,
+      // pill-shaped, no new CSS needed for the D4 surface.
+      link.className = "convo-cta-button";
+      link.textContent = cm.label;
+      // External URLs open in a new tab; mailto/tel let the OS handle.
+      if (resolved.external) {
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+      }
+      block.appendChild(link);
+    } else {
+      // No href resolvable (e.g. `callback` with no URL) — render the
+      // label as plain text so the visitor still sees the channel name.
+      const labelEl = document.createElement("div");
+      labelEl.className = "convo-offer-title";
+      labelEl.textContent = cm.label;
+      block.appendChild(labelEl);
+    }
+
+    this.messagesEl.appendChild(block);
+    this.scrollToBottom();
   }
 
   /**
