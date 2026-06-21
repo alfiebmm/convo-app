@@ -15,10 +15,20 @@ const OUTFILE = resolve(ROOT, "public/widget.js");
 // Single source of truth. The CI size-gate workflow (.github/workflows/
 // widget-size.yml) re-runs this build and asserts these thresholds. Bump
 // deliberately, with sign-off — drift is what got us to 31 KB unnoticed.
+//
+// Bump history:
+//   - 27 KiB raw / 8 KiB gzip — set by CON-176 (post CSS minify pipeline).
+//   - 40 KiB raw / 11 KiB gzip — CON-170 D2b (progressive contact capture).
+//     New `src/widget/capture.ts` module + field-by-field state machine +
+//     ~30 new CSS rules (privacy notice, input row, breadcrumb trail,
+//     decline/skip actions). CSS already deduped against the offer card
+//     (shared `.convo-card` base + button surface). ~10 KiB raw / ~2.5 KiB
+//     gzip net add. Held off SVG-attribute teardown / more aggressive CSS
+//     dedup — keep them in reserve for the next feature push (CON-177+).
 // ---------------------------------------------------------------------------
 export const SIZE_BUDGET = {
-  rawBytes: 27 * 1024, // 27 KiB raw minified
-  gzipBytes: 8 * 1024, //  8 KiB gzipped
+  rawBytes: 40 * 1024, // 40 KiB raw minified
+  gzipBytes: 11 * 1024, // 11 KiB gzipped
 };
 
 // ---------------------------------------------------------------------------
