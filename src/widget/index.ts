@@ -17,6 +17,16 @@
  */
 
 // ---------------------------------------------------------------------------
+// Imports (bundled into the single-file widget via esbuild)
+// ---------------------------------------------------------------------------
+import {
+  startCaptureFlow,
+  shouldRunCaptureForAction,
+  type CaptureCaseInfo,
+  type CaptureFlowOutcome,
+} from "./capture";
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type WidgetPosition = "bottom-left" | "bottom-right";
@@ -337,8 +347,10 @@ function getStyles(config: ConvoConfig): string {
       }
     }
 
-    /* Offer card (CON-169 — follow-up Yes/No) */
-    .convo-offer-block {
+    /* Shared card surface (CON-169 offer + CON-170 capture).
+       The convo-card class is the common bubble; per-feature modifiers
+       (-offer, -cap) only set what differs. */
+    .convo-card, .convo-offer-block, .convo-cap-block {
       align-self: stretch;
       padding: 12px 14px;
       background: #fff;
@@ -350,18 +362,27 @@ function getStyles(config: ConvoConfig): string {
       gap: 10px;
       animation: convo-msg-in 0.25s ease;
     }
-    .convo-offer-title {
+    .convo-offer-title, .convo-cap-label, .convo-cap-final {
       font-size: 14px;
       font-weight: 500;
       color: #1e293b;
       line-height: 1.4;
     }
-    .convo-offer-buttons {
+    .convo-cap-final {
+      font-size: 13px;
+      padding-top: 6px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .convo-cap-label {
+      font-size: 13px;
+    }
+    .convo-offer-buttons, .convo-cap-input-row {
       display: flex;
       gap: 8px;
     }
-    .convo-offer-btn {
-      flex: 1;
+    .convo-cap-input-row { gap: 6px; }
+    /* Shared pill button — offer Yes/No + capture Send. */
+    .convo-offer-btn, .convo-cap-btn {
       padding: 8px 12px;
       border-radius: 10px;
       font-size: 13px;
@@ -370,25 +391,100 @@ function getStyles(config: ConvoConfig): string {
       cursor: pointer;
       transition: opacity 0.15s ease, background 0.15s ease;
     }
-    .convo-offer-btn:disabled {
+    .convo-offer-btn { flex: 1; }
+    .convo-offer-btn:disabled, .convo-cap-btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
-    .convo-offer-btn.primary {
+    .convo-offer-btn.primary, .convo-cap-btn-primary {
       background: ${config.color};
       color: #fff;
       border: 1px solid ${config.color};
+    }
+    .convo-offer-btn.primary:hover:not(:disabled),
+    .convo-cap-btn-primary:hover:not(:disabled) {
+      opacity: 0.9;
     }
     .convo-offer-btn.secondary {
       background: #fff;
       color: #475569;
       border: 1px solid #e2e8f0;
     }
-    .convo-offer-btn.primary:hover:not(:disabled) {
-      opacity: 0.9;
-    }
     .convo-offer-btn.secondary:hover:not(:disabled) {
       background: #f8fafc;
+    }
+
+    /* Progressive contact capture (CON-170 / D2b) - only the
+       feature-specific pieces; shared surface lives above. */
+    .convo-cap-privacy {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .convo-cap-privacy-text, .convo-cap-breadcrumb {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.4;
+    }
+    .convo-cap-privacy-link {
+      font-size: 12px;
+      color: ${config.color};
+      text-decoration: underline;
+      align-self: flex-start;
+    }
+    .convo-cap-step {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .convo-cap-step-done { opacity: 0.7; }
+    .convo-cap-required {
+      font-weight: 400;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .convo-cap-input {
+      flex: 1;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      font-size: 13px;
+      font-family: inherit;
+      color: #1e293b;
+      outline: none;
+      min-width: 0;
+    }
+    .convo-cap-input:focus {
+      border-color: ${config.color};
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.04);
+    }
+    .convo-cap-input:disabled {
+      background: #f8fafc;
+      color: #94a3b8;
+    }
+    .convo-cap-error {
+      font-size: 12px;
+      color: #ef4444;
+      line-height: 1.3;
+    }
+    .convo-cap-actions {
+      display: flex;
+      gap: 12px;
+    }
+    .convo-cap-btn-text {
+      background: transparent;
+      color: #64748b;
+      border: none;
+      padding: 4px 0;
+      font-size: 12px;
+      font-weight: 500;
+      text-decoration: underline;
+    }
+    .convo-cap-btn-text:hover:not(:disabled) {
+      color: #334155;
     }
 
     /* Qualifying-question quick-reply card (CON-94) */
@@ -1434,9 +1530,12 @@ class ConvoWidget {
               };
             } else if (event.type === "case" && event.case) {
               // CON-169 (Epic D1): server signalled a follow-up action.
-              // Render visitor-facing UI for the variants we support;
-              // ignore other case variants (capture/escalation — D2+).
-              this.renderOffer(event);
+              // Render visitor-facing UI for the variants we support.
+              // CON-170 (Epic D2): `capture_details_then_flag` skips the
+              // Yes/No offer card and goes straight into progressive
+              // contact capture; `offer_follow_up` keeps the offer card
+              // and chains capture on Yes; everything else is no-op.
+              this.renderCaseEvent(event);
             } else if (event.type === "error") {
               streamErrored = true;
             }
@@ -1573,24 +1672,86 @@ class ConvoWidget {
   }
 
   /**
-   * Render the follow-up offer card (CON-169 — Epic D1).
-   * Only activates when the SSE `case` event's action is
-   * `offer_follow_up`. Yes/No buttons post to `/api/conversations/case-events`
-   * and the card is replaced with a transient ack message.
+   * Dispatch the SSE `case` event to the right widget UI surface
+   * (CON-169 + CON-170 — Epic D1 / D2).
    *
-   * The full progressive-capture flow (Yes-path expansion) is D2 (CON-170);
-   * for this ticket the Yes-path is stubbed.
+   *   - `offer_follow_up` → render Yes/No offer card. On Yes we chain
+   *     into the progressive contact-capture flow against the same
+   *     `case_id`. On No we ack and stop.
+   *   - `capture_details_then_flag` → skip the offer card and go
+   *     straight into capture (the rule has already decided we should
+   *     ask for details; offering would be redundant).
+   *   - `immediate_escalation` → if the case carries an inlined
+   *     capture policy, run the same capture flow; otherwise no widget UI
+   *     (handled by the assistant turn copy).
+   *   - All other variants → no-op (`flag_for_staff_review_*` /
+   *     `refer_to_approved_contact_method` either resolve silently or
+   *     surface inside the assistant message itself).
    */
-  private renderOffer(event: {
+  private renderCaseEvent(event: {
     case?: {
       action?: string;
+      case_id?: string;
       offer_title?: string;
       rule_id?: string;
       confidence?: number;
+      capture_policy?: {
+        id: string;
+        case_type: "cx_support" | "lead";
+        required_fields: string[];
+        optional_fields: string[];
+        privacy_notice: string;
+        privacy_policy_url: string;
+      };
+      capture_policy_id?: string;
     };
   }): void {
     const caseInfo = event.case;
-    if (!caseInfo || caseInfo.action !== "offer_follow_up") return;
+    if (!caseInfo || typeof caseInfo.action !== "string") return;
+    if (typeof caseInfo.case_id !== "string" || caseInfo.case_id.length === 0) {
+      // D2a guarantees a `case_id` whenever a widget-bound action fires,
+      // so absence here means we're talking to a stale server build.
+      // Fall back to the legacy Yes/No card with no capture chain.
+      if (caseInfo.action === "offer_follow_up") {
+        this.renderOffer(caseInfo);
+      }
+      return;
+    }
+
+    if (caseInfo.action === "offer_follow_up") {
+      this.renderOffer(caseInfo);
+      return;
+    }
+
+    if (shouldRunCaptureForAction(caseInfo.action)) {
+      this.mountCaptureFlow(caseInfo as CaptureCaseInfo);
+    }
+    // Any other action: no widget surface.
+  }
+
+  /**
+   * Render the follow-up offer card (CON-169 — Epic D1).
+   * Yes/No buttons post to `/api/conversations/case-events`. On Yes we
+   * additionally start the progressive contact-capture flow (CON-170 /
+   * D2b) against the same `case_id` the server already persisted.
+   */
+  private renderOffer(caseInfo: {
+    action?: string;
+    case_id?: string;
+    offer_title?: string;
+    rule_id?: string;
+    confidence?: number;
+    capture_policy?: {
+      id: string;
+      case_type: "cx_support" | "lead";
+      required_fields: string[];
+      optional_fields: string[];
+      privacy_notice: string;
+      privacy_policy_url: string;
+    };
+    capture_policy_id?: string;
+  }): void {
+    if (caseInfo.action !== "offer_follow_up") return;
 
     const title =
       typeof caseInfo.offer_title === "string" && caseInfo.offer_title.trim()
@@ -1633,7 +1794,7 @@ class ConvoWidget {
     const respond = async (
       eventType: "offer_accepted" | "offer_declined",
       ack: string,
-    ) => {
+    ): Promise<void> => {
       yesBtn.disabled = true;
       noBtn.disabled = true;
       try {
@@ -1663,17 +1824,58 @@ class ConvoWidget {
     };
 
     yesBtn.addEventListener("click", () => {
-      respond(
-        "offer_accepted",
-        "Great \u2014 please share a few details so we can follow up.",
-      );
+      void (async () => {
+        await respond(
+          "offer_accepted",
+          "Great \u2014 please share a few details so we can follow up.",
+        );
+        // CON-170 / D2b — chain into the progressive capture flow.
+        // Requires both `case_id` (always present in D2a payloads) and
+        // an inlined `capture_policy` (D2a inlines this for actions
+        // that carry a capture_policy_id). If either is missing we
+        // stop after the ack — the visitor can still reach the team
+        // via the assistant's message.
+        if (caseInfo.case_id && caseInfo.capture_policy) {
+          this.mountCaptureFlow(caseInfo as CaptureCaseInfo);
+        }
+      })();
     });
     noBtn.addEventListener("click", () => {
-      respond(
+      void respond(
         "offer_declined",
         "No worries, let me know if you change your mind.",
       );
     });
+  }
+
+  /**
+   * Spawn the progressive contact-capture flow (CON-170 / D2b).
+   * Idempotent: re-invocations are no-ops because each `case_id` should
+   * only render one capture surface per session, and the server's
+   * append-only audit will swallow duplicates if a visitor rapid-fires.
+   */
+  private mountCaptureFlow(caseInfo: CaptureCaseInfo): void {
+    if (!this.conversationId) return; // shouldn't happen post-stream
+    startCaptureFlow({
+      mount: this.messagesEl,
+      caseInfo,
+      config: {
+        apiBase: this.config.apiBase,
+        tenantId: this.config.tenantId,
+        visitorId: this.visitorId,
+        conversationId: this.conversationId,
+        primaryColor: this.config.color,
+      },
+      onDone: (outcome: CaptureFlowOutcome) => {
+        // The capture block stays in place as a transcript trail.
+        // Future enhancement (CON-176 detail view) will surface the
+        // outcome in the dashboard; client-side we just scroll the
+        // panel so the final ack is visible.
+        void outcome;
+        this.scrollToBottom();
+      },
+    });
+    this.scrollToBottom();
   }
 
   private scrollToBottom() {
