@@ -9,6 +9,7 @@ import { eq, and } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { cookies } from "next/headers";
 import type { TenantSettings } from "@/lib/publishing";
+import { withApiErrorLogging } from "@/lib/errors/wrap";
 
 async function getActiveTenantId(userId: string): Promise<string | null> {
   const cookieStore = await cookies();
@@ -39,7 +40,7 @@ async function getActiveTenantId(userId: string): Promise<string | null> {
   return first?.tenantId ?? null;
 }
 
-export async function GET() {
+async function getImpl() {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -73,7 +74,7 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: NextRequest) {
+async function patchImpl(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -128,3 +129,8 @@ export async function PATCH(req: NextRequest) {
     },
   });
 }
+
+// CON-error-logging: wrap dashboard settings handlers so unexpected throws
+// are captured to `dashboard_errors` for postmortem.
+export const GET = withApiErrorLogging(getImpl, { route: "/api/settings" });
+export const PATCH = withApiErrorLogging(patchImpl, { route: "/api/settings" });

@@ -9,6 +9,7 @@ import {
 import ContactsList from "./contacts-list";
 import { ContactsFilters } from "./contacts-filters";
 import { parseContactFilters, type ContactFilterState } from "./filter-state";
+import { withDashboardErrorLogging } from "@/lib/errors/wrap";
 
 function parseDateParam(value: string | undefined, endOfDay = false) {
   if (!value) return undefined;
@@ -39,7 +40,7 @@ function toContactListFilters(
   };
 }
 
-export default async function ContactsPage({
+async function ContactsPageImpl({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -95,3 +96,8 @@ export default async function ContactsPage({
     </div>
   );
 }
+
+// CON-error-logging: capture any throw from the contacts list render path.
+export default withDashboardErrorLogging(ContactsPageImpl, {
+  route: "/dashboard/contacts",
+});

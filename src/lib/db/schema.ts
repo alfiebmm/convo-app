@@ -832,3 +832,47 @@ export const platformInjectionEvents = pgTable(
     index("platform_injection_events_detected_idx").on(table.detectedAt),
   ]
 );
+
+// ============================================================
+// DASHBOARD ERROR CAPTURE (CON-error-logging)
+// ============================================================
+//
+// In-app replacement for Vercel runtime logs (which age out at ~100
+// invocations on the free tier). Every dashboard server-component /
+// dashboard API-handler exception is captured here at the route boundary
+// before being rethrown so Next.js's error.tsx still renders.
+//
+// Writes only via the server-side service-role Supabase client. RLS is
+// enabled with no tenant policies (deny-all to anon/authenticated). The
+// `request_meta` jsonb is sanitised at write time — see
+// `src/lib/errors/log.ts` for the allow-list (no bodies, no PII, no auth).
+
+export const dashboardErrors = pgTable(
+  "dashboard_errors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    digest: text("digest"),
+    errorClass: text("error_class"),
+    message: text("message"),
+    stack: text("stack"),
+    route: text("route"),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    tenantId: uuid("tenant_id").references(() => tenants.id, {
+      onDelete: "set null",
+    }),
+    requestMeta: jsonb("request_meta").default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("dashboard_errors_digest_idx").on(table.digest),
+    index("dashboard_errors_created_at_idx").on(table.createdAt),
+    index("dashboard_errors_route_created_at_idx").on(
+      table.route,
+      table.createdAt
+    ),
+  ]
+);

@@ -4,10 +4,11 @@ import { eq, desc, sql, and, or } from "drizzle-orm";
 import Link from "next/link";
 import { getCurrentTenant } from "@/lib/auth-context";
 import { redirect } from "next/navigation";
+import { withDashboardErrorLogging } from "@/lib/errors/wrap";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+async function DashboardPageImpl() {
   const tenant = await getCurrentTenant();
   if (!tenant) redirect("/onboarding");
   const tenantId = tenant.id;
@@ -241,3 +242,10 @@ function StatCard({
     </div>
   );
 }
+
+// CON-error-logging: capture any throw from the dashboard overview render
+// path. Wrapper logs to `dashboard_errors` and rethrows so error.tsx still
+// renders for the user.
+export default withDashboardErrorLogging(DashboardPageImpl, {
+  route: "/dashboard",
+});

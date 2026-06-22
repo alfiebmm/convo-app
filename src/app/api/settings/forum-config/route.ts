@@ -29,6 +29,7 @@ import { tenants } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { getActiveTenantIdForUser } from "@/lib/auth-context";
+import { withApiErrorLogging } from "@/lib/errors/wrap";
 import {
   handleForumConfigGet,
   handleForumConfigPatch,
@@ -57,7 +58,7 @@ function buildDeps(): ForumConfigDeps {
   };
 }
 
-export async function GET() {
+async function getImpl() {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -69,7 +70,7 @@ export async function GET() {
   return handleForumConfigGet(tenantId, buildDeps());
 }
 
-export async function PATCH(req: NextRequest) {
+async function patchImpl(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -86,3 +87,10 @@ export async function PATCH(req: NextRequest) {
   }
   return handleForumConfigPatch(tenantId, body, buildDeps());
 }
+
+export const GET = withApiErrorLogging(getImpl, {
+  route: "/api/settings/forum-config",
+});
+export const PATCH = withApiErrorLogging(patchImpl, {
+  route: "/api/settings/forum-config",
+});

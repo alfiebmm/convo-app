@@ -17,6 +17,7 @@ import {
   type CaseStatus,
   type ListCasesWithActivityFilters,
 } from "@/lib/cases";
+import { withDashboardErrorLogging } from "@/lib/errors/wrap";
 
 function parseDateParam(value: string | undefined, endOfDay = false) {
   if (!value) return undefined;
@@ -59,7 +60,7 @@ function toCaseListFilters(
   };
 }
 
-export default async function ConversationsPage({
+async function ConversationsPageImpl({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -121,3 +122,12 @@ export default async function ConversationsPage({
     </div>
   );
 }
+
+// CON-error-logging: capture any throw from the conversations render path.
+// Strong candidate site for production digest `2442540290` 
+// CON-error-logging: capture any throw from the conversations render path.
+// Strong candidate site for production digest 2442540290 -
+// listCasesByTenantWithActivity (CON-174 store) or getCaseDetailById.
+export default withDashboardErrorLogging(ConversationsPageImpl, {
+  route: "/dashboard/conversations",
+});
