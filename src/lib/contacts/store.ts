@@ -350,12 +350,12 @@ export function createDrizzleContactsStore(
       const sort = filters.sort ?? "last-seen-desc";
       const orderBy =
         sort === "name-asc"
-          ? sql`LOWER(COALESCE(base.display_name, '')) ASC, base.last_seen_at DESC`
+          ? sql`LOWER(COALESCE(filtered.display_name, '')) ASC, filtered.last_seen_at DESC`
           : sort === "name-desc"
-            ? sql`LOWER(COALESCE(base.display_name, '')) DESC, base.last_seen_at DESC`
+            ? sql`LOWER(COALESCE(filtered.display_name, '')) DESC, filtered.last_seen_at DESC`
             : sort === "last-seen-asc"
-              ? sql`base.last_seen_at ASC, LOWER(COALESCE(base.display_name, '')) ASC`
-              : sql`base.last_seen_at DESC, LOWER(COALESCE(base.display_name, '')) ASC`;
+              ? sql`filtered.last_seen_at ASC, LOWER(COALESCE(filtered.display_name, '')) ASC`
+              : sql`filtered.last_seen_at DESC, LOWER(COALESCE(filtered.display_name, '')) ASC`;
 
       const result = await db.execute(sql`
         WITH latest_open_cases AS (

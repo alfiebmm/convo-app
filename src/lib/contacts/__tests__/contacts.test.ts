@@ -29,6 +29,9 @@ import type {
   RecordCaseEventInput,
 } from "@/lib/cases/store";
 import { createInMemoryContactsStore } from "./in-memory-store";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -99,6 +102,40 @@ const ACTOR_A = "eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee";
 // ---------------------------------------------------------------------------
 
 async function runAllTests() {
+  // -------------------------------------------------------------------------
+  // listContactsByTenant: SQL static check (CON-214 regression)
+  // -------------------------------------------------------------------------
+  //
+  // The raw `db.execute(sql\`...\`)` query inside `listContactsByTenant`
+  // uses three CTEs: `base`, `filtered`, `paged`. The `paged` CTE only has
+  // `filtered` in scope, so any `base.<col>` reference inside its ORDER BY
+  // fragment raises `missing FROM-clause entry for table "base"` at runtime
+  // (CON-214). This static check guards the four `orderBy` fragments so a
+  // future edit reintroducing `base.*` there fails CI instead of prod.
+
+  await test("listContactsByTenant: ORDER BY fragments reference filtered, not base (CON-214)", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const storeSrc = readFileSync(resolve(here, "../store.ts"), "utf8");
+
+    // Locate the orderBy ternary block inside listContactsByTenant.
+    const listFnIdx = storeSrc.indexOf("async listContactsByTenant");
+    assert(listFnIdx >= 0, "listContactsByTenant function not found in store.ts");
+    const orderByIdx = storeSrc.indexOf("const orderBy =", listFnIdx);
+    assert(orderByIdx >= 0, "orderBy declaration not found in listContactsByTenant");
+    // Take the next ~600 chars — covers all four ternary branches.
+    const orderBySlice = storeSrc.slice(orderByIdx, orderByIdx + 600);
+
+    assert(
+      !/\bbase\./.test(orderBySlice),
+      `listContactsByTenant orderBy references base.* — must use filtered.* (paged CTE has no base in scope). Slice:\n${orderBySlice}`,
+    );
+    assert(
+      /\bfiltered\.display_name\b/.test(orderBySlice) &&
+        /\bfiltered\.last_seen_at\b/.test(orderBySlice),
+      "listContactsByTenant orderBy must reference filtered.display_name and filtered.last_seen_at",
+    );
+  });
+
   // -------------------------------------------------------------------------
   // normaliseEmail / normalisePhone (pure utility coverage)
   // -------------------------------------------------------------------------
