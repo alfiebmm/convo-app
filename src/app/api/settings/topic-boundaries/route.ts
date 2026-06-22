@@ -9,6 +9,7 @@ import {
   handleTopicBoundariesPatch,
   type TopicBoundariesDeps,
 } from "./handler";
+import { withApiErrorLogging } from "@/lib/errors/wrap";
 
 function buildDeps(): TopicBoundariesDeps {
   return {
@@ -32,7 +33,7 @@ function buildDeps(): TopicBoundariesDeps {
   };
 }
 
-export async function GET() {
+async function getImpl() {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,7 +45,7 @@ export async function GET() {
   return handleTopicBoundariesGet(tenantId, buildDeps());
 }
 
-export async function PATCH(req: NextRequest) {
+async function patchImpl(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -61,3 +62,10 @@ export async function PATCH(req: NextRequest) {
   }
   return handleTopicBoundariesPatch(tenantId, body, buildDeps());
 }
+
+export const GET = withApiErrorLogging(getImpl, {
+  route: "/api/settings/topic-boundaries",
+});
+export const PATCH = withApiErrorLogging(patchImpl, {
+  route: "/api/settings/topic-boundaries",
+});

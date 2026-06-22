@@ -7,6 +7,7 @@ import {
   ContactCaseHistory,
   ContactIdentifierReveal,
 } from "./contact-detail-controls";
+import { withDashboardErrorLogging } from "@/lib/errors/wrap";
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-green-100 text-green-800",
@@ -107,7 +108,7 @@ function AttributeValue({ value }: { value: unknown }) {
   );
 }
 
-export default async function ContactDetailPage({
+async function ContactDetailPageImpl({
   params,
 }: {
   params: Promise<{ contactId: string }>;
@@ -121,7 +122,16 @@ export default async function ContactDetailPage({
 
   const contact = detail.contact;
   const title = contact.displayName ?? "No name";
-  const attributes = Object.entries(contact.attributes).sort(([a], [b]) =>
+  // CON-error-logging defensive guard. The DB column is `NOT NULL DEFAULT {}`,
+  // but staticly the `attributes` field on `ContactDetailRow.contact` is
+  // typed `Record<string, unknown>` and a malformed row (or a non-object
+  // JSON stored from a future writer path) would make this `Object.entries`
+  // throw a `TypeError`. Strong candidate for production digest `1644138080`.
+  const attributesRaw =
+    contact.attributes && typeof contact.attributes === "object"
+      ? contact.attributes
+      : {};
+  const attributes = Object.entries(attributesRaw).sort(([a], [b]) =>
     a.localeCompare(b),
   );
   const consentCapturedAt = contact.firstSeenAt;
@@ -383,3 +393,8 @@ export default async function ContactDetailPage({
     </div>
   );
 }
+
+// CON-error-logging: capture any throw from the contact detail render path.
+export default withDashboardErrorLogging(ContactDetailPageImpl, {
+  route: "/dashboard/contacts/[contactId]",
+});

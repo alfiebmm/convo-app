@@ -7,6 +7,7 @@ import {
   isForumConfigEmpty,
   mergeLegacyIntoForumConfig,
 } from "@/lib/forum-config/transform-legacy";
+import { withDashboardErrorLogging } from "@/lib/errors/wrap";
 
 /**
  * Settings → Forum config (tabbed authoring UI).
@@ -30,7 +31,7 @@ import {
  * Persistence: PATCH /api/settings/forum-config (per-slice atomic write).
  * Read-only follow-up overview remains under Knowledge → Follow-up.
  */
-export default async function ForumConfigPage() {
+async function ForumConfigPageImpl() {
   const tenant = await getCurrentTenant();
   if (!tenant) redirect("/onboarding");
 
@@ -127,3 +128,8 @@ function hasWelcomeSlice(forumConfig: Record<string, unknown>): boolean {
   const welcome = forumConfig.welcome;
   return typeof welcome === "object" && welcome !== null && !Array.isArray(welcome);
 }
+
+// CON-error-logging: capture any throw from the forum-config render path.
+export default withDashboardErrorLogging(ForumConfigPageImpl, {
+  route: "/dashboard/settings/forum-config",
+});

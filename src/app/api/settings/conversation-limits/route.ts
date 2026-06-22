@@ -9,6 +9,7 @@ import {
   handleConversationLimitsPatch,
   type ConversationLimitsDeps,
 } from "./handler";
+import { withApiErrorLogging } from "@/lib/errors/wrap";
 
 function buildDeps(): ConversationLimitsDeps {
   return {
@@ -32,7 +33,7 @@ function buildDeps(): ConversationLimitsDeps {
   };
 }
 
-export async function GET() {
+async function getImpl() {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,7 +45,7 @@ export async function GET() {
   return handleConversationLimitsGet(tenantId, buildDeps());
 }
 
-export async function PATCH(req: NextRequest) {
+async function patchImpl(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -61,3 +62,10 @@ export async function PATCH(req: NextRequest) {
   }
   return handleConversationLimitsPatch(tenantId, body, buildDeps());
 }
+
+export const GET = withApiErrorLogging(getImpl, {
+  route: "/api/settings/conversation-limits",
+});
+export const PATCH = withApiErrorLogging(patchImpl, {
+  route: "/api/settings/conversation-limits",
+});

@@ -60,6 +60,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createHash } from "node:crypto";
+import { withApiErrorLogging } from "@/lib/errors/wrap";
 
 import { getTenantById } from "@/lib/tenant";
 import { getConversationForVisitor } from "@/lib/conversations";
@@ -557,13 +558,21 @@ async function handleSubmit(
 // Route handler — Next.js wires this to /api/cases/[caseId]/capture
 // ---------------------------------------------------------------------------
 
-export async function POST(
+async function postImpl(
   req: NextRequest,
   ctx: { params: Promise<{ caseId: string }> },
 ): Promise<Response> {
   const { caseId } = await ctx.params;
   return handleCaptureSubmit(req, caseId);
 }
+
+// CON-error-logging: wrap the public widget capture handler so unexpected
+// throws (e.g. DB failures, schema-validation bugs surfaced after Zod parse)
+// land in `dashboard_errors` for postmortem instead of vanishing into the
+// Vercel runtime log retention window.
+export const POST = withApiErrorLogging(postImpl, {
+  route: "/api/cases/[caseId]/capture",
+});
 
 // Suppress the unused-import warning for the contacts store dep that is
 // only exercised through the default dep wiring. esbuild/tsc keep the

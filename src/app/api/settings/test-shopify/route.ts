@@ -5,9 +5,10 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { withApiErrorLogging } from "@/lib/errors/wrap";
 import { testShopifyConnection } from "@/lib/publishing/shopify";
 
-export async function PUT(req: NextRequest) {
+async function putImpl(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,3 +39,7 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({ success: true, blogs: result.blogs });
 }
+
+export const PUT = withApiErrorLogging(putImpl, {
+  route: "/api/settings/test-shopify",
+});
