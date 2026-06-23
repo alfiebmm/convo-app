@@ -40,4 +40,8 @@ yarn-error.log*
 next-env.d.ts
 
 # drizzle
-/drizzle/meta
+# Keep drizzle/meta/_journal.json — the migration runner refuses to start
+# without it (CON-215). Ignore snapshot files which are large and
+# regenerated from the schema on every `drizzle-kit generate`.
+/drizzle/meta/*
+!/drizzle/meta/_journal.json

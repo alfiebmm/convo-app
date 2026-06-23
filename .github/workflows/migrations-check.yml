@@ -1,0 +1,42 @@
+name: migrations-check
+
+# CON-215: fail any PR that adds or changes a drizzle migration without
+# updating the journal, or whose journal does not match the deterministic
+# rebuild output.
+
+on:
+  pull_request:
+    paths:
+      - "drizzle/**"
+      - "scripts/build-journal.mjs"
+      - "scripts/check-migrations.mjs"
+      - "scripts/baseline-migrations.mjs"
+      - "scripts/migrate.mjs"
+      - "scripts/__tests__/baseline-migrations.test.mjs"
+      - "src/app/api/cron/migration-drift-canary/**"
+      - ".github/workflows/migrations-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "drizzle/**"
+      - "scripts/build-journal.mjs"
+      - "scripts/check-migrations.mjs"
+      - "scripts/baseline-migrations.mjs"
+      - "scripts/migrate.mjs"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so build-journal.mjs can resolve git-added
+          # timestamps for every migration deterministically.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: node scripts/check-migrations.mjs
+      - run: node scripts/__tests__/baseline-migrations.test.mjs
+      - run: npx tsx src/app/api/cron/migration-drift-canary/__tests__/handler.test.ts

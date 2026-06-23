@@ -9,7 +9,14 @@
     "lint": "eslint && npm run lint:migrations",
     "lint:migrations": "node scripts/lint-migrations.mjs",
     "build:widget": "node scripts/build-widget.mjs",
-    "validate:config": "tsx scripts/validate-forum-config.ts"
+    "validate:config": "tsx scripts/validate-forum-config.ts",
+    "migrate": "node scripts/migrate.mjs",
+    "migrate:dry-run": "MIGRATE_DRY_RUN=1 node scripts/migrate.mjs",
+    "migrate:baseline": "node scripts/baseline-migrations.mjs",
+    "migrate:journal": "node scripts/build-journal.mjs",
+    "migrate:check": "node scripts/check-migrations.mjs",
+    "test:migrations": "node scripts/__tests__/baseline-migrations.test.mjs",
+    "test:canary": "tsx src/app/api/cron/migration-drift-canary/__tests__/handler.test.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",
