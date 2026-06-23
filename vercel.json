@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run migrate && npm run build",
+  "crons": [
+    {
+      "path": "/api/cron/migration-drift-canary",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

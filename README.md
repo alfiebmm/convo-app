@@ -22,6 +22,18 @@ npm install
 npm run dev
 ```
 
+## Database migrations
+
+Full runbook: [`docs/migrations.md`](docs/migrations.md).
+
+- `npm run migrate` — apply pending Drizzle migrations against
+  `$DATABASE_URL`. Wired into the Vercel `buildCommand` and gated on
+  `VERCEL_ENV=production`.
+- `npm run migrate:dry-run` — show what would be applied; touch nothing.
+- `npm run migrate:baseline` — seed `drizzle.__drizzle_migrations` for an
+  environment whose schema is already up to date (one-shot per env).
+- `npm run migrate:check` — CI guard run on every PR touching `drizzle/`.
+
 ## Project Structure
 
 ```
