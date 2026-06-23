@@ -101,9 +101,8 @@ MIGRATE_DRY_RUN=1 DATABASE_URL=$PROD_URL node scripts/migrate.mjs
 
 ## Missing-relation alarm
 
-`/api/cron/migration-drift-canary` runs every 15 min (Vercel cron in
-`vercel.json`). It scans recent rows in `dashboard_errors` for the three
-shapes that mean schema drift:
+`/api/cron/migration-drift-canary` scans recent rows in `dashboard_errors`
+for the three shapes that mean schema drift:
 
 - `relation "<x>" does not exist`
 - `column "<x>" does not exist`
@@ -111,8 +110,36 @@ shapes that mean schema drift:
 
 When matches are found and `CONVO_TELEGRAM_BOT_TOKEN` is configured, it
 posts a summary into the Convo Telegram group (chat id
-`-5244894259`). The route is auth-gated by the Vercel-supplied
+`-5244894259`). The route is auth-gated by the
 `Authorization: Bearer ${CRON_SECRET}` header when `CRON_SECRET` is set.
+
+### Scheduling (TODO)
+
+The Convo Vercel team is on the **Hobby** plan, which does not include
+Vercel Cron. A `crons` entry in `vercel.json` causes the deploy to fail
+with a plan-tier error. Two paths forward, both leave the route
+unchanged:
+
+1. **Upgrade to Pro** and add the cron entry back. The shape would be:
+
+   ```json
+   {
+     "crons": [
+       { "path": "/api/cron/migration-drift-canary", "schedule": "*/15 * * * *" }
+     ]
+   }
+   ```
+
+2. **External pinger.** A GitHub Actions schedule, an Uptime-Robot
+   check, or a tailnet curl every 15 min:
+
+   ```bash
+   curl -H "Authorization: Bearer $CRON_SECRET" \
+     https://app.convoapp.com.au/api/cron/migration-drift-canary
+   ```
+
+Until one of the above is wired up, the route can still be hit manually
+for on-demand triage.
 
 Env required for the Telegram leg:
 

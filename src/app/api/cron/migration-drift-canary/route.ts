@@ -5,7 +5,10 @@
  * "schema drift" shapes (relation/column/function does not exist). When the
  * Telegram bot creds are present, posts a summary into the Convo group.
  *
- * Wired into Vercel cron via `vercel.json` (15 min cadence).
+ * Scheduling: TODO. The Convo Vercel project is on the Hobby plan, which
+ * does not include Vercel Cron. The route still ships and can be invoked
+ * manually or via an external pinger (see docs/migrations.md). Once the
+ * team is on Pro, re-add a `crons` entry to `vercel.json`.
  *
  * Auth: Vercel cron requests carry `Authorization: Bearer ${CRON_SECRET}`
  * (when the project env var is set). We accept the request when:
