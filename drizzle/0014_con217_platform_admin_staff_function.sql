@@ -1,11 +1,4 @@
 -- CON-217 / ADMIN-1: platform-admin enforcement foundation.
---
--- This migration intentionally only adds the new enum value. The follow-up
--- migration uses it after this file has committed, then rebuilds the enum
--- without legacy plan names.
-
-ALTER TYPE "public"."plan" ADD VALUE IF NOT EXISTS 'scale';
---> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION public.is_platform_staff() RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER AS $$

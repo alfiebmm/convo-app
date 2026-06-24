@@ -8,17 +8,16 @@
 ALTER TABLE tenants ALTER COLUMN plan DROP DEFAULT;
 --> statement-breakpoint
 
-UPDATE tenants
-SET plan = 'scale'
-WHERE plan::text IN ('pro', 'enterprise');
---> statement-breakpoint
-
 CREATE TYPE "public"."plan_new" AS ENUM('starter', 'growth', 'scale');
 --> statement-breakpoint
 
 ALTER TABLE tenants
   ALTER COLUMN plan TYPE "public"."plan_new"
-  USING plan::text::"public"."plan_new";
+  USING (CASE plan::text
+    WHEN 'pro' THEN 'scale'
+    WHEN 'enterprise' THEN 'scale'
+    ELSE plan::text
+  END)::"public"."plan_new";
 --> statement-breakpoint
 
 DROP TYPE "public"."plan";
