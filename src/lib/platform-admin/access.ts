@@ -5,6 +5,8 @@ type PlatformStaffUser = {
   id: string;
   email: string | null;
   isPlatformStaff: boolean | null;
+  totpEnrolledAt?: Date | string | null;
+  lockedUntil?: Date | string | null;
 };
 
 type AuthResult = {

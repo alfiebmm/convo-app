@@ -116,6 +116,8 @@ export const users = pgTable("users", {
   // CON-98: Convo-staff gate for the platform-admin injection-events page.
   // Nullable boolean default false — additive, no impact on auth flow.
   isPlatformStaff: boolean("is_platform_staff").default(false),
+  totpEnrolledAt: timestamp("totp_enrolled_at", { withTimezone: true }),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -872,6 +874,48 @@ export const adminAuditLog = pgTable(
       table.targetType,
       table.targetId,
       table.createdAt
+    ),
+  ]
+);
+
+// ============================================================
+// PLATFORM ADMIN MFA (CON-219)
+// ============================================================
+
+export const adminTotpSecrets = pgTable("admin_totp_secrets", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  secretEncrypted: text("secret_encrypted").notNull(),
+  enrolledAt: timestamp("enrolled_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  recoveryCodesHashed: jsonb("recovery_codes_hashed")
+    .$type<string[]>()
+    .notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const adminTotpAttempts = pgTable(
+  "admin_totp_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id)
+      .notNull(),
+    success: boolean("success").notNull(),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    ip: text("ip"),
+  },
+  (table) => [
+    index("admin_totp_attempts_user_attempted_idx").on(
+      table.userId,
+      table.attemptedAt
     ),
   ]
 );

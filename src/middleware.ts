@@ -23,6 +23,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import {
+  adminSessionCookieName,
+  verifyAdminSession,
+} from "@/lib/platform-admin/admin-session-core";
 
 function parseAllowlist(raw = process.env.PLATFORM_STAFF_EMAILS ?? "") {
   return new Set(
@@ -35,6 +39,13 @@ function parseAllowlist(raw = process.env.PLATFORM_STAFF_EMAILS ?? "") {
 
 function notFoundResponse(request: NextRequest) {
   return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
+}
+
+function nextWithPathname(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-platform-admin-pathname", request.nextUrl.pathname);
+  requestHeaders.set("x-platform-admin-now", String(Date.now()));
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export async function middleware(request: NextRequest) {
@@ -53,11 +64,32 @@ export async function middleware(request: NextRequest) {
       req: request,
       secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     });
-    const email = authToken?.email?.toLowerCase();
+    if (!authToken) return notFoundResponse(request);
+
+    const email = authToken.email?.toLowerCase();
 
     if (!email || !allowlist.has(email)) return notFoundResponse(request);
 
-    return NextResponse.next();
+    const path = request.nextUrl.pathname;
+    const mfaExempt =
+      path === "/platform-admin/enrol-mfa" ||
+      path === "/platform-admin/challenge-mfa" ||
+      path === "/platform-admin/locked";
+
+    if (!mfaExempt) {
+      const adminSession = request.cookies.get(adminSessionCookieName)?.value;
+      const verified = adminSession
+        ? await verifyAdminSession(adminSession).catch(() => null)
+        : null;
+
+      if (!verified || verified.userId !== authToken.sub) {
+        const challengeUrl = new URL("/platform-admin/challenge-mfa", request.url);
+        challengeUrl.searchParams.set("callbackUrl", path);
+        return NextResponse.redirect(challengeUrl);
+      }
+    }
+
+    return nextWithPathname(request);
   }
 
   if (!token) {

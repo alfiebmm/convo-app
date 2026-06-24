@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { requireAdminSession } from "@/lib/platform-admin/admin-session";
 import { requirePlatformStaff } from "@/lib/platform-admin/access";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +13,35 @@ export default async function PlatformAdminLayout({
   children: ReactNode;
 }) {
   const { user } = await requirePlatformStaff();
+  const headerStore = await headers();
+  const pathname = headerStore.get("x-platform-admin-pathname") ?? "";
+  const now = Number(headerStore.get("x-platform-admin-now") ?? "0");
   const adminEmail = user.email;
+  const lockedUntil = user.lockedUntil ? new Date(user.lockedUntil) : null;
+  const isLocked = lockedUntil ? lockedUntil.getTime() > now : false;
+  const isEnrolmentRoute = pathname === "/platform-admin/enrol-mfa";
+  const isChallengeRoute = pathname === "/platform-admin/challenge-mfa";
+  const isLockedRoute = pathname === "/platform-admin/locked";
+
+  if (isLocked && !isLockedRoute) {
+    redirect("/platform-admin/locked");
+  }
+
+  if (isLockedRoute) {
+    return children;
+  }
+
+  if (!user.totpEnrolledAt && !isEnrolmentRoute) {
+    redirect("/platform-admin/enrol-mfa");
+  }
+
+  if (user.totpEnrolledAt && isEnrolmentRoute) {
+    redirect("/platform-admin");
+  }
+
+  if (!isEnrolmentRoute && !isChallengeRoute) {
+    await requireAdminSession();
+  }
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-950">
