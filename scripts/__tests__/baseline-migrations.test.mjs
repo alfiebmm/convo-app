@@ -25,6 +25,9 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const DRIZZLE_DIR = resolve(REPO_ROOT, "drizzle");
+const EXPECTED_ENTRY_COUNT = JSON.parse(
+  readFileSync(resolve(DRIZZLE_DIR, "meta", "_journal.json"), "utf8")
+).entries.length;
 
 let passed = 0;
 let failed = 0;
@@ -86,9 +89,9 @@ function migrationBytes() {
   }));
 }
 
-await test("loadEntriesToBaseline: returns all 14 entries with correct hashes", async () => {
+await test("loadEntriesToBaseline: returns all entries with correct hashes", async () => {
   const entries = loadEntriesToBaseline(null);
-  assertEq(entries.length, 14, "entry count");
+  assertEq(entries.length, EXPECTED_ENTRY_COUNT, "entry count");
   // Re-hash one migration manually and compare.
   const file = resolve(DRIZZLE_DIR, "0013_con_error_logging.sql");
   const expected = createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -114,7 +117,7 @@ await test("applyBaseline: creates schema+table and inserts one row per entry", 
   const client = makeClient({ trackerExists: false });
   const result = await applyBaseline({ client, entries, force: false });
   assert(result.ok, "should succeed");
-  assertEq(result.inserted, 14, "inserted count");
+  assertEq(result.inserted, EXPECTED_ENTRY_COUNT, "inserted count");
   assertEq(result.skipped, 0, "skipped count");
 
   // Inspect call order.
@@ -126,8 +129,8 @@ await test("applyBaseline: creates schema+table and inserts one row per entry", 
     /CREATE TABLE IF NOT EXISTS "drizzle"\."__drizzle_migrations"/.test(sqls[3]),
     "create table"
   );
-  // Next 14 are INSERTs.
-  for (let i = 0; i < 14; i++) {
+  // Next calls are one INSERT per migration entry.
+  for (let i = 0; i < EXPECTED_ENTRY_COUNT; i++) {
     const c = client.calls[4 + i];
     assert(
       /INSERT INTO "drizzle"\."__drizzle_migrations"/.test(c.sql),
@@ -138,7 +141,7 @@ await test("applyBaseline: creates schema+table and inserts one row per entry", 
     assertEq(c.params[0], entries[i].hash, `hash param ${i}`);
     assertEq(c.params[1], entries[i].when, `when param ${i}`);
   }
-  assertEq(client.calls[4 + 14].sql, "COMMIT", "final COMMIT");
+  assertEq(client.calls[4 + EXPECTED_ENTRY_COUNT].sql, "COMMIT", "final COMMIT");
 });
 
 await test("applyBaseline: NEVER executes any migration SQL body", async () => {

@@ -99,6 +99,20 @@
       "when": 1782129969000,
       "tag": "0013_con_error_logging",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782299110444,
+      "tag": "0014_con217_platform_admin_staff_function",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1782299110445,
+      "tag": "0015_con217_plan_scale_enum",
+      "breakpoints": true
     }
   ]
 }

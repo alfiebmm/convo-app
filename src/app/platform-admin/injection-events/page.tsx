@@ -3,17 +3,13 @@
  * dashboard. Future ticket will wire the data fetch + listing UI.
  *
  * Route guard:
- *   1. Must be authenticated (redirect to /login).
- *   2. Must have `users.is_platform_staff = true` (404 otherwise — we don't
- *      reveal the route's existence to tenant users).
+ *   1. Must pass platform-admin middleware email allowlist.
+ *   2. Must pass `requirePlatformStaff()` inside the admin layout.
  *
  * Intentionally does NOT query `platform_injection_events` yet. The table
  * lives in this PR's migration so future work can ship without another
  * schema change.
  */
-import { getCurrentUser } from "@/lib/auth-context";
-import { redirect, notFound } from "next/navigation";
-
 export const dynamic = "force-dynamic";
 
 // TODO(CON-NEW): wire data fetch + listing UI.
@@ -22,18 +18,11 @@ export const dynamic = "force-dynamic";
 //   - Read via service role (this table has RLS on with no SELECT policy
 //     for `authenticated`).
 export default async function InjectionEventsPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-
-  // `is_platform_staff` is a Convo-staff-only flag. Show 404 to anyone
-  // else so the route doesn't advertise itself.
-  if (!user.isPlatformStaff) {
-    notFound();
-  }
-
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-2xl font-semibold">Injection events</h1>
+    <section className="max-w-3xl">
+      <h1 className="font-display text-3xl font-semibold tracking-normal text-zinc-950">
+        Injection events
+      </h1>
       <p className="mt-4 text-sm text-zinc-600">
         Convo staff only — dashboard coming soon.
       </p>
@@ -41,6 +30,6 @@ export default async function InjectionEventsPage() {
         Audit log of prompt-injection-defence triggers across all tenants.
         Data fetch + listing UI will land in a follow-up ticket.
       </p>
-    </main>
+    </section>
   );
 }

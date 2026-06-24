@@ -66,7 +66,7 @@ const BENIGN: string[] = [
   // 2. Product question
   "Do you ship to New Zealand?",
   // 3. Pricing
-  "How much does the Pro plan cost per month?",
+  "How much does the Scale plan cost per month?",
   // 4. Casual greeting
   "Hi there",
   // 5. Thanks

@@ -34,6 +34,12 @@ Full runbook: [`docs/migrations.md`](docs/migrations.md).
   environment whose schema is already up to date (one-shot per env).
 - `npm run migrate:check` — CI guard run on every PR touching `drizzle/`.
 
+## Platform admin access
+
+`/platform-admin/*` is founders-only. Set `PLATFORM_STAFF_EMAILS` to a
+comma-separated list of allowed admin emails; each user must also have
+`users.is_platform_staff = true` in Postgres. Both gates must pass.
+
 ## Project Structure
 
 ```

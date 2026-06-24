@@ -3,7 +3,7 @@
  *
  * Environment variables:
  *   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
- *   STRIPE_PRICE_STARTER, STRIPE_PRICE_GROWTH, STRIPE_PRICE_PRO
+ *   STRIPE_PRICE_STARTER, STRIPE_PRICE_GROWTH, STRIPE_PRICE_SCALE
  */
 import Stripe from "stripe";
 import { db } from "./db";
@@ -19,7 +19,7 @@ function getStripe() {
 const PLAN_PRICE_MAP: Record<string, string | undefined> = {
   starter: process.env.STRIPE_PRICE_STARTER,
   growth: process.env.STRIPE_PRICE_GROWTH,
-  pro: process.env.STRIPE_PRICE_PRO,
+  scale: process.env.STRIPE_PRICE_SCALE,
 };
 
 /**
@@ -27,7 +27,7 @@ const PLAN_PRICE_MAP: Record<string, string | undefined> = {
  */
 export async function createCheckoutSession(
   tenantId: string,
-  plan: "growth" | "pro",
+  plan: "growth" | "scale",
   returnUrl: string
 ) {
   const stripe = getStripe();
@@ -108,7 +108,7 @@ export async function handleWebhook(event: Stripe.Event) {
         await db
           .update(tenants)
           .set({
-            plan: plan as "starter" | "growth" | "pro",
+            plan: plan as "starter" | "growth" | "scale",
             stripeCustomerId: session.customer as string,
             stripeSubscriptionId: session.subscription as string,
             updatedAt: new Date(),
@@ -134,8 +134,8 @@ export async function handleWebhook(event: Stripe.Event) {
       if (tenant) {
         // Determine plan from price
         const priceId = subscription.items.data[0]?.price?.id;
-        let plan: "starter" | "growth" | "pro" = "starter";
-        if (priceId === process.env.STRIPE_PRICE_PRO) plan = "pro";
+        let plan: "starter" | "growth" | "scale" = "starter";
+        if (priceId === process.env.STRIPE_PRICE_SCALE) plan = "scale";
         else if (priceId === process.env.STRIPE_PRICE_GROWTH) plan = "growth";
 
         await db
