@@ -7,6 +7,16 @@ import { requirePlatformStaff } from "@/lib/platform-admin/access";
 
 export const dynamic = "force-dynamic";
 
+function navClass(pathname: string, href: string) {
+  const active =
+    href === "/platform-admin" ? pathname === href : pathname.startsWith(href);
+  return `block rounded-md px-3 py-2 ${
+    active
+      ? "bg-zinc-800 text-white"
+      : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
+  }`;
+}
+
 export default async function PlatformAdminLayout({
   children,
 }: {
@@ -67,19 +77,25 @@ export default async function PlatformAdminLayout({
           <nav className="space-y-1 px-3 text-sm font-medium">
             <Link
               href="/platform-admin"
-              className="block rounded-md px-3 py-2 text-zinc-100 hover:bg-zinc-800"
+              className={navClass(pathname, "/platform-admin")}
             >
               Home
             </Link>
             <Link
+              href="/platform-admin/tenants"
+              className={navClass(pathname, "/platform-admin/tenants")}
+            >
+              Tenants
+            </Link>
+            <Link
               href="/platform-admin/injection-events"
-              className="block rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              className={navClass(pathname, "/platform-admin/injection-events")}
             >
               Injection events
             </Link>
             <Link
               href="/platform-admin/audit"
-              className="block rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              className={navClass(pathname, "/platform-admin/audit")}
             >
               Audit log
             </Link>

@@ -46,6 +46,12 @@ export const memberRoleEnum = pgEnum("member_role", [
   "viewer",
 ]);
 
+export const tenantStatusEnum = pgEnum("tenant_status", [
+  "active",
+  "suspended",
+  "deleted_soft",
+]);
+
 export const knowledgeItemTypeEnum = pgEnum("knowledge_item_type", [
   "page",
   "file",
@@ -90,9 +96,20 @@ export const tenants = pgTable("tenants", {
   slug: varchar("slug", { length: 63 }).notNull().unique(),
   domain: varchar("domain", { length: 255 }), // the client website domain
   plan: planEnum("plan").default("starter").notNull(),
+  status: tenantStatusEnum("status").default("active").notNull(),
   settings: jsonb("settings").default({}).notNull(), // widget config, persona, guardrails, CMS creds
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspendedBy: uuid("suspended_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  suspendedReason: text("suspended_reason"),
+  softDeletedAt: timestamp("soft_deleted_at", { withTimezone: true }),
+  softDeletedBy: uuid("soft_deleted_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  softDeletedReason: text("soft_deleted_reason"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

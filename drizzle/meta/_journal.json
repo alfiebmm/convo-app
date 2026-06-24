@@ -134,6 +134,13 @@
       "when": 1782303894129,
       "tag": "0018_con220_staff_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1782303894130,
+      "tag": "0019_con220_tenants_status",
+      "breakpoints": true
     }
   ]
 }
