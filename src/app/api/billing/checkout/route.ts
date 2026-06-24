@@ -2,7 +2,7 @@
  * POST /api/billing/checkout
  *
  * Creates a Stripe Checkout session for plan upgrade.
- * Accepts: { tenantId, plan: "growth" | "pro" }
+ * Accepts: { tenantId, plan: "growth" | "scale" }
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { tenantId, plan } = body;
 
-  if (!tenantId || !plan || !["growth", "pro"].includes(plan)) {
+  if (!tenantId || !plan || !["growth", "scale"].includes(plan)) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 

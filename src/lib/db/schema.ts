@@ -20,12 +20,7 @@ import type { AdapterAccountType } from "next-auth/adapters";
 // ENUMS
 // ============================================================
 
-export const planEnum = pgEnum("plan", [
-  "starter",
-  "growth",
-  "pro",
-  "enterprise",
-]);
+export const planEnum = pgEnum("plan", ["starter", "growth", "scale"]);
 
 export const contentStatusEnum = pgEnum("content_status", [
   "pending", // extracted, waiting for generation

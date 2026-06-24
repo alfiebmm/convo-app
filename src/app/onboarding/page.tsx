@@ -249,7 +249,7 @@ export default function OnboardingPage() {
                   ]}
                 />
                 <PlanCard
-                  name="Pro"
+                  name="Scale"
                   price="$149/mo"
                   features={[
                     `${APP_CONFIG.limits.scale.conversationsPerMonth.toLocaleString()} conversations/mo`,

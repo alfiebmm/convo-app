@@ -1400,10 +1400,10 @@ function BillingSection() {
   const limits = {
     starter: { conversations: 500, articles: 10 },
     growth: { conversations: 2000, articles: 50 },
-    pro: { conversations: 10000, articles: 200 },
+    scale: { conversations: 10000, articles: 200 },
   }[plan] ?? { conversations: 500, articles: 10 };
 
-  async function handleUpgrade(targetPlan: "growth" | "pro") {
+  async function handleUpgrade(targetPlan: "growth" | "scale") {
     if (!tenantId) return;
     setUpgrading(true);
     try {
@@ -1529,7 +1529,7 @@ function BillingSection() {
             </button>
           </div>
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-            <p className="font-medium text-slate-900">Pro</p>
+            <p className="font-medium text-slate-900">Scale</p>
             <p className="text-2xl font-bold text-slate-900 mt-1">$149<span className="text-sm font-normal text-slate-500">/mo</span></p>
             <ul className="mt-3 space-y-1 text-sm text-slate-500">
               <li>✓ 10,000 conversations/mo</li>
@@ -1538,30 +1538,30 @@ function BillingSection() {
               <li>✓ Priority support</li>
             </ul>
             <button
-              onClick={() => handleUpgrade("pro")}
+              onClick={() => handleUpgrade("scale")}
               disabled={upgrading}
               className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              {upgrading ? "Redirecting..." : "Upgrade to Pro"}
+              {upgrading ? "Redirecting..." : "Upgrade to Scale"}
             </button>
           </div>
         </div>
       )}
 
-      {plan !== "starter" && plan !== "pro" && (
+      {plan !== "starter" && plan !== "scale" && (
         <div className="mt-6">
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium text-slate-900">Pro</p>
+                <p className="font-medium text-slate-900">Scale</p>
                 <p className="text-sm text-slate-500">$149/mo — 10,000 conversations, 200 articles</p>
               </div>
               <button
-                onClick={() => handleUpgrade("pro")}
+                onClick={() => handleUpgrade("scale")}
                 disabled={upgrading}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {upgrading ? "Redirecting..." : "Upgrade to Pro"}
+                {upgrading ? "Redirecting..." : "Upgrade to Scale"}
               </button>
             </div>
           </div>
