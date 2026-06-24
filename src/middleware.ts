@@ -22,12 +22,43 @@
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-export function middleware(request: NextRequest) {
+function parseAllowlist(raw = process.env.PLATFORM_STAFF_EMAILS ?? "") {
+  return new Set(
+    raw
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function notFoundResponse(request: NextRequest) {
+  return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
+}
+
+export async function middleware(request: NextRequest) {
   // Check for NextAuth session token (set by NextAuth v5 with JWT strategy)
   const token =
     request.cookies.get("__Secure-authjs.session-token") ??
     request.cookies.get("authjs.session-token");
+
+  if (request.nextUrl.pathname.startsWith("/platform-admin")) {
+    if (!token) return notFoundResponse(request);
+
+    const allowlist = parseAllowlist();
+    if (allowlist.size === 0) return notFoundResponse(request);
+
+    const authToken = await getToken({
+      req: request,
+      secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+    });
+    const email = authToken?.email?.toLowerCase();
+
+    if (!email || !allowlist.has(email)) return notFoundResponse(request);
+
+    return NextResponse.next();
+  }
 
   if (!token) {
     const loginUrl = new URL("/login", request.url);
@@ -40,6 +71,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/platform-admin/:path*",
     "/dashboard/:path*",
     "/api/((?!auth|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook|cases/[^/]+/capture).*)",
   ],
