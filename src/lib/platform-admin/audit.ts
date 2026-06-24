@@ -24,6 +24,15 @@ export const nonSensitiveAuditActions = [
   "billing.view",
   "tenant.activity.view",
   "user.view",
+  "admin.mfa.enrolled",
+  "admin.mfa.challenge_success",
+  "admin.mfa.challenge_failure",
+  "admin.mfa.locked",
+  "admin.mfa.locked_visit",
+  "admin.mfa.recovery_code_used",
+  "admin.mfa.stepup_success",
+  "admin.mfa.stepup_failure",
+  "admin.mfa.reenrolment_started",
 ] as const;
 
 export type SensitiveAction = (typeof sensitiveAuditActions)[number];

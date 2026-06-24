@@ -120,6 +120,13 @@
       "when": 1782299110446,
       "tag": "0016_con218_admin_audit_log",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1782303894128,
+      "tag": "0017_con219_admin_totp_secrets",
+      "breakpoints": true
     }
   ]
 }
