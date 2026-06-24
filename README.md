@@ -39,6 +39,9 @@ Full runbook: [`docs/migrations.md`](docs/migrations.md).
 `/platform-admin/*` is founders-only. Set `PLATFORM_STAFF_EMAILS` to a
 comma-separated list of allowed admin emails; each user must also have
 `users.is_platform_staff = true` in Postgres. Both gates must pass.
+Platform-admin Supabase access uses anon plus a short-lived JWT signed with
+`SUPABASE_JWT_SECRET` so RLS checks `public.is_platform_staff()` against the
+current admin user.
 
 ## Project Structure
 

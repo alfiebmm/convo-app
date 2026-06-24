@@ -1,18 +1,53 @@
 /**
  * Platform-admin Supabase client.
  *
- * We use anon + admin JWT (not service_role) so that defence-in-depth RLS
- * policies via `is_platform_staff()` apply. Bypassing RLS with service_role
- * would defeat the audit-gate guarantee.
+ * We mint a short-lived Supabase-signed JWT from the already-verified
+ * NextAuth session, then use anon + that JWT so RLS policies via
+ * `is_platform_staff()` apply. Bypassing RLS with service_role would defeat
+ * the audit-gate guarantee.
  */
-import { cookies } from "next/headers";
+import { createHmac } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import { requirePlatformStaff } from "@/lib/platform-admin/access";
 
-function getSessionTokenCookie(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return (
-    cookieStore.get("__Secure-authjs.session-token")?.value ??
-    cookieStore.get("authjs.session-token")?.value
-  );
+const missingJwtSecretMessage =
+  "Supabase JWT secret not configured. Pull from Supabase project -> settings -> API -> JWT Secret and add to 1P + Vercel env as SUPABASE_JWT_SECRET.";
+
+function base64Url(input: string | Buffer) {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+export function mintSupabaseJwt({
+  userId,
+  secret = process.env.SUPABASE_JWT_SECRET,
+  now = Math.floor(Date.now() / 1000),
+}: {
+  userId: string;
+  secret?: string;
+  now?: number;
+}) {
+  if (!secret) {
+    throw new Error(missingJwtSecretMessage);
+  }
+
+  const header = { alg: "HS256", typ: "JWT" };
+  const payload = {
+    sub: userId,
+    role: "authenticated",
+    aud: "authenticated",
+    iat: now,
+    exp: now + 60,
+  };
+  const unsigned = `${base64Url(JSON.stringify(header))}.${base64Url(
+    JSON.stringify(payload),
+  )}`;
+  const signature = createHmac("sha256", secret).update(unsigned).digest();
+
+  return `${unsigned}.${base64Url(signature)}`;
 }
 
 export async function getPlatformAdminClient() {
@@ -25,9 +60,8 @@ export async function getPlatformAdminClient() {
     );
   }
 
-  const cookieStore = await cookies();
-  const jwt = getSessionTokenCookie(cookieStore);
-  if (!jwt) throw new Error("Platform admin JWT cookie is missing");
+  const { user } = await requirePlatformStaff();
+  const jwt = mintSupabaseJwt({ userId: user.id });
 
   return createClient(url, anonKey, {
     auth: {
