@@ -14,6 +14,7 @@ import {
   primaryKey,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { AdapterAccountType } from "next-auth/adapters";
 
 // ============================================================
@@ -825,6 +826,53 @@ export const platformInjectionEvents = pgTable(
       table.detectedAt
     ),
     index("platform_injection_events_detected_idx").on(table.detectedAt),
+  ]
+);
+
+// ============================================================
+// PLATFORM ADMIN AUDIT LOG (CON-218)
+// ============================================================
+//
+// Append-only admin audit trail. Mutations are represented as intent and
+// outcome rows linked by correlationId. UPDATE/DELETE are revoked in SQL.
+
+export const adminAuditLog = pgTable(
+  "admin_audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: uuid("actor_user_id")
+      .references(() => users.id)
+      .notNull(),
+    actorEmail: text("actor_email").notNull(),
+    actorIp: text("actor_ip"),
+    action: text("action").notNull(),
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+    status: text("status")
+      .$type<"intent" | "outcome:success" | "outcome:error">()
+      .notNull(),
+    beforeState: jsonb("before_state"),
+    afterState: jsonb("after_state"),
+    metadata: jsonb("metadata"),
+    reason: text("reason"),
+    supportContext: text("support_context"),
+    correlationId: uuid("correlation_id").notNull(),
+    idempotencyKey: text("idempotency_key"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("admin_audit_log_intent_idempotency_unique")
+      .on(table.actorUserId, table.action, table.targetId, table.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL AND status = 'intent'`),
+    index("admin_audit_log_correlation_idx").on(table.correlationId),
+    index("admin_audit_log_action_created_idx").on(table.action, table.createdAt),
+    index("admin_audit_log_target_created_idx").on(
+      table.targetType,
+      table.targetId,
+      table.createdAt
+    ),
   ]
 );
 

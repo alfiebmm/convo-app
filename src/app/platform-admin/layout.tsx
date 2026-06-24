@@ -46,6 +46,12 @@ export default async function PlatformAdminLayout({
             >
               Injection events
             </Link>
+            <Link
+              href="/platform-admin/audit"
+              className="block rounded-md px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+            >
+              Audit log
+            </Link>
           </nav>
         </aside>
 

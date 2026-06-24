@@ -113,6 +113,13 @@
       "when": 1782299110445,
       "tag": "0015_con217_plan_scale_enum",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1782299110446,
+      "tag": "0016_con218_admin_audit_log",
+      "breakpoints": true
     }
   ]
 }

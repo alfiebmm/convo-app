@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireAuth, getCurrentUser } from "@/lib/auth-context";
 
 type PlatformStaffUser = {
+  id: string;
   email: string | null;
   isPlatformStaff: boolean | null;
 };
