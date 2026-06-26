@@ -126,8 +126,9 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
               {APP_CONFIG.name.toLowerCase()}
             </div>
             <p className="mt-4 max-w-sm text-sm leading-6 text-zinc-400">
-              Website conversations turned into qualified leads, better answers,
-              and reviewed content workflows.
+              The AI growth layer for service-business websites. Chat captures
+              leads now. The content engine captures rankings later. Both
+              compound.
             </p>
           </div>
           <div className="grid gap-8 sm:grid-cols-3">
@@ -260,11 +261,12 @@ export function CTASection() {
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-5 py-16 sm:px-8 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="font-display text-3xl font-extrabold">
-            Ready to turn conversations into growth?
+            Try Convo on your own website.
           </h2>
           <p className="mt-3 max-w-2xl text-zinc-400">
-            Install the widget, learn from real visitor questions, and review
-            every lead and content recommendation before it moves.
+            Install the widget, watch real visitor questions land, and review
+            every lead and content suggestion before anything ships. Live in
+            15 minutes on WordPress, Shopify, or Webflow.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
