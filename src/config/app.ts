@@ -7,7 +7,7 @@ export const APP_CONFIG = {
   name: "Convo",
   tagline: "Conversations that convert",
   description:
-    "AI chatbot that turns website conversations into SEO-optimised content.",
+    "AI chatbot that turns website conversations into leads, FAQs, and SEO-optimised blog posts that rank.",
   url: "https://convoapp.com.au",
   support: "support@convoapp.com.au",
 
