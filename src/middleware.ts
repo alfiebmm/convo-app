@@ -43,19 +43,33 @@ function parseAllowlist(raw = process.env.PLATFORM_STAFF_EMAILS ?? "") {
 // served the cached 404 for the TTL. The headers below force a fresh response
 // on every request and key on the Cookie header so cache layers cannot share
 // it across auth states.
+//
+// Vercel's edge cache historically ignored `Cache-Control: no-store` on rewrite
+// responses pointing to static assets (the rewrite target's cache behaviour
+// won out, serving a cached `/404` HIT to authenticated admins). The CDN-prefix
+// headers below are the standardised + Vercel-specific overrides that force a
+// hard CDN bypass regardless of the response body's origin.
 export const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, max-age=0, must-revalidate",
+  "CDN-Cache-Control": "no-store",
+  "Vercel-CDN-Cache-Control": "no-store",
   Vary: "Cookie",
 };
 
-export function notFoundResponse(request: NextRequest) {
-  const response = NextResponse.rewrite(new URL("/404", request.url), {
+// Return a direct 404 from the Edge runtime instead of rewriting to /404.
+// Rewriting caused Vercel's edge cache to associate the response with the
+// static /404 page, which then served as `x-vercel-cache: HIT` for subsequent
+// authenticated requests — bypassing this middleware entirely. A direct
+// NextResponse with no-store + Vercel-CDN-Cache-Control: no-store guarantees
+// the CDN never caches it.
+export function notFoundResponse(_request: NextRequest) {
+  return new NextResponse("Not found", {
     status: 404,
+    headers: {
+      ...NO_STORE_HEADERS,
+      "Content-Type": "text/plain; charset=utf-8",
+    },
   });
-  for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
-    response.headers.set(key, value);
-  }
-  return response;
 }
 
 function nextWithPathname(request: NextRequest) {
