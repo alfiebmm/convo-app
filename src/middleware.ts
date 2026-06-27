@@ -37,8 +37,25 @@ function parseAllowlist(raw = process.env.PLATFORM_STAFF_EMAILS ?? "") {
   );
 }
 
-function notFoundResponse(request: NextRequest) {
-  return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
+// Edge layers (Vercel/Cloudflare) cache responses by URL/path. If we serve a
+// 404 from middleware without explicit no-store, an unauthenticated request to
+// /platform-admin/* can poison the edge cache so even authenticated admins get
+// served the cached 404 for the TTL. The headers below force a fresh response
+// on every request and key on the Cookie header so cache layers cannot share
+// it across auth states.
+export const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, max-age=0, must-revalidate",
+  Vary: "Cookie",
+};
+
+export function notFoundResponse(request: NextRequest) {
+  const response = NextResponse.rewrite(new URL("/404", request.url), {
+    status: 404,
+  });
+  for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
+    response.headers.set(key, value);
+  }
+  return response;
 }
 
 function nextWithPathname(request: NextRequest) {
