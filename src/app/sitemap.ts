@@ -16,6 +16,8 @@ const marketingRoutes = [
   "/integrations",
   "/use-cases",
   "/resources/examples",
+  "/resources/examples/dentists",
+  "/resources/examples/veterinary-clinics",
   "/faq",
   "/compare/searchatlas",
   "/compare/opinly",
