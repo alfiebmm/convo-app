@@ -4,7 +4,7 @@ import { db as defaultDb } from "@/lib/db";
 import { connectorOutbox, tenants } from "@/lib/db/schema";
 import { assertTenantId } from "@/lib/cases/tenant-guard";
 import { decryptWebhookSecret } from "./crypto";
-import { signWebhookPayload } from "./sign";
+import { postSignedWebhook } from "./http";
 import {
   parseTenantWebhookSettings,
   type WebhookEvent,
@@ -258,32 +258,27 @@ export async function deliverPendingWebhooks(
           data: row.payload,
         });
         const secret = decryptWebhookSecret(settings.secret_ciphertext);
-        const signature = signWebhookPayload(secret, body);
-        const response = await fetchFn(row.destinationId ?? settings.url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Convo-Signature": signature.header,
-            "Idempotency-Key": row.idempotencyKey,
-            "User-Agent": "Convo-Webhook/v1",
-          },
+        const response = await postSignedWebhook({
+          url: row.destinationId ?? settings.url,
+          secret,
           body,
-          signal: AbortSignal.timeout(10_000),
+          idempotencyKey: row.idempotencyKey,
+          fetchFn,
         });
 
-        if (response.ok) {
+        if (response.statusCode >= 200 && response.statusCode < 300) {
           await store.markSent(tenantId, row.id, scanNow);
           summary.sent++;
           continue;
         }
 
-        const message = `Webhook returned HTTP ${response.status}`;
-        if (isPermanentClientError(response.status)) {
+        const message = `Webhook returned HTTP ${response.statusCode}`;
+        if (isPermanentClientError(response.statusCode)) {
           await store.markFailed(tenantId, row.id, message, scanNow);
           summary.failed++;
           continue;
         }
-        if (!isRetryableStatus(response.status)) {
+        if (!isRetryableStatus(response.statusCode)) {
           await store.markFailed(tenantId, row.id, message, scanNow);
           summary.failed++;
           continue;
