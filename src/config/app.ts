@@ -34,6 +34,15 @@ export const APP_CONFIG = {
     body: "'Inter', sans-serif",
   },
 
+  /**
+   * Per-plan usage caps for server-side enforcement (see `src/lib/usage.ts`).
+   * NOT for display. Customer-facing pricing copy (tier names, prices,
+   * feature bullets, badges) lives in `homePricingTiers` in
+   * `src/lib/marketing/content.ts` — that const is the single source of
+   * truth across the landing page, /pricing, and onboarding.
+   *
+   * `-1` means "unlimited" in enforcement; never render it directly.
+   */
   limits: {
     starter: {
       conversationsPerMonth: 100,

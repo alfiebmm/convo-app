@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { APP_CONFIG } from "@/config/app";
+import { homePricingTiers } from "@/lib/marketing/content";
 
 const steps = ["Create your site", "Configure chatbot", "Install widget", "Choose plan"];
 
@@ -228,43 +229,29 @@ export default function OnboardingPage() {
                 Choose your plan
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Start free and upgrade when you&apos;re ready.
+                Pick the tier that fits today. You can change it anytime.
               </p>
               <div className="mt-6 space-y-3">
-                <PlanCard
-                  name="Starter"
-                  price="Free"
-                  features={[
-                    `${APP_CONFIG.limits.starter.conversationsPerMonth} conversations/mo`,
-                    `${APP_CONFIG.limits.starter.articlesPerMonth} articles/mo`,
-                  ]}
-                  active
-                />
-                <PlanCard
-                  name="Growth"
-                  price="$49/mo"
-                  features={[
-                    `${APP_CONFIG.limits.growth.conversationsPerMonth.toLocaleString()} conversations/mo`,
-                    `${APP_CONFIG.limits.growth.articlesPerMonth} articles/mo`,
-                  ]}
-                />
-                <PlanCard
-                  name="Scale"
-                  price="$149/mo"
-                  features={[
-                    `${APP_CONFIG.limits.scale.conversationsPerMonth.toLocaleString()} conversations/mo`,
-                    `${APP_CONFIG.limits.scale.articlesPerMonth} articles/mo`,
-                  ]}
-                />
+                {homePricingTiers.map((tier) => (
+                  <PlanCard
+                    key={tier.name}
+                    name={tier.name}
+                    price={`$${tier.annualMonthly}/mo, billed annually`}
+                    monthly={`Or $${tier.monthly}/mo billed monthly`}
+                    features={tier.points.slice(0, 3) as readonly string[]}
+                    featured={tier.featured}
+                    active={tier.name === "Starter"}
+                  />
+                ))}
               </div>
               <button
                 onClick={handleSkipToComplete}
                 className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
               >
-                Start with Starter (Free)
+                Continue with Starter
               </button>
               <p className="mt-3 text-center text-xs text-slate-400">
-                You can upgrade anytime from Settings → Billing.
+                You can upgrade or change your plan anytime from Settings → Billing.
               </p>
             </div>
           )}
@@ -286,26 +273,42 @@ export default function OnboardingPage() {
 function PlanCard({
   name,
   price,
+  monthly,
   features,
   active,
+  featured,
 }: {
   name: string;
   price: string;
-  features: string[];
+  monthly?: string;
+  features: readonly string[];
   active?: boolean;
+  featured?: boolean;
 }) {
   return (
     <div
       className={`rounded-lg border p-4 ${
         active
           ? "border-slate-900 bg-slate-50"
+          : featured
+          ? "border-[var(--convo-orange)] bg-orange-50/40"
           : "border-slate-200 bg-white"
       }`}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="font-medium text-slate-900">{name}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-slate-900">{name}</p>
+            {featured && !active && (
+              <span className="rounded-full bg-[var(--convo-orange)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
+                Recommended
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500">{price}</p>
+          {monthly && (
+            <p className="text-xs text-slate-400">{monthly}</p>
+          )}
         </div>
         {active && (
           <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-medium text-white">
