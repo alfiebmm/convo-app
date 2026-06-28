@@ -260,6 +260,24 @@ export default function SettingsPage() {
               settings={settings}
               onUpdate={setSettings}
             />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-medium text-slate-900">
+                    Webhook connector
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Send case and contact events to your HTTPS endpoint.
+                  </p>
+                </div>
+                <Link
+                  href="/dashboard/settings/connectors/webhook"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Configure
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 
