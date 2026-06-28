@@ -7,8 +7,26 @@ const navItems = [
   { href: "/features", label: "Product" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/resources/examples", label: "Industries" },
   { href: "/resources", label: "Resources" },
-  { href: "/faq", label: "FAQ" },
+];
+
+const industryNavLinks = [
+  {
+    href: "/resources/examples",
+    label: "Overview",
+    description: "Industries where questions become leads and content.",
+  },
+  {
+    href: "/resources/examples/dentists",
+    label: "Dental",
+    description: "Capture patient intent and create useful dental content.",
+  },
+  {
+    href: "/resources/examples/veterinary-clinics",
+    label: "Veterinary",
+    description: "Answer pet owner questions and route clinic enquiries.",
+  },
 ];
 
 export function MarketingLayout({ children }: { children: ReactNode }) {
@@ -69,6 +87,34 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
                     </div>
                   </div>
                 </div>
+              ) : item.href === "/resources/examples" ? (
+                <div key={item.href} className="group relative">
+                  <Link
+                    href={item.href}
+                    className="inline-flex items-center gap-1.5 py-5 text-sm font-medium text-zinc-600 transition hover:text-zinc-950"
+                  >
+                    {item.label}
+                    <span className="text-xs text-zinc-400 transition group-hover:text-zinc-700">
+                      ▾
+                    </span>
+                  </Link>
+                  <div className="invisible absolute left-0 top-full w-[360px] translate-y-2 rounded-xl border border-zinc-200 bg-white p-3 opacity-0 shadow-xl shadow-zinc-950/10 transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+                    {industryNavLinks.map((link) => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className="block rounded-lg p-4 transition hover:bg-orange-50"
+                      >
+                        <p className="text-sm font-bold text-zinc-950">
+                          {link.label}
+                        </p>
+                        <p className="mt-1 text-sm leading-5 text-zinc-600">
+                          {link.description}
+                        </p>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <Link
                   key={item.href}
@@ -115,6 +161,17 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
                 {feature.title}
               </Link>
             ))}
+            {industryNavLinks
+              .filter((link) => link.href !== "/resources/examples")
+              .map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="shrink-0 transition hover:text-zinc-950"
+                >
+                  {link.label}
+                </Link>
+              ))}
           </div>
         </nav>
       </header>
@@ -152,8 +209,7 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
               title="Resources"
               links={[
                 ["/resources", "Guides"],
-                ["/resources/examples", "Examples"],
-                ["/faq", "FAQ"],
+                ["/resources/examples", "Industries"],
                 ["/compare/searchatlas", "Compare SearchAtlas"],
                 ["/compare/opinly", "Compare Opinly"],
               ]}
