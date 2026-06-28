@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { APP_CONFIG } from "@/config/app";
 import {
   requireAuth,
@@ -16,16 +17,37 @@ const navItems = [
   { href: "/dashboard/knowledge", label: "Knowledge", icon: "📚" },
   { href: "/dashboard/widget", label: "Widget", icon: "⚡" },
   { href: "/dashboard/settings", label: "Settings", icon: "⚙️" },
+  { href: "/dashboard/help", label: "Help", icon: "?" },
 ];
+
+async function getDashboardContext() {
+  const { user } = await requireAuth();
+  const tenant = await getCurrentTenant();
+  const userTenants = await getUserTenantsForCurrentUser();
+
+  return { user, tenant, userTenants };
+}
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user } = await requireAuth();
-  const tenant = await getCurrentTenant();
-  const userTenants = await getUserTenantsForCurrentUser();
+  const requestHeaders = await headers();
+  const isLocalHelpPreview =
+    requestHeaders.get("x-convo-local-help-preview") === "1";
+  const { user, tenant, userTenants } = isLocalHelpPreview
+    ? {
+        user: {
+          name: "Local Help Preview",
+          email: "preview@localhost",
+          image: null,
+          avatarUrl: null,
+        },
+        tenant: null,
+        userTenants: [],
+      }
+    : await getDashboardContext();
 
   return (
     <div className="dashboard-shell flex min-h-screen">

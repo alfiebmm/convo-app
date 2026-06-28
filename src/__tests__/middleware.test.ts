@@ -1,19 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NextRequest } from "next/server";
 import { NO_STORE_HEADERS, notFoundResponse } from "../middleware";
 
-function makeRequest(pathname: string): NextRequest {
-  return new NextRequest(new URL(`https://app.convoapp.com.au${pathname}`));
-}
-
 test("notFoundResponse: returns status 404", () => {
-  const response = notFoundResponse(makeRequest("/platform-admin"));
+  const response = notFoundResponse();
   assert.equal(response.status, 404);
 });
 
 test("notFoundResponse: sets Cache-Control no-store so edge layers cannot cache the 404", () => {
-  const response = notFoundResponse(makeRequest("/platform-admin/enrol-mfa"));
+  const response = notFoundResponse();
   const cacheControl = response.headers.get("Cache-Control");
   assert.ok(
     cacheControl && cacheControl.includes("no-store"),
@@ -24,22 +19,22 @@ test("notFoundResponse: sets Cache-Control no-store so edge layers cannot cache 
 });
 
 test("notFoundResponse: sets Vary: Cookie so caches do not share responses across auth states", () => {
-  const response = notFoundResponse(makeRequest("/platform-admin"));
+  const response = notFoundResponse();
   assert.equal(response.headers.get("Vary"), "Cookie");
 });
 
 test("notFoundResponse: sets Vercel-CDN-Cache-Control: no-store to force CDN bypass", () => {
-  const response = notFoundResponse(makeRequest("/platform-admin"));
+  const response = notFoundResponse();
   assert.equal(response.headers.get("Vercel-CDN-Cache-Control"), "no-store");
 });
 
 test("notFoundResponse: sets CDN-Cache-Control: no-store as standardised CDN override", () => {
-  const response = notFoundResponse(makeRequest("/platform-admin"));
+  const response = notFoundResponse();
   assert.equal(response.headers.get("CDN-Cache-Control"), "no-store");
 });
 
 test("notFoundResponse: returns a direct 404 (not a rewrite to /404)", () => {
-  const response = notFoundResponse(makeRequest("/platform-admin"));
+  const response = notFoundResponse();
   // The previous implementation used NextResponse.rewrite("/404") which set
   // x-middleware-rewrite. The fix returns a direct response so this header
   // must NOT be present (otherwise Vercel's edge cache associates the
@@ -49,7 +44,7 @@ test("notFoundResponse: returns a direct 404 (not a rewrite to /404)", () => {
 });
 
 test("notFoundResponse: returns a short text/plain body", () => {
-  const response = notFoundResponse(makeRequest("/platform-admin"));
+  const response = notFoundResponse();
   const contentType = response.headers.get("Content-Type");
   assert.ok(
     contentType && contentType.includes("text/plain"),

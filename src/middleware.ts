@@ -62,7 +62,7 @@ export const NO_STORE_HEADERS = {
 // authenticated requests — bypassing this middleware entirely. A direct
 // NextResponse with no-store + Vercel-CDN-Cache-Control: no-store guarantees
 // the CDN never caches it.
-export function notFoundResponse(_request: NextRequest) {
+export function notFoundResponse() {
   return new NextResponse("Not found", {
     status: 404,
     headers: {
@@ -84,12 +84,15 @@ export async function middleware(request: NextRequest) {
   const token =
     request.cookies.get("__Secure-authjs.session-token") ??
     request.cookies.get("authjs.session-token");
+  const isLocalHelpPreview =
+    process.env.NODE_ENV === "development" &&
+    request.nextUrl.pathname.startsWith("/dashboard/help");
 
   if (request.nextUrl.pathname.startsWith("/platform-admin")) {
-    if (!token) return notFoundResponse(request);
+    if (!token) return notFoundResponse();
 
     const allowlist = parseAllowlist();
-    if (allowlist.size === 0) return notFoundResponse(request);
+    if (allowlist.size === 0) return notFoundResponse();
 
     // Auth.js v5 `getToken` defaults `secureCookie` to `false` (see
     // node_modules/next-auth/node_modules/@auth/core/src/jwt.ts:
@@ -107,11 +110,11 @@ export async function middleware(request: NextRequest) {
       secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
       secureCookie,
     });
-    if (!authToken) return notFoundResponse(request);
+    if (!authToken) return notFoundResponse();
 
     const email = authToken.email?.toLowerCase();
 
-    if (!email || !allowlist.has(email)) return notFoundResponse(request);
+    if (!email || !allowlist.has(email)) return notFoundResponse();
 
     const path = request.nextUrl.pathname;
     const mfaExempt =
@@ -133,6 +136,12 @@ export async function middleware(request: NextRequest) {
     }
 
     return nextWithPathname(request);
+  }
+
+  if (isLocalHelpPreview) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-convo-local-help-preview", "1");
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   if (!token) {
