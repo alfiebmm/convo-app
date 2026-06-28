@@ -320,6 +320,20 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
       };
     },
 
+    async findLatestCaseForContact(
+      tenantId,
+      contactId,
+    ): Promise<ContactCaseHistoryRow | null> {
+      const row = cases
+        .filter((item) => item.tenantId === tenantId && item.contactId === contactId)
+        .sort(
+          (a, b) =>
+            b.updatedAt.getTime() - a.updatedAt.getTime() ||
+            b.createdAt.getTime() - a.createdAt.getTime(),
+        )[0];
+      return row ? { ...row } : null;
+    },
+
     async linkContactToConversation(
       tenantId,
       input: LinkContactInput,

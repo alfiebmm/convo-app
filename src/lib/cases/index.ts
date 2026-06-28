@@ -20,6 +20,7 @@
 
 import { assertTenantId, assertUuid } from "./tenant-guard";
 import { resolveCta } from "@/lib/cta/resolve";
+import { fireWebhookEvent } from "@/lib/connectors/webhook/hooks";
 import { sanitizeCaseNoteHtml } from "./sanitize";
 import {
   getDefaultCasesStore,
@@ -70,6 +71,34 @@ function resolveStore(opts?: CaseHelperOptions): CasesStore {
   return opts?.store ?? getDefaultCasesStore();
 }
 
+function shouldFireWebhookHooks(opts?: CaseHelperOptions): boolean {
+  return !opts?.store;
+}
+
+function caseWebhookPayload(event: string, row: CaseRow): Record<string, unknown> {
+  return {
+    event,
+    case: row,
+  };
+}
+
+function fireCaseWebhook(
+  tenantId: string,
+  event: "case.created" | "case.updated" | "case.resolved",
+  row: CaseRow,
+  idempotencyKey: string,
+  opts?: CaseHelperOptions,
+): void {
+  if (!shouldFireWebhookHooks(opts)) return;
+  fireWebhookEvent({
+    tenantId,
+    caseId: row.id,
+    event,
+    payload: caseWebhookPayload(event, row),
+    idempotencyKey,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // createCase
 // ---------------------------------------------------------------------------
@@ -102,7 +131,9 @@ export async function createCase(
     throw new Error("caseType is required");
   }
 
-  return resolveStore(opts).insertCase(tenantId, args);
+  const row = await resolveStore(opts).insertCase(tenantId, args);
+  fireCaseWebhook(tenantId, "case.created", row, `case.created:${row.id}`, opts);
+  return row;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +172,18 @@ export async function updateCaseStatus(
     patch.resolvedAt = null;
   }
 
-  return resolveStore(opts).updateCase(tenantId, caseId, patch);
+  const row = await resolveStore(opts).updateCase(tenantId, caseId, patch);
+  if (row) {
+    const event = status === "resolved" ? "case.resolved" : "case.updated";
+    fireCaseWebhook(
+      tenantId,
+      event,
+      row,
+      `${event}:${row.id}:${row.updatedAt.toISOString()}`,
+      opts,
+    );
+  }
+  return row;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,9 +220,19 @@ export async function assignCase(
     assertUuid(assigneeUserId, "assigneeUserId");
   }
 
-  return resolveStore(opts).updateCase(tenantId, caseId, {
+  const row = await resolveStore(opts).updateCase(tenantId, caseId, {
     assignedTo: assigneeUserId,
   });
+  if (row) {
+    fireCaseWebhook(
+      tenantId,
+      "case.updated",
+      row,
+      `case.updated:${row.id}:assigned:${row.updatedAt.toISOString()}`,
+      opts,
+    );
+  }
+  return row;
 }
 
 export async function assignCaseWithAudit(
@@ -219,6 +271,14 @@ export async function assignCaseWithAudit(
     },
   });
 
+  fireCaseWebhook(
+    tenantId,
+    "case.updated",
+    updated,
+    `case.updated:${updated.id}:assigned:${updated.updatedAt.toISOString()}`,
+    opts,
+  );
+
   return updated;
 }
 
@@ -250,6 +310,14 @@ export async function resolveCaseWithAudit(
     eventType: "case_resolved",
     payload: { actor_id: actorId },
   });
+
+  fireCaseWebhook(
+    tenantId,
+    "case.resolved",
+    updated,
+    `case.resolved:${updated.id}:${updated.updatedAt.toISOString()}`,
+    opts,
+  );
 
   return updated;
 }
@@ -289,6 +357,14 @@ export async function dismissCaseWithAudit(
     payload: { reason: trimmedReason, actor_id: actorId },
   });
 
+  fireCaseWebhook(
+    tenantId,
+    "case.updated",
+    updated,
+    `case.updated:${updated.id}:dismissed:${updated.updatedAt.toISOString()}`,
+    opts,
+  );
+
   return updated;
 }
 
@@ -312,7 +388,7 @@ export async function addCaseNote(
   const current = await store.findCaseById(tenantId, caseId);
   if (!current) return null;
 
-  return store.insertEvent(tenantId, {
+  const event = await store.insertEvent(tenantId, {
     caseId,
     conversationId: current.conversationId,
     actorType: "user",
@@ -320,6 +396,14 @@ export async function addCaseNote(
     eventType: "note_added",
     payload: { body_html: sanitized, actor_id: actorId },
   });
+  fireCaseWebhook(
+    tenantId,
+    "case.updated",
+    current,
+    `case.updated:${caseId}:note:${event.id}`,
+    opts,
+  );
+  return event;
 }
 
 export interface RequeueOutboxResult {
