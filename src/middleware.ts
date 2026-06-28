@@ -91,9 +91,21 @@ export async function middleware(request: NextRequest) {
     const allowlist = parseAllowlist();
     if (allowlist.size === 0) return notFoundResponse(request);
 
+    // Auth.js v5 `getToken` defaults `secureCookie` to `false` (see
+    // node_modules/next-auth/node_modules/@auth/core/src/jwt.ts:
+    //   cookieName = defaultCookies(secureCookie ?? false).sessionToken.name
+    // so without this flag it looks for `authjs.session-token`. On HTTPS
+    // production NextAuth sets `__Secure-authjs.session-token`, so the lookup
+    // misses, `getToken` returns null, and authenticated admins get a 404 on
+    // /platform-admin/*. Forcing `secureCookie: true` on HTTPS (or in
+    // production) makes the cookie-name resolver pick the `__Secure-` prefix.
+    const secureCookie =
+      request.nextUrl.protocol === "https:" ||
+      process.env.NODE_ENV === "production";
     const authToken = await getToken({
       req: request,
       secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+      secureCookie,
     });
     if (!authToken) return notFoundResponse(request);
 
