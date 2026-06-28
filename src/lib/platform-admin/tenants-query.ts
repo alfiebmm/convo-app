@@ -248,8 +248,23 @@ function mapTenantListRow(row: RawTenantListRow): TenantListRow {
   };
 }
 
+// Sorts whose cursor predicate `(t.created_at, t.id) < (...)` matches the
+// physical ordering. Any other sort cannot reliably use the cursor and
+// the caller (the page component) must hide the "Next page" link.
+export const cursorSafeSorts: ReadonlySet<TenantSort> = new Set(["signup-desc"]);
+
+export function canPaginateSort(sort: TenantSort): boolean {
+  return cursorSafeSorts.has(sort);
+}
+
 function buildListWhere(filters: TenantListFilters) {
-  const where = [sql`t.status <> 'deleted_soft' OR ${filters.statuses.length > 0}`];
+  // By default we exclude soft-deleted tenants. If the caller explicitly
+  // filters by status, we drop that exclusion so `deleted_soft` can show up
+  // when asked for. The next `status IN (...)` clause then narrows the list.
+  const where = [];
+  if (filters.statuses.length === 0) {
+    where.push(sql`t.status <> 'deleted_soft'`);
+  }
 
   if (filters.plans.length > 0) {
     where.push(sql`t.plan::text IN (${sql.join(filters.plans.map((plan) => sql`${plan}`), sql`, `)})`);

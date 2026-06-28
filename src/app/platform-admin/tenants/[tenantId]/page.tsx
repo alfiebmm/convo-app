@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withAuditLog } from "@/lib/platform-admin/audit";
@@ -23,6 +24,11 @@ const tabLabels: Record<TenantTab, string> = {
   notes: "Support notes",
   danger: "Danger zone",
 };
+
+// Truncate the settings preview so a misbehaving tenant payload can't blow
+// out the page. Anything past this lives behind the "raw JSON" download
+// (future ticket).
+const SETTINGS_PREVIEW_MAX_CHARS = 8000;
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -77,11 +83,15 @@ function Tabs({
   active: TenantTab;
 }) {
   return (
-    <nav className="flex flex-wrap gap-2 border-b border-zinc-200">
+    <nav
+      className="flex flex-wrap gap-2 border-b border-zinc-200"
+      aria-label="Tenant detail sections"
+    >
       {tenantTabs.map((tab) => (
         <Link
           key={tab}
           href={`/platform-admin/tenants/${tenantId}?tab=${tab}`}
+          aria-current={active === tab ? "page" : undefined}
           className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold ${
             active === tab
               ? "border-[#FF6B2C] text-zinc-950"
@@ -97,6 +107,12 @@ function Tabs({
 
 function ProfileTab({ detail }: { detail: TenantDetail }) {
   const { tenant, owner, members } = detail;
+  const settingsJson = JSON.stringify(tenant.settings ?? {}, null, 2);
+  const settingsTooLarge = settingsJson.length > SETTINGS_PREVIEW_MAX_CHARS;
+  const settingsPreview = settingsTooLarge
+    ? `${settingsJson.slice(0, SETTINGS_PREVIEW_MAX_CHARS)}\n\n... [truncated — ${settingsJson.length - SETTINGS_PREVIEW_MAX_CHARS} more characters]`
+    : settingsJson;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
       <section className="space-y-6">
@@ -127,12 +143,15 @@ function ProfileTab({ detail }: { detail: TenantDetail }) {
             <div className="text-xs font-semibold uppercase text-zinc-500">Owner</div>
             <div className="mt-1">
               {owner ? (
-                <Link
-                  href={`/platform-admin/users/${owner.userId}`}
+                // CON-PLATFORM-ADMIN-QA-1: /platform-admin/users/[userId] does
+                // not exist yet (ships in ADMIN-6 user-detail ticket). Render
+                // a mailto: instead so the link is useful rather than a 404.
+                <a
+                  href={`mailto:${owner.email}`}
                   className="text-[#E85A1E] underline-offset-2 hover:underline"
                 >
                   {owner.email}
-                </Link>
+                </a>
               ) : (
                 "—"
               )}
@@ -144,10 +163,14 @@ function ProfileTab({ detail }: { detail: TenantDetail }) {
             <button
               type="button"
               disabled
+              aria-disabled="true"
               title="Stripe deep-link wires in CON-222"
-              className="mt-2 rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-400"
+              className="mt-2 inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-400"
             >
               Open in Stripe
+              <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] uppercase tracking-normal text-zinc-600">
+                Soon
+              </span>
             </button>
           </div>
           <div>
@@ -169,17 +192,25 @@ function ProfileTab({ detail }: { detail: TenantDetail }) {
             <h2 className="font-semibold">Team members</h2>
           </div>
           <table className="w-full text-left text-sm">
+            <caption className="sr-only">Team members for this tenant.</caption>
             <thead className="bg-zinc-100 text-xs uppercase text-zinc-600">
               <tr>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Joined</th>
+                <th scope="col" className="px-4 py-3">Email</th>
+                <th scope="col" className="px-4 py-3">Role</th>
+                <th scope="col" className="px-4 py-3">Joined</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200">
               {members.map((member) => (
                 <tr key={member.id}>
-                  <td className="px-4 py-3">{member.email}</td>
+                  <td className="px-4 py-3">
+                    <a
+                      href={`mailto:${member.email}`}
+                      className="text-zinc-900 underline-offset-2 hover:underline"
+                    >
+                      {member.email}
+                    </a>
+                  </td>
                   <td className="px-4 py-3 capitalize">{member.role}</td>
                   <td className="px-4 py-3 text-zinc-600">{formatDate(member.createdAt)}</td>
                 </tr>
@@ -197,9 +228,16 @@ function ProfileTab({ detail }: { detail: TenantDetail }) {
       </section>
 
       <section className="rounded-md border border-zinc-200 bg-white p-5">
-        <h2 className="font-semibold">Settings JSON</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold">Settings JSON</h2>
+          {settingsTooLarge && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-amber-800">
+              Truncated
+            </span>
+          )}
+        </div>
         <pre className="mt-3 max-h-[40rem] overflow-auto rounded-md bg-zinc-950 p-4 text-xs text-zinc-100">
-          {JSON.stringify(tenant.settings ?? {}, null, 2)}
+          {settingsPreview}
         </pre>
       </section>
     </div>
@@ -265,10 +303,14 @@ function DangerTab({ detail }: { detail: TenantDetail }) {
           <button
             type="button"
             disabled
+            aria-disabled="true"
             title="Wires in CON-225 (ADMIN-8)"
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-400"
+            className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-semibold text-zinc-400"
           >
             Suspend tenant
+            <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] uppercase tracking-normal text-zinc-600">
+              Soon
+            </span>
           </button>
         </div>
         {tenant.status === "suspended" && (
@@ -289,10 +331,14 @@ function DangerTab({ detail }: { detail: TenantDetail }) {
             <button
               type="button"
               disabled
+              aria-disabled="true"
               title="Wires in CON-225 (ADMIN-8)"
-              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-400"
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-semibold text-zinc-400"
             >
               Reactivate tenant
+              <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] uppercase tracking-normal text-zinc-600">
+                Soon
+              </span>
             </button>
           </div>
         </section>
@@ -309,10 +355,14 @@ function DangerTab({ detail }: { detail: TenantDetail }) {
           <button
             type="button"
             disabled
+            aria-disabled="true"
             title="Wires in CON-225"
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-400"
+            className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-semibold text-zinc-400"
           >
             Soft-delete tenant
+            <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] uppercase tracking-normal text-zinc-600">
+              Soon
+            </span>
           </button>
         </div>
         {tenant.status === "deleted_soft" && (
@@ -347,12 +397,13 @@ function TabContent({ tab, detail }: { tab: TenantTab; detail: TenantDetail }) {
   return <ProfileTab detail={detail} />;
 }
 
-export default async function PlatformAdminTenantDetailPage({
-  params,
-  searchParams,
-}: PageProps) {
-  const [{ tenantId }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const tab = parseTenantTab(resolvedSearchParams);
+async function TenantDetailBody({
+  tenantId,
+  tab,
+}: {
+  tenantId: string;
+  tab: TenantTab;
+}) {
   const result = await withAuditLog({
     action: "tenant.view",
     target: { type: "tenant", id: tenantId },
@@ -361,30 +412,84 @@ export default async function PlatformAdminTenantDetailPage({
   });
 
   if (!result.ok) notFound();
-
   const detail = result.value;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <Link
-            href="/platform-admin/tenants"
-            className="text-sm font-semibold text-zinc-500 underline-offset-2 hover:underline"
-          >
-            Tenants
-          </Link>
-          <h1 className="mt-2 font-display text-3xl font-bold tracking-normal">
-            {detail.tenant.name}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-zinc-600">
-            <span className="font-mono text-xs">{detail.tenant.id}</span>
-            <StatusPill status={detail.tenant.status} />
+    <>
+      <div>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <Link
+              href="/platform-admin/tenants"
+              className="text-sm font-semibold text-zinc-500 underline-offset-2 hover:underline"
+            >
+              ← Tenants
+            </Link>
+            <h1 className="mt-2 font-display text-3xl font-bold tracking-normal">
+              {detail.tenant.name}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+              <span className="font-mono text-xs">{detail.tenant.id}</span>
+              <StatusPill status={detail.tenant.status} />
+            </div>
           </div>
         </div>
       </div>
 
       <Tabs tenantId={detail.tenant.id} active={tab} />
       <TabContent tab={tab} detail={detail} />
+    </>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div
+      className="space-y-6 animate-pulse"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <div>
+        <div className="h-3 w-20 rounded bg-zinc-200" />
+        <div className="mt-3 h-7 w-64 rounded bg-zinc-200" />
+        <div className="mt-2 h-3 w-48 rounded bg-zinc-200" />
+      </div>
+      <div className="flex gap-3 border-b border-zinc-200 pb-2">
+        {Array.from({ length: 5 }).map((_, idx) => (
+          <div key={idx} className="h-4 w-20 rounded bg-zinc-200" />
+        ))}
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
+        <div className="grid gap-4 rounded-md border border-zinc-200 bg-white p-5 md:grid-cols-2">
+          {Array.from({ length: 8 }).map((_, idx) => (
+            <div key={idx} className="space-y-2">
+              <div className="h-3 w-24 rounded bg-zinc-200" />
+              <div className="h-4 w-40 rounded bg-zinc-200" />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-3 rounded-md border border-zinc-200 bg-white p-5">
+          <div className="h-3 w-32 rounded bg-zinc-200" />
+          <div className="h-40 w-full rounded bg-zinc-200" />
+        </div>
+      </div>
+      <span className="sr-only">Loading tenant…</span>
+    </div>
+  );
+}
+
+export default async function PlatformAdminTenantDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
+  const [{ tenantId }, resolvedSearchParams] = await Promise.all([params, searchParams]);
+  const tab = parseTenantTab(resolvedSearchParams);
+
+  return (
+    <div className="space-y-6">
+      <Suspense key={`${tenantId}:${tab}`} fallback={<DetailSkeleton />}>
+        <TenantDetailBody tenantId={tenantId} tab={tab} />
+      </Suspense>
     </div>
   );
 }
