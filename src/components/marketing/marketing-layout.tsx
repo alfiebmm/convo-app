@@ -7,7 +7,7 @@ const navItems = [
   { href: "/features", label: "Product" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/resources/examples", label: "Examples" },
+  { href: "/resources", label: "Resources" },
   { href: "/faq", label: "FAQ" },
 ];
 
@@ -151,6 +151,7 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
             <FooterColumn
               title="Resources"
               links={[
+                ["/resources", "Guides"],
                 ["/resources/examples", "Examples"],
                 ["/faq", "FAQ"],
                 ["/compare/searchatlas", "Compare SearchAtlas"],
@@ -200,6 +201,7 @@ function FooterColumn({
 }
 
 export function Section({
+  id,
   eyebrow,
   title,
   description,
@@ -207,6 +209,7 @@ export function Section({
   tone = "light",
   headingLevel = "h2",
 }: {
+  id?: string;
   eyebrow?: string;
   title: string;
   description?: string;
@@ -222,7 +225,7 @@ export function Section({
         : "bg-white text-zinc-950";
 
   return (
-    <section className={toneClass}>
+    <section id={id} className={`${toneClass} scroll-mt-20`}>
       <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:py-24">
         <div className="max-w-3xl">
           {eyebrow ? (
