@@ -206,6 +206,11 @@ export interface ContactsStore {
     contactId: string,
   ): Promise<ContactDetailRow | null>;
 
+  findLatestCaseForContact(
+    tenantId: string,
+    contactId: string,
+  ): Promise<ContactCaseHistoryRow | null>;
+
   linkContactToConversation(
     tenantId: string,
     input: LinkContactInput,
@@ -727,6 +732,21 @@ export function createDrizzleContactsStore(
           }),
         ),
       };
+    },
+
+    async findLatestCaseForContact(tenantId, contactId) {
+      const [row] = await db
+        .select()
+        .from(followUpCases)
+        .where(
+          and(
+            eq(followUpCases.tenantId, tenantId),
+            eq(followUpCases.contactId, contactId),
+          ),
+        )
+        .orderBy(sql`${followUpCases.updatedAt} DESC`, sql`${followUpCases.createdAt} DESC`)
+        .limit(1);
+      return row ? (row as ContactCaseHistoryRow) : null;
     },
 
     async linkContactToConversation(tenantId, input) {

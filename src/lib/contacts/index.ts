@@ -17,6 +17,7 @@
  */
 
 import { assertTenantId, assertUuid } from "../cases/tenant-guard";
+import { fireWebhookEvent } from "@/lib/connectors/webhook/hooks";
 import {
   getDefaultContactsStore,
   type ContactDetailRow,
@@ -53,6 +54,10 @@ export interface ContactHelperOptions {
 
 function resolveStore(opts?: ContactHelperOptions): ContactsStore {
   return opts?.store ?? getDefaultContactsStore();
+}
+
+function shouldFireWebhookHooks(opts?: ContactHelperOptions): boolean {
+  return !opts?.store;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +121,32 @@ export async function upsertContact(
     );
   }
 
-  return resolveStore(opts).upsertContact(tenantId, input);
+  const store = resolveStore(opts);
+  const result = await store.upsertContact(tenantId, input);
+
+  if (!result.created && shouldFireWebhookHooks(opts)) {
+    void store
+      .findLatestCaseForContact(tenantId, result.contact.id)
+      .then((caseRow) => {
+        if (!caseRow) return;
+        fireWebhookEvent({
+          tenantId,
+          caseId: caseRow.id,
+          event: "contact.updated",
+          payload: {
+            event: "contact.updated",
+            contact: result.contact,
+            case: caseRow,
+          },
+          idempotencyKey: `contact.updated:${result.contact.id}:${result.contact.updatedAt.toISOString()}`,
+        });
+      })
+      .catch((error) => {
+        console.error("Contact webhook event hook failed", error);
+      });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
