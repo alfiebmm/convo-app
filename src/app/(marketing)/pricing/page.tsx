@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CTASection, MarketingLayout } from "@/components/marketing/marketing-layout";
+import { homePricingTiers } from "@/lib/marketing/content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata = marketingMetadata({
@@ -15,54 +16,6 @@ export const metadata = marketingMetadata({
     "Convo pricing",
   ],
 });
-
-const plans = [
-  {
-    name: "Starter",
-    price: "$99",
-    annualPrice: null,
-    period: "/mo",
-    description: "Start turning visitor questions into leads and content ideas.",
-    badge: null,
-    features: [
-      "1 website",
-      "AI website chat",
-      "Configurable lead capture",
-      "SEO-optimised content queue",
-      "Basic performance tracking",
-    ],
-  },
-  {
-    name: "Growth",
-    price: "$249",
-    annualPrice: "$224",
-    period: "/mo",
-    description: "For active SMBs ready to publish and measure content.",
-    badge: "Most popular",
-    features: [
-      "Higher chat and content limits",
-      "Advanced lead capture controls",
-      "WordPress, Shopify, Webflow, and REST publishing",
-      "GSC, GA4, and Ahrefs-style SEO inputs",
-      "Content performance tracking",
-    ],
-  },
-  {
-    name: "Scale",
-    price: "$499+",
-    annualPrice: "$449+",
-    period: "/mo",
-    description: "For agencies, marketplaces, and multi-site growth teams.",
-    badge: "Demo-led",
-    features: [
-      "Multiple websites",
-      "Advanced guardrails and workflows",
-      "API and webhook options",
-      "Priority onboarding",
-      "Strategic content and performance reviews",
-    ],
-  },
-] as const;
 
 const comparisons = [
   ["Website chat", "Included", "Included", "Included"],
@@ -105,64 +58,58 @@ export default function PricingPage() {
         <section className="bg-white">
           <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-20">
             <div className="grid gap-5 lg:grid-cols-3">
-              {plans.map((plan) => (
+              {homePricingTiers.map((tier) => (
                 <article
-                  key={plan.name}
+                  key={tier.name}
                   className={`relative flex flex-col rounded-2xl border bg-white p-6 shadow-sm ${
-                    plan.badge === "Most popular"
+                    tier.featured
                       ? "border-[var(--convo-orange)] shadow-orange-100"
                       : "border-zinc-200"
                   }`}
                 >
-                  {plan.badge ? (
+                  {tier.featured ? (
                     <div className="absolute right-5 top-5 rounded-full bg-orange-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-[var(--convo-orange)]">
-                      {plan.badge}
+                      Recommended
                     </div>
                   ) : null}
                   <h2 className="font-display text-2xl font-bold text-zinc-950">
-                    {plan.name}
+                    {tier.name}
                   </h2>
                   <p className="mt-3 min-h-12 text-sm leading-6 text-zinc-600">
-                    {plan.description}
+                    {tier.summary}
                   </p>
                   <div className="mt-6">
                     <div className="flex items-end gap-1">
                       <span className="font-display text-5xl font-extrabold tracking-normal text-zinc-950">
-                        {plan.price}
+                        ${tier.annualMonthly}
                       </span>
                       <span className="pb-2 text-sm font-semibold text-zinc-500">
-                        {plan.period}
+                        /mo, annual
                       </span>
                     </div>
-                    {plan.annualPrice ? (
-                      <p className="mt-2 text-sm font-semibold text-emerald-700">
-                        {plan.annualPrice}/mo on annual billing
-                      </p>
-                    ) : (
-                      <p className="mt-2 text-sm text-zinc-500">
-                        Monthly plan
-                      </p>
-                    )}
+                    <p className="mt-2 text-sm text-zinc-500">
+                      Or ${tier.monthly}/mo billed monthly
+                    </p>
                   </div>
                   <ul className="mt-7 grid gap-3">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex gap-3 text-sm text-zinc-700">
+                    {tier.points.map((point) => (
+                      <li key={point} className="flex gap-3 text-sm text-zinc-700">
                         <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-50 text-xs font-bold text-[var(--convo-orange)]">
                           ✓
                         </span>
-                        <span>{feature}</span>
+                        <span>{point}</span>
                       </li>
                     ))}
                   </ul>
                   <Link
                     href="/login"
                     className={`mt-8 inline-flex justify-center rounded-lg px-5 py-3 text-sm font-bold transition ${
-                      plan.badge === "Most popular"
+                      tier.featured
                         ? "bg-[var(--convo-orange)] text-white hover:bg-[var(--convo-orange-hover)]"
                         : "border border-zinc-300 text-zinc-950 hover:border-zinc-500"
                     }`}
                   >
-                    Start with {plan.name}
+                    Start with {tier.name}
                   </Link>
                 </article>
               ))}
