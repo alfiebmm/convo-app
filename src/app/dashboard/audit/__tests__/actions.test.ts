@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getAuditEventDetailForTenant,
   listAuditEventsForTenant,
   type AuditCursor,
   type AuditEventFilters,
@@ -90,6 +91,27 @@ test("audit listing keeps rows tenant-scoped", async () => {
     result.rows.map((item) => item.tenantId),
     [TENANT_A],
   );
+});
+
+test("audit detail lookup returns null for another tenant's event", async () => {
+  const store = createStore([
+    row({ id: "a1111111-0000-4000-8000-000000000001", tenantId: TENANT_A }),
+    row({ id: "b2222222-0000-4000-8000-000000000001", tenantId: TENANT_B }),
+  ]);
+
+  const own = await getAuditEventDetailForTenant(
+    TENANT_A,
+    "a1111111-0000-4000-8000-000000000001",
+    { store },
+  );
+  const hidden = await getAuditEventDetailForTenant(
+    TENANT_A,
+    "b2222222-0000-4000-8000-000000000001",
+    { store },
+  );
+
+  assert.equal(own?.tenantId, TENANT_A);
+  assert.equal(hidden, null);
 });
 
 test("audit listing applies event_type filter", async () => {

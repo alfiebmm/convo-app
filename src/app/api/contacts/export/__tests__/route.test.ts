@@ -170,6 +170,7 @@ async function run() {
     assert.equal(seen.tenantIds.every((id) => id === TENANT_A), true);
     assert.equal(csv.length, 2);
     assert.equal(csv[1][0], "a1111111-2222-4333-8444-555555555555");
+    assert.equal(csv.some((row) => row.includes("b1111111-2222-4333-8444-555555555555")), false);
   });
 
   await test("full PII is exported when the existing PII permission allows it", async () => {
@@ -236,6 +237,32 @@ async function run() {
     );
     assert.equal(seen.q[0], "ada");
     assert.equal(seen.statuses[0], "open");
+  });
+
+  await test("export writes a tenant-scoped audit event with filter and row count", async () => {
+    const seen = {
+      tenantIds: [] as string[],
+      q: [] as unknown[],
+      statuses: [] as unknown[],
+      auditEvents: [] as LogAuditEventInput[],
+    };
+
+    await handleContactsExport(
+      new Request("https://app.test/api/contacts/export?format=csv&q=ada&case-status=open"),
+      makeDeps([contactRow({})], false, seen),
+    );
+
+    assert.equal(seen.auditEvents.length, 1);
+    assert.equal(seen.auditEvents[0].eventType, "export");
+    assert.equal(seen.auditEvents[0].tenantId, TENANT_A);
+    assert.equal(seen.auditEvents[0].actorId, ACTOR);
+    assert.deepEqual(seen.auditEvents[0].payload, {
+      scope: "contacts",
+      filter: { format: "csv", q: "ada", "case-status": "open" },
+      row_count: 1,
+      format: "csv",
+      pii_redacted: true,
+    });
   });
 
   await test("filename uses tenant slug and ISO date", async () => {

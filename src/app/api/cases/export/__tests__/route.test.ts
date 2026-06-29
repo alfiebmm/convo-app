@@ -192,6 +192,7 @@ async function run() {
     assert.equal(seen.tenantIds.every((id) => id === TENANT_A), true);
     assert.equal(csv.length, 2);
     assert.equal(csv[1][0], "a1111111-2222-4333-8444-555555555555");
+    assert.equal(csv.some((row) => row.includes("b1111111-2222-4333-8444-555555555555")), false);
   });
 
   await test("full PII is exported when the existing PII permission allows it", async () => {
