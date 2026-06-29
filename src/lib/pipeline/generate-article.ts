@@ -70,8 +70,16 @@ function buildArticleRetryReminder(tenantDomain: string): string {
   );
 }
 
-// TODO(Blake-sign-off): prepend linking hard-rule block to ARTICLE_PROMPT.
-const ARTICLE_PROMPT = `You are an expert SEO content writer. Generate a high-quality, informative article based on the topic and conversation below.
+// CON-186: linking hard-rule block. Per Cam-approved policy (delegated
+// from Blake 29 Jun 2026): generated content links only to the tenant's
+// own domain. Knowledge synthesis may draw from any reputable source,
+// but every hyperlink in output points to the tenant's site.
+const ARTICLE_PROMPT = `# HARD RULES — Linking
+- When linking, link ONLY to URLs on the tenant's own domain (including subdomains).
+- Never link to any other domain. Never invent URLs. If you don't know the exact internal URL, use a relative path or no link at all.
+- You may draw on factual knowledge from any source. Do not cite or link to those sources.
+
+You are an expert SEO content writer. Generate a high-quality, informative article based on the topic and conversation below.
 
 Requirements:
 1. **title**: Compelling, keyword-rich title (50-70 chars ideal)
