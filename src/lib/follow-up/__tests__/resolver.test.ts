@@ -1153,6 +1153,87 @@ test("offer_follow_up rule WITHOUT offer_title → ResolvedAction omits the fiel
 });
 
 // ---------------------------------------------------------------------------
+// Spam hard-block (CON-234 follow-up)
+// ---------------------------------------------------------------------------
+
+test("spam_risk: high hard-blocks even when commercial_intent is high", () => {
+  // High-purchase-intent prompt that ALSO trips the spam classifier
+  // (e.g. "BUY NOW CHEAP PUPPIES <link>(spam)"). Without the hard-block,
+  // the Doggo `buyer_pricing_or_availability` rule would fire because
+  // intent_in matches and commercial_intent is 0.9. With the hard-block,
+  // the resolver short-circuits to continue_helping regardless.
+  const out: ClassifierOutput = classifier({
+    attributes: {
+      persona: "customer",
+      intent: "request_quote",
+      spam_risk: "high",
+    },
+    commercial_intent: { detected: true, confidence: 0.9 },
+    unanswered_confidence: HIGH_ANSWER_CONFIDENCE,
+  });
+
+  const action = resolveAction({
+    classifierOutput: out,
+    followUpConfig: DOGGO,
+    conversationContext: ctx(),
+  });
+
+  assertEq(
+    action.type,
+    "continue_helping",
+    "spam_risk: high must short-circuit to continue_helping",
+  );
+});
+
+test("spam_risk: low does not hard-block (regression guard)", () => {
+  const out: ClassifierOutput = classifier({
+    attributes: {
+      persona: "customer",
+      intent: "request_quote",
+      spam_risk: "low",
+    },
+    commercial_intent: { detected: true, confidence: 0.9 },
+    unanswered_confidence: HIGH_ANSWER_CONFIDENCE,
+  });
+
+  const action = resolveAction({
+    classifierOutput: out,
+    followUpConfig: DOGGO,
+    conversationContext: ctx(),
+  });
+
+  assert(
+    action.type === "capture_details_then_flag",
+    "spam_risk: low keeps normal lead-capture path open",
+  );
+});
+
+test("spam_risk: medium does not hard-block (V1 tolerates ambiguous)", () => {
+  // Medium-spam-risk is intentionally tolerated. Tenants who want to
+  // raise the bar can add `spam_risk_in: ["low"]` to their rules in V1.1.
+  const out: ClassifierOutput = classifier({
+    attributes: {
+      persona: "customer",
+      intent: "request_quote",
+      spam_risk: "medium",
+    },
+    commercial_intent: { detected: true, confidence: 0.9 },
+    unanswered_confidence: HIGH_ANSWER_CONFIDENCE,
+  });
+
+  const action = resolveAction({
+    classifierOutput: out,
+    followUpConfig: DOGGO,
+    conversationContext: ctx(),
+  });
+
+  assert(
+    action.type === "capture_details_then_flag",
+    "spam_risk: medium keeps normal lead-capture path open",
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 

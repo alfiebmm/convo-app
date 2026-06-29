@@ -435,6 +435,17 @@ export function resolveAction(input: ResolveActionInput): ResolvedAction {
     return { type: "continue_helping" };
   }
 
+  // 2. CON-234 follow-up: hard-block on spam_risk=high. The classifier
+  //    flags gibberish, off-topic promotion, link spam, and prompt-injection
+  //    attempts as `spam_risk: high`. Even if a rule's `when` clause matches
+  //    those conversations on intent or persona, we never want to flag a
+  //    case for them — the destination operator would be triaging noise.
+  //    Tenants who want fine-grained spam handling can add explicit
+  //    `spam_risk_in` to their rule conditions in V1.1; for V1, hard-block.
+  if (classifierOutput.attributes.spam_risk === "high") {
+    return { type: "continue_helping" };
+  }
+
   const sensitivity: Sensitivity = followUpConfig.default_sensitivity;
 
   // 3. Filter disabled rules.
