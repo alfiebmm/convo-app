@@ -144,21 +144,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
     /**
      * CON-237: honour the decision stashed by `signIn` above.
+     *
+     * IMPORTANT: this callback can be invoked during RSC rendering of
+     * authenticated pages (e.g. /dashboard) where `cookies()` is
+     * read-only. We MUST NOT call `cookieStore.set` in here — doing so
+     * throws `Cookies can only be modified in a Server Action or Route
+     * Handler` and 500s the page. Instead we rely on the decision
+     * cookie's short TTL (60s, set in `signIn`) to age out naturally,
+     * and we only ACT on the decision when the redirect URL clearly
+     * belongs to the OAuth round-trip (callback or sign-in path).
      */
     async redirect({ url, baseUrl }) {
       const cookieStore = await cookies();
       const raw = cookieStore.get(AUTH_FLOW_DECISION_COOKIE)?.value;
-      if (raw) {
-        // One-shot — clear it whether or not we end up using it so a
-        // stale decision can't redirect a later, unrelated request.
-        cookieStore.set(AUTH_FLOW_DECISION_COOKIE, "", {
-          path: "/",
-          maxAge: 0,
-        });
-        const decision = deserializeDecision(raw);
-        if (decision?.kind === "allow-redirect") {
-          return `${baseUrl}${decision.to}`;
-        }
+      const decision = raw ? deserializeDecision(raw) : null;
+
+      // Only consume the decision if this redirect is part of the
+      // post-sign-in landing. After the first navigation the cookie
+      // expires on its own (maxAge=60s in signIn).
+      const isPostAuthLanding =
+        url.startsWith(`${baseUrl}/api/auth`) ||
+        url === baseUrl ||
+        url === `${baseUrl}/` ||
+        url === `${baseUrl}/onboarding` ||
+        url === `${baseUrl}/dashboard`;
+
+      if (decision?.kind === "allow-redirect" && isPostAuthLanding) {
+        return `${baseUrl}${decision.to}`;
       }
 
       // Default NextAuth behaviour: same-origin URLs are allowed, off-
@@ -200,6 +212,7 @@ function serializeDecision(decision: AuthFlowDecision): string {
 }
 
 function deserializeDecision(raw: string): AuthFlowDecision | null {
+  if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { kind?: string; to?: string };
     if (parsed.kind === "allow-redirect" && typeof parsed.to === "string") {
