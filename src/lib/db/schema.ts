@@ -579,11 +579,9 @@ export const followUpEvents = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" })
       .notNull(),
     caseId: uuid("case_id")
-      .references(() => followUpCases.id, { onDelete: "cascade" })
-      .notNull(),
+      .references(() => followUpCases.id, { onDelete: "cascade" }),
     conversationId: uuid("conversation_id")
-      .references(() => conversations.id, { onDelete: "cascade" })
-      .notNull(),
+      .references(() => conversations.id, { onDelete: "cascade" }),
     actorType: varchar("actor_type", { length: 50 }).notNull(),
     actorId: varchar("actor_id", { length: 255 }),
     eventType: varchar("event_type", { length: 100 }).notNull(),

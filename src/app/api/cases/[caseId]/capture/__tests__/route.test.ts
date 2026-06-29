@@ -574,11 +574,12 @@ async function runAll() {
     assertEq(world.contacts.length, 0, "no contact upsert");
     assertEq(world.links.length, 0, "no link");
     assertEq(world.caseContactPatches.length, 0, "no case patch");
-    assertEq(world.events.length, 1, "one audit event");
-    assertEq(world.events[0].eventType, "capture_field_submitted", "type");
+    assertEq(world.events.length, 2, "two audit events");
+    assertEq(world.events[0].eventType, "consent_granted", "consent type");
+    assertEq(world.events[1].eventType, "capture_field_submitted", "field type");
     // No identifier hash for non-identifier fields.
     assertEq(
-      world.events[0].payload.value_hash,
+      world.events[1].payload.value_hash,
       undefined,
       "no value_hash for name",
     );
@@ -615,14 +616,16 @@ async function runAll() {
       assertEq(world.links.length, 1, "linked");
       assertEq(world.links[0].relationship, "primary_contact", "rel");
       assertEq(world.caseContactPatches.length, 1, "case.contactId set");
-      assertEq(world.events.length, 1, "audit event");
+      assertEq(world.events.length, 2, "audit events");
+      assertEq(world.events[0].eventType, "consent_granted", "consent type");
+      assertEq(world.events[1].eventType, "capture_field_submitted", "field type");
       assert(
-        typeof world.events[0].payload.value_hash === "string" &&
-          (world.events[0].payload.value_hash as string).length === 12,
+        typeof world.events[1].payload.value_hash === "string" &&
+          (world.events[1].payload.value_hash as string).length === 12,
         "12-char hash",
       );
       // Raw value MUST NOT appear in audit payload.
-      const json = JSON.stringify(world.events[0].payload);
+      const json = JSON.stringify(world.events[1].payload);
       assert(
         !json.toLowerCase().includes("blake@example.com"),
         "raw email NOT in audit payload",
@@ -658,7 +661,7 @@ async function runAll() {
       deps,
     );
     assertEq(world.contacts.length, 1, "no duplicate contact");
-    assertEq(world.events.length, 2, "two audit events");
+    assertEq(world.events.length, 4, "four audit events");
   });
 
   await test("skip writes audit only", async () => {
@@ -722,7 +725,7 @@ async function runAll() {
     // not create a contact. The case persists for staff review.
     assertEq(world.cases[0].contactId, null, "case.contactId stays null");
     assertEq(world.events.length, 1, "one event");
-    assertEq(world.events[0].eventType, "capture_declined", "type");
+    assertEq(world.events[0].eventType, "consent_declined", "type");
   });
 
   // ----- Boundary -----

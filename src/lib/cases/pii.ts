@@ -1,4 +1,4 @@
-import { recordCaseEvent } from "./events";
+import { logAuditEvent } from "@/lib/audit/log-event";
 import { getCaseDetailById, type CaseHelperOptions } from "./index";
 import { assertTenantId, assertUuid } from "./tenant-guard";
 
@@ -35,18 +35,26 @@ export async function revealCasePiiForTenant(
 
   const value = detail.contact?.[field] ?? null;
 
-  await recordCaseEvent(
-    tenantId,
-    {
+  if (opts?.store) {
+    await opts.store.insertEvent(tenantId, {
       caseId,
       conversationId: detail.case.conversationId,
       actorType: "user",
       actorId,
       eventType: "pii_reveal",
       payload: { field, actor_id: actorId },
-    },
-    opts
-  );
+    });
+  } else {
+    await logAuditEvent({
+      tenantId,
+      caseId,
+      conversationId: detail.case.conversationId,
+      actorType: "user",
+      actorId,
+      eventType: "pii_reveal",
+      payload: { field, actor_id: actorId },
+    });
+  }
 
   return { field, value };
 }

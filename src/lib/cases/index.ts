@@ -21,6 +21,10 @@
 import { assertTenantId, assertUuid } from "./tenant-guard";
 import { resolveCta } from "@/lib/cta/resolve";
 import { fireWebhookEvent } from "@/lib/connectors/webhook/hooks";
+import {
+  logAuditEvent,
+  type AuditEventType,
+} from "@/lib/audit/log-event";
 import { sanitizeCaseNoteHtml } from "./sanitize";
 import {
   getDefaultCasesStore,
@@ -97,6 +101,25 @@ function fireCaseWebhook(
     payload: caseWebhookPayload(event, row),
     idempotencyKey,
   });
+}
+
+async function logCaseScopedAuditEvent(
+  tenantId: string,
+  input: {
+    caseId: string;
+    conversationId: string;
+    actorType: "user" | "visitor" | "system";
+    actorId: string | null;
+    eventType: AuditEventType;
+    payload?: Record<string, unknown>;
+  },
+  opts?: CaseHelperOptions,
+) {
+  if (opts?.store) {
+    await opts.store.insertEvent(tenantId, input);
+    return;
+  }
+  await logAuditEvent({ tenantId, ...input });
 }
 
 // ---------------------------------------------------------------------------
@@ -258,18 +281,18 @@ export async function assignCaseWithAudit(
   });
   if (!updated) return null;
 
-  await store.insertEvent(tenantId, {
+  await logCaseScopedAuditEvent(tenantId, {
     caseId,
     conversationId: current.conversationId,
     actorType: "user",
     actorId,
-    eventType: "case_assigned",
+    eventType: "assignment_change",
     payload: {
       assigned_to: assigneeUserId,
       prev_assigned_to: current.assignedTo,
       actor_id: actorId,
     },
-  });
+  }, opts);
 
   fireCaseWebhook(
     tenantId,
@@ -302,14 +325,18 @@ export async function resolveCaseWithAudit(
   });
   if (!updated) return null;
 
-  await store.insertEvent(tenantId, {
+  await logCaseScopedAuditEvent(tenantId, {
     caseId,
     conversationId: current.conversationId,
     actorType: "user",
     actorId,
-    eventType: "case_resolved",
-    payload: { actor_id: actorId },
-  });
+    eventType: "status_change",
+    payload: {
+      previous_status: current.status,
+      status: "resolved",
+      actor_id: actorId,
+    },
+  }, opts);
 
   fireCaseWebhook(
     tenantId,
@@ -348,14 +375,19 @@ export async function dismissCaseWithAudit(
   });
   if (!updated) return null;
 
-  await store.insertEvent(tenantId, {
+  await logCaseScopedAuditEvent(tenantId, {
     caseId,
     conversationId: current.conversationId,
     actorType: "user",
     actorId,
-    eventType: "case_dismissed",
-    payload: { reason: trimmedReason, actor_id: actorId },
-  });
+    eventType: "status_change",
+    payload: {
+      previous_status: current.status,
+      status: "dismissed",
+      reason: trimmedReason,
+      actor_id: actorId,
+    },
+  }, opts);
 
   fireCaseWebhook(
     tenantId,

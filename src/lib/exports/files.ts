@@ -59,7 +59,7 @@ export async function serialiseXlsx<Row extends Record<string, ExportCellValue>>
 }
 
 export function exportFilename(
-  scope: "cases" | "contacts",
+  scope: "cases" | "contacts" | "audit",
   tenantSlug: string,
   format: "csv" | "xlsx",
   now: Date = new Date(),
