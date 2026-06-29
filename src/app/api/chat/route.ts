@@ -723,6 +723,27 @@ export async function POST(req: NextRequest) {
                             ]
                           : undefined;
 
+                      // CON-233: emit a `rule_fired` event for the
+                      // CON-181 G1 analytics dashboard rule-fire-counts
+                      // section. Distinct from `case_resolved` (which
+                      // carries full classifier evidence) so the dashboard
+                      // can count one row per rule fire without joining
+                      // the heavier audit payload.
+                      await recordCaseEvent(tenant.id, {
+                        caseId: persistedCaseId,
+                        conversationId: convoId,
+                        actorType: "classifier",
+                        actorId: CLASSIFIER_VERSION,
+                        eventType: "rule_fired",
+                        payload: {
+                          rule_id: action.rule_id,
+                          routing_key: action.routing_key,
+                          case_type: action.case_type,
+                          action: action.type,
+                          confidence: action.confidence,
+                        },
+                      });
+
                       await recordCaseEvent(tenant.id, {
                         caseId: persistedCaseId,
                         conversationId: convoId,
