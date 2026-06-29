@@ -7,7 +7,9 @@ import { logAuditEvent } from "@/lib/audit/log-event";
 import { decryptWebhookSecret } from "./crypto";
 import { postSignedWebhook } from "./http";
 import {
+  parseTenantWebhookConfig,
   parseTenantWebhookSettings,
+  type TenantWebhookConfig,
   type WebhookEvent,
   type WebhookSettings,
 } from "./settings";
@@ -47,6 +49,7 @@ export interface WebhookDeliveryStore {
     now: Date,
   ): Promise<WebhookOutboxDeliveryRow[]>;
   getTenantWebhookSettings(tenantId: string): Promise<WebhookSettings | null>;
+  getTenantWebhookConfig?(tenantId: string): Promise<TenantWebhookConfig>;
   markSent(tenantId: string, rowId: string, now: Date): Promise<void>;
   markFailed(
     tenantId: string,
@@ -119,6 +122,17 @@ export function createDrizzleWebhookDeliveryStore(
         .limit(1);
 
       return parseTenantWebhookSettings(tenant?.settings ?? null);
+    },
+
+    async getTenantWebhookConfig(tenantId) {
+      assertTenantId(tenantId);
+      const [tenant] = await db
+        .select({ settings: tenants.settings })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+
+      return parseTenantWebhookConfig(tenant?.settings ?? null);
     },
 
     async markSent(tenantId, rowId, now) {
@@ -250,6 +264,51 @@ function isConfigured(
   return Boolean(settings?.enabled && settings.url && settings.secret_ciphertext);
 }
 
+interface WebhookDeliveryTarget {
+  url: string;
+  secretCiphertext: string | null;
+  unsigned: boolean;
+}
+
+async function getTenantWebhookConfig(
+  store: WebhookDeliveryStore,
+  tenantId: string,
+): Promise<TenantWebhookConfig> {
+  if (store.getTenantWebhookConfig) {
+    return store.getTenantWebhookConfig(tenantId);
+  }
+  return {
+    connector: await store.getTenantWebhookSettings(tenantId),
+    forumConfigDestinations: [],
+  };
+}
+
+function resolveDeliveryTarget(
+  config: TenantWebhookConfig,
+  row: WebhookOutboxDeliveryRow,
+): WebhookDeliveryTarget | null {
+  const forumDestination = config.forumConfigDestinations.find(
+    (destination) => destination.id === row.destinationId,
+  );
+  if (forumDestination) {
+    return {
+      url: forumDestination.config.url,
+      secretCiphertext: forumDestination.config.secret_ciphertext ?? null,
+      unsigned: !forumDestination.config.secret_ciphertext,
+    };
+  }
+
+  if (isConfigured(config.connector)) {
+    return {
+      url: row.destinationId ?? config.connector.url,
+      secretCiphertext: config.connector.secret_ciphertext,
+      unsigned: false,
+    };
+  }
+
+  return null;
+}
+
 export async function deliverPendingWebhooks(
   input: DeliverPendingWebhooksInput = {},
   opts?: { store?: WebhookDeliveryStore; fetchFn?: typeof fetch },
@@ -286,8 +345,9 @@ export async function deliverPendingWebhooks(
       }
       summary.scanned++;
 
-      const settings = await store.getTenantWebhookSettings(tenantId);
-      if (!isConfigured(settings)) {
+      const config = await getTenantWebhookConfig(store, tenantId);
+      const target = resolveDeliveryTarget(config, row);
+      if (!target) {
         const message = "Webhook is not configured";
         await store.markFailed(tenantId, row.id, message, scanNow);
         await logWebhookDeliveryAttempt(
@@ -308,9 +368,18 @@ export async function deliverPendingWebhooks(
           occurred_at: row.createdAt.toISOString(),
           data: row.payload,
         });
-        const secret = decryptWebhookSecret(settings.secret_ciphertext);
+        const secret = target.secretCiphertext
+          ? decryptWebhookSecret(target.secretCiphertext)
+          : undefined;
+        if (!secret) {
+          console.warn({
+            event: "webhook_unsigned_delivery",
+            tenant_id: tenantId,
+            destination_id: row.destinationId,
+          });
+        }
         const response = await postSignedWebhook({
-          url: row.destinationId ?? settings.url,
+          url: target.url,
           secret,
           body,
           idempotencyKey: row.idempotencyKey,
