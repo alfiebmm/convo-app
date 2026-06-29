@@ -1,4 +1,12 @@
-# Forum Config Examples — `follow_up` block
+# Forum Config Examples — four-slice forumConfig contract
+
+Until all four `forumConfig.*` slices (`follow_up`, `ai_persona`,
+`qualifying_questions`, `allowed_topics`) are populated, no `case` event will
+fire for the tenant. `/api/chat` still answers normally, but the follow-up
+re-evaluation pipeline silently skips until the four-slice contract is met.
+
+Seed future tenants with `scripts/seed-tenant-forum-config.ts`; do not apply
+these blocks with ad hoc SQL.
 
 Production-ready example configurations for the `forum.config.json` →
 `follow_up` block introduced in [CON-157](https://linear.app/convo-app-au/issue/CON-157) (Epic A1).
@@ -17,7 +25,8 @@ as part of the Configurable Follow-Up program ([CON-149](https://linear.app/conv
 | [`__tests__/seed-configs.test.ts`](./__tests__/seed-configs.test.ts) | — | tsx-runnable fixture validator |
 
 Each JSON file is **only the `follow_up` block** — paste it under
-`tenants.settings.forumConfig.follow_up` when applying.
+`follow_up` inside a four-slice seed file. They are reference shapes for the
+follow-up slice, not complete seed files on their own.
 
 ---
 
@@ -35,26 +44,52 @@ Doggo follows.
 
 ---
 
-## How to apply (current path — V1.0)
+## How to apply
 
 The editor UI is V1.1 (see [CON-149](https://linear.app/convo-app-au/issue/CON-149)).
-Until then, apply via direct Supabase update:
+Until then, apply through the tenant forumConfig seeder:
 
-```sql
-update tenants
-set settings = jsonb_set(
-  settings,
-  '{forumConfig,follow_up}',
-  '<paste fixture JSON here>'::jsonb,
-  true
-)
-where slug = 'agpages';   -- or 'doggo'
+```bash
+npx tsx scripts/seed-tenant-forum-config.ts \
+  --tenant agpages \
+  --file path/to/agpages-four-slice.json \
+  --dry-run
 ```
+
+```bash
+npx tsx scripts/seed-tenant-forum-config.ts \
+  --tenant agpages \
+  --file path/to/agpages-four-slice.json
+```
+
+If a tenant already has one of the four target slices and the replacement has
+been reviewed, opt in explicitly:
+
+```bash
+npx tsx scripts/seed-tenant-forum-config.ts \
+  --tenant agpages \
+  --file path/to/agpages-four-slice.json \
+  --allow-overwrite
+```
+
+The script:
+
+- accepts `--tenant <id-or-slug>` and `--file <json>`
+- validates the file through `forumConfigSchema`
+- requires all four slices: `follow_up`, `ai_persona`,
+  `qualifying_questions`, `allowed_topics`
+- preserves existing top-level tenant settings
+- preserves existing non-target `forumConfig` keys such as `welcome`,
+  `cta_rules`, `seo_defaults`, `connectors`, `limits` and `lead_capture`
+- snapshots `tenants.settings` to `tmp/seed-snapshots/<tenantId>-<timestamp>.json`
+  before writing
+- re-reads the tenant after write and byte-diff verifies the seeded slices
 
 Before applying:
 
 1. **Validate locally.** Run the fixture test (see below) to confirm the JSON
-   still passes the live schema.
+   still passes the live schema. Run the seeder with `--dry-run` against the
+   tenant before any write.
 2. **Re-check the tenant's existing `forumConfig`** — these fixtures only
    replace the `follow_up` sub-block. The rest of the tenant's config
    (`ai_persona`, `cta_rules`, `seo_defaults`, etc.) must be preserved.
