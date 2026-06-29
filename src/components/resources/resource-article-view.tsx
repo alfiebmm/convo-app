@@ -187,7 +187,7 @@ export function ResourceArticleView({
             </p>
             <p className="mt-3 text-xl font-bold">{article.cta}</p>
             <Link
-              href="/login"
+              href="/signup"
               className="mt-5 inline-flex rounded-lg bg-[var(--convo-orange)] px-4 py-2 text-sm font-bold text-white transition hover:bg-[var(--convo-orange-hover)]"
             >
               Start free

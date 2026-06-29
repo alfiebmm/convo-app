@@ -102,7 +102,7 @@ export default function PricingPage() {
                     ))}
                   </ul>
                   <Link
-                    href="/login"
+                    href="/signup"
                     className={`mt-8 inline-flex justify-center rounded-lg px-5 py-3 text-sm font-bold transition ${
                       tier.featured
                         ? "bg-[var(--convo-orange)] text-white hover:bg-[var(--convo-orange-hover)]"
