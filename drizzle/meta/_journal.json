@@ -141,6 +141,13 @@
       "when": 1782303894130,
       "tag": "0019_con220_tenants_status",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1782698127428,
+      "tag": "0020_con182_follow_up_events_nullable_links",
+      "breakpoints": true
     }
   ]
 }
