@@ -23,7 +23,13 @@ const STATUS_CLASSES: Record<WebhookOutboxStatus, string> = {
   abandoned: "border-zinc-300 bg-zinc-100 text-zinc-700",
 };
 
-export function ReplayOutboxTable({ rows }: { rows: WebhookOutboxReplayRow[] }) {
+export function ReplayOutboxTable({
+  rows,
+  canReplay,
+}: {
+  rows: WebhookOutboxReplayRow[];
+  canReplay: boolean;
+}) {
   const [openPayloads, setOpenPayloads] = useState<Record<string, boolean>>({});
   const [banner, setBanner] = useState<Banner>(null);
   const [replayingId, setReplayingId] = useState<string | null>(null);
@@ -59,8 +65,81 @@ export function ReplayOutboxTable({ rows }: { rows: WebhookOutboxReplayRow[] }) 
     <div className="mt-6 space-y-4">
       {banner && <InlineBanner banner={banner} />}
       <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm">
+        <div className="divide-y divide-zinc-100 md:hidden">
+          {rows.map((row) => {
+            const payloadOpen = Boolean(openPayloads[row.id]);
+            return (
+              <div key={row.id} className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-zinc-900">
+                      {row.event}
+                    </p>
+                    <p className="mt-1 break-all font-mono text-xs text-zinc-500">
+                      {row.id}
+                    </p>
+                  </div>
+                  <span
+                    className={`inline-flex shrink-0 rounded-full border px-2 py-1 text-xs font-medium ${STATUS_CLASSES[row.status]}`}
+                  >
+                    {row.status}
+                  </span>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <dt className="text-zinc-400">Attempts</dt>
+                    <dd className="mt-0.5 text-zinc-700">{row.attemptCount}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-400">Created</dt>
+                    <dd className="mt-0.5 text-zinc-700">
+                      {formatDateTime(row.createdAt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-400">Last attempt</dt>
+                    <dd className="mt-0.5 text-zinc-700">
+                      {formatDateTime(row.lastAttemptAt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-400">Next attempt</dt>
+                    <dd className="mt-0.5 text-zinc-700">
+                      {formatDateTime(row.nextAttemptAt)}
+                    </dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-zinc-400">Last error</dt>
+                    <dd className="mt-0.5 text-zinc-700">
+                      {row.lastError || "None"}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <ReplayButton
+                    rowId={row.id}
+                    canReplay={canReplay}
+                    isActive={isPending && replayingId === row.id}
+                    onReplay={handleReplay}
+                  />
+                  <PayloadToggle
+                    payloadOpen={payloadOpen}
+                    onToggle={() =>
+                      setOpenPayloads((current) => ({
+                        ...current,
+                        [row.id]: !payloadOpen,
+                      }))
+                    }
+                  />
+                </div>
+                {payloadOpen && <PayloadPreview payload={row.payload} />}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-[1180px] divide-y divide-zinc-200 text-sm">
             <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
               <tr>
                 <th className="px-4 py-3">ID</th>
@@ -114,37 +193,28 @@ export function ReplayOutboxTable({ rows }: { rows: WebhookOutboxReplayRow[] }) 
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex min-w-[9rem] flex-col gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleReplay(row.id)}
-                            disabled={isPending && replayingId === row.id}
-                            className="rounded-lg bg-[#FF6B2C] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#E85A1E] disabled:cursor-not-allowed disabled:bg-zinc-300"
-                          >
-                            {isPending && replayingId === row.id
-                              ? "Replaying..."
-                              : "Replay"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
+                          <ReplayButton
+                            rowId={row.id}
+                            canReplay={canReplay}
+                            isActive={isPending && replayingId === row.id}
+                            onReplay={handleReplay}
+                          />
+                          <PayloadToggle
+                            payloadOpen={payloadOpen}
+                            onToggle={() =>
                               setOpenPayloads((current) => ({
                                 ...current,
                                 [row.id]: !payloadOpen,
                               }))
                             }
-                            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
-                          >
-                            {payloadOpen ? "Hide payload" : "View payload"}
-                          </button>
+                          />
                         </div>
                       </td>
                     </tr>
                     {payloadOpen && (
                       <tr>
                         <td colSpan={9} className="bg-zinc-950 px-4 py-3">
-                          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-zinc-100">
-                            {JSON.stringify(row.payload, null, 2)}
-                          </pre>
+                          <PayloadPreview payload={row.payload} />
                         </td>
                       </tr>
                     )}
@@ -156,6 +226,56 @@ export function ReplayOutboxTable({ rows }: { rows: WebhookOutboxReplayRow[] }) 
         </div>
       </div>
     </div>
+  );
+}
+
+function ReplayButton({
+  rowId,
+  canReplay,
+  isActive,
+  onReplay,
+}: {
+  rowId: string;
+  canReplay: boolean;
+  isActive: boolean;
+  onReplay: (rowId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onReplay(rowId)}
+      disabled={!canReplay || isActive}
+      title={canReplay ? undefined : "Connector management permission required"}
+      className="rounded-lg bg-[#FF6B2C] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#E85A1E] disabled:cursor-not-allowed disabled:bg-zinc-300"
+    >
+      {isActive ? "Replaying..." : "Replay"}
+    </button>
+  );
+}
+
+function PayloadToggle({
+  payloadOpen,
+  onToggle,
+}: {
+  payloadOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+    >
+      {payloadOpen ? "Hide payload" : "View payload"}
+    </button>
+  );
+}
+
+function PayloadPreview({ payload }: { payload: Record<string, unknown> }) {
+  return (
+    <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-zinc-950 p-3 text-xs leading-5 text-zinc-100 md:mt-0 md:rounded-none md:p-0">
+      {JSON.stringify(payload, null, 2)}
+    </pre>
   );
 }
 

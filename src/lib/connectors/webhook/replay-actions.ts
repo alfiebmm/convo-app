@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
 
 import { assertTenantId, assertUuid } from "@/lib/cases/tenant-guard";
 import { db as defaultDb } from "@/lib/db";
@@ -37,6 +37,13 @@ export interface ListOutboxRowsResult {
   nextCursor: string | null;
 }
 
+export interface ConnectorHealthMetrics {
+  successRate24h: number;
+  failureCount24h: number;
+  avgLatencyMs24h: number | null;
+  totalAttempts24h: number;
+}
+
 export interface WebhookReplayStore {
   listRows(
     tenantId: string,
@@ -55,6 +62,7 @@ export interface WebhookReplayStore {
     rowId: string,
     now: Date,
   ): Promise<WebhookOutboxDeliveryRow | null>;
+  getHealthMetrics(tenantId: string, since: Date): Promise<ConnectorHealthMetrics>;
 }
 
 type DrizzleDb = typeof defaultDb;
@@ -255,6 +263,55 @@ export function createDrizzleWebhookReplayStore(
 
       return row ? mapDeliveryRow(row) : null;
     },
+
+    async getHealthMetrics(tenantId, since) {
+      assertTenantId(tenantId);
+      const [metrics] = await db
+        .select({
+          totalAttempts24h: sql<number>`count(*) filter (
+            where ${connectorOutbox.attemptCount} > 0
+              and coalesce(${connectorOutbox.deliveredAt}, ${connectorOutbox.createdAt}) >= ${since}
+          )`.mapWith(Number),
+          successCount24h: sql<number>`count(*) filter (
+            where ${connectorOutbox.status} = 'sent'
+              and ${connectorOutbox.deliveredAt} >= ${since}
+          )`.mapWith(Number),
+          failureCount24h: sql<number>`count(*) filter (
+            where ${connectorOutbox.status} in ('failed', 'abandoned')
+              and ${connectorOutbox.attemptCount} > 0
+              and coalesce(${connectorOutbox.deliveredAt}, ${connectorOutbox.createdAt}) >= ${since}
+          )`.mapWith(Number),
+          avgLatencyMs24h: sql<number | null>`avg(
+            extract(epoch from (${connectorOutbox.deliveredAt} - ${connectorOutbox.createdAt})) * 1000
+          ) filter (
+            where ${connectorOutbox.status} = 'sent'
+              and ${connectorOutbox.deliveredAt} >= ${since}
+          )`.mapWith((value) => (value === null ? null : Number(value))),
+        })
+        .from(connectorOutbox)
+        .where(
+          and(
+            eq(connectorOutbox.tenantId, tenantId),
+            eq(connectorOutbox.connectorType, "webhook"),
+            or(
+              gte(connectorOutbox.createdAt, since),
+              gte(connectorOutbox.deliveredAt, since),
+            ),
+          ),
+        );
+
+      const totalAttempts24h = metrics?.totalAttempts24h ?? 0;
+      const successCount24h = metrics?.successCount24h ?? 0;
+      return {
+        totalAttempts24h,
+        failureCount24h: metrics?.failureCount24h ?? 0,
+        avgLatencyMs24h: metrics?.avgLatencyMs24h ?? null,
+        successRate24h:
+          totalAttempts24h > 0
+            ? Math.round((successCount24h / totalAttempts24h) * 1000) / 10
+            : 0,
+      };
+    },
   };
 }
 
@@ -290,10 +347,14 @@ export async function replayOutboxRowForTenant(
     deliveryStore?: WebhookDeliveryStore;
     fetchFn?: typeof fetch;
     now?: Date;
+    canManageConnectors?: boolean;
   } = {},
 ): Promise<DeliverPendingWebhooksSummary> {
   assertTenantId(tenantId);
   assertUuid(rowId, "rowId");
+  if (opts.canManageConnectors === false) {
+    throw new Error("Forbidden");
+  }
   const now = opts.now ?? new Date();
   const replayStore = opts.replayStore ?? createDrizzleWebhookReplayStore();
   const deliveryStore = opts.deliveryStore ?? createDrizzleWebhookDeliveryStore();
@@ -325,4 +386,18 @@ export async function replayOutboxRowForTenant(
     { tenantId, limit: 1, now },
     { store: scopedDeliveryStore, fetchFn: opts.fetchFn },
   );
+}
+
+export async function getConnectorHealthMetricsForTenant(
+  tenantId: string,
+  opts: {
+    replayStore?: WebhookReplayStore;
+    now?: Date;
+  } = {},
+): Promise<ConnectorHealthMetrics> {
+  assertTenantId(tenantId);
+  const now = opts.now ?? new Date();
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const replayStore = opts.replayStore ?? createDrizzleWebhookReplayStore();
+  return replayStore.getHealthMetrics(tenantId, since);
 }
