@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db";
 import { connectorOutbox, tenants } from "@/lib/db/schema";
 import { assertTenantId } from "@/lib/cases/tenant-guard";
+import { logAuditEvent } from "@/lib/audit/log-event";
 import { decryptWebhookSecret } from "./crypto";
 import { postSignedWebhook } from "./http";
 import {
@@ -202,6 +203,47 @@ function webhookEventFromPayload(payload: Record<string, unknown>): WebhookEvent
   throw new Error("Webhook payload event is invalid");
 }
 
+function conversationIdFromPayload(payload: Record<string, unknown>): string | null {
+  const kase = payload.case;
+  if (kase && typeof kase === "object" && "conversationId" in kase) {
+    const conversationId = (kase as { conversationId?: unknown }).conversationId;
+    return typeof conversationId === "string" ? conversationId : null;
+  }
+  return null;
+}
+
+async function logWebhookDeliveryAttempt(
+  tenantId: string,
+  row: WebhookOutboxDeliveryRow,
+  payload: Record<string, unknown>,
+  opts: {
+    outcome: "sent" | "failed" | "deferred" | "abandoned";
+    statusCode?: number;
+    error?: string;
+    nextAttemptAt?: Date;
+  },
+  enabled: boolean,
+) {
+  if (!enabled) return;
+  await logAuditEvent({
+    tenantId,
+    actorId: "webhook-delivery",
+    actorType: "system",
+    eventType: "connector_delivery_attempt",
+    caseId: row.caseId,
+    conversationId: conversationIdFromPayload(payload),
+    payload: {
+      outbox_id: row.id,
+      destination_id: row.destinationId,
+      attempt_number: row.attemptCount + 1,
+      outcome: opts.outcome,
+      status_code: opts.statusCode,
+      error: opts.error,
+      next_attempt_at: opts.nextAttemptAt?.toISOString(),
+    },
+  });
+}
+
 function isConfigured(
   settings: WebhookSettings | null,
 ): settings is WebhookSettings & { secret_ciphertext: string } {
@@ -216,6 +258,7 @@ export async function deliverPendingWebhooks(
 
   const store = opts?.store ?? createDrizzleWebhookDeliveryStore();
   const fetchFn = opts?.fetchFn ?? fetch;
+  const shouldLogAudit = !opts?.store;
   const limit = Math.max(1, input.limit ?? 50);
   const scanNow = input.now ?? new Date();
   const summary: DeliverPendingWebhooksSummary = {
@@ -245,7 +288,15 @@ export async function deliverPendingWebhooks(
 
       const settings = await store.getTenantWebhookSettings(tenantId);
       if (!isConfigured(settings)) {
-        await store.markFailed(tenantId, row.id, "Webhook is not configured", scanNow);
+        const message = "Webhook is not configured";
+        await store.markFailed(tenantId, row.id, message, scanNow);
+        await logWebhookDeliveryAttempt(
+          tenantId,
+          row,
+          row.payload,
+          { outcome: "failed", error: message },
+          shouldLogAudit,
+        );
         summary.failed++;
         continue;
       }
@@ -268,6 +319,13 @@ export async function deliverPendingWebhooks(
 
         if (response.statusCode >= 200 && response.statusCode < 300) {
           await store.markSent(tenantId, row.id, scanNow);
+          await logWebhookDeliveryAttempt(
+            tenantId,
+            row,
+            row.payload,
+            { outcome: "sent", statusCode: response.statusCode },
+            shouldLogAudit,
+          );
           summary.sent++;
           continue;
         }
@@ -275,11 +333,33 @@ export async function deliverPendingWebhooks(
         const message = `Webhook returned HTTP ${response.statusCode}`;
         if (isPermanentClientError(response.statusCode)) {
           await store.markFailed(tenantId, row.id, message, scanNow);
+          await logWebhookDeliveryAttempt(
+            tenantId,
+            row,
+            row.payload,
+            {
+              outcome: "failed",
+              statusCode: response.statusCode,
+              error: message,
+            },
+            shouldLogAudit,
+          );
           summary.failed++;
           continue;
         }
         if (!isRetryableStatus(response.statusCode)) {
           await store.markFailed(tenantId, row.id, message, scanNow);
+          await logWebhookDeliveryAttempt(
+            tenantId,
+            row,
+            row.payload,
+            {
+              outcome: "failed",
+              statusCode: response.statusCode,
+              error: message,
+            },
+            shouldLogAudit,
+          );
           summary.failed++;
           continue;
         }
@@ -287,13 +367,37 @@ export async function deliverPendingWebhooks(
         const nextAttemptNumber = row.attemptCount + 1;
         if (nextAttemptNumber >= BACKOFF_SECONDS.length) {
           await store.markAbandoned(tenantId, row.id, message, scanNow);
+          await logWebhookDeliveryAttempt(
+            tenantId,
+            row,
+            row.payload,
+            {
+              outcome: "abandoned",
+              statusCode: response.statusCode,
+              error: message,
+            },
+            shouldLogAudit,
+          );
           summary.abandoned++;
         } else {
+          const retryAt = nextAttemptAt(scanNow, nextAttemptNumber);
           await store.markRetry(
             tenantId,
             row.id,
             message,
-            nextAttemptAt(scanNow, nextAttemptNumber),
+            retryAt,
+          );
+          await logWebhookDeliveryAttempt(
+            tenantId,
+            row,
+            row.payload,
+            {
+              outcome: "deferred",
+              statusCode: response.statusCode,
+              error: message,
+              nextAttemptAt: retryAt,
+            },
+            shouldLogAudit,
           );
           summary.deferred++;
         }
@@ -302,13 +406,32 @@ export async function deliverPendingWebhooks(
         const nextAttemptNumber = row.attemptCount + 1;
         if (nextAttemptNumber >= BACKOFF_SECONDS.length) {
           await store.markAbandoned(tenantId, row.id, message, scanNow);
+          await logWebhookDeliveryAttempt(
+            tenantId,
+            row,
+            row.payload,
+            { outcome: "abandoned", error: message },
+            shouldLogAudit,
+          );
           summary.abandoned++;
         } else {
+          const retryAt = nextAttemptAt(scanNow, nextAttemptNumber);
           await store.markRetry(
             tenantId,
             row.id,
             message,
-            nextAttemptAt(scanNow, nextAttemptNumber),
+            retryAt,
+          );
+          await logWebhookDeliveryAttempt(
+            tenantId,
+            row,
+            row.payload,
+            {
+              outcome: "deferred",
+              error: message,
+              nextAttemptAt: retryAt,
+            },
+            shouldLogAudit,
           );
           summary.deferred++;
         }

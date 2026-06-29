@@ -18,6 +18,7 @@ import {
   type ExportColumn,
 } from "@/lib/exports/files";
 import { parseCaseExportFilters } from "@/lib/exports/filters";
+import { logAuditEvent } from "@/lib/audit/log-event";
 import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -64,6 +65,7 @@ export interface CaseExportDeps {
   canExportPii: (membership: Membership) => boolean;
   listCases: typeof listCasesByTenantWithActivity;
   getContactDetail: typeof getContactDetailById;
+  logAuditEvent: typeof logAuditEvent;
   now: () => Date;
 }
 
@@ -119,6 +121,7 @@ function defaultDeps(): CaseExportDeps {
     canExportPii: canViewCasePii,
     listCases: listCasesByTenantWithActivity,
     getContactDetail: getContactDetailById,
+    logAuditEvent,
     now: () => new Date(),
   };
 }
@@ -228,16 +231,21 @@ export async function handleCasesExport(
     }),
   );
 
-  // TODO(CON-182): persist to follow_up_events.
-  console.log({
-    event: "export",
-    actor_id: actorId,
-    tenant_id: tenant.id,
-    scope: "cases",
-    filter: Object.fromEntries(params.entries()),
-    row_count: exportRows.length,
-    format,
-    pii_redacted: piiRedacted,
+  const firstCase = rows[0] ?? null;
+  await deps.logAuditEvent({
+    tenantId: tenant.id,
+    actorId,
+    actorType: "user",
+    eventType: "export",
+    caseId: firstCase?.id ?? null,
+    conversationId: firstCase?.conversationId ?? null,
+    payload: {
+      scope: "cases",
+      filter: Object.fromEntries(params.entries()),
+      row_count: exportRows.length,
+      format,
+      pii_redacted: piiRedacted,
+    },
   });
 
   const body =

@@ -390,7 +390,7 @@ async function runAllTests() {
   // Operational action helpers — CON-177
   // -------------------------------------------------------------------------
 
-  await test("assignCaseWithAudit: happy path writes assignedTo and emits case_assigned", async () => {
+  await test("assignCaseWithAudit: happy path writes assignedTo and emits assignment_change", async () => {
     const store = createInMemoryCasesStore();
     const created = await createCase(
       TENANT_A,
@@ -408,7 +408,7 @@ async function runAllTests() {
 
     assert(updated !== null, "assignment returned row");
     assertEq(updated!.assignedTo, USER_X, "assignedTo set");
-    const event = store._dump().events.find((row) => row.eventType === "case_assigned");
+    const event = store._dump().events.find((row) => row.eventType === "assignment_change");
     assert(event, "audit event emitted");
     assertEq(event!.payload.assigned_to as string, USER_X, "new assignee logged");
     assertEq(event!.payload.prev_assigned_to as null, null, "previous assignee logged");
@@ -437,7 +437,7 @@ async function runAllTests() {
     assertEq(peek!.assignedTo, null, "tenant A row untouched");
   });
 
-  await test("resolveCaseWithAudit: happy path resolves and emits case_resolved", async () => {
+  await test("resolveCaseWithAudit: happy path resolves and emits status_change", async () => {
     const store = createInMemoryCasesStore();
     const created = await createCase(
       TENANT_A,
@@ -452,7 +452,7 @@ async function runAllTests() {
     assert(resolved !== null, "resolve returned row");
     assertEq(resolved!.status, "resolved", "status set");
     assert(resolved!.resolvedAt !== null, "resolvedAt stamped");
-    const event = store._dump().events.find((row) => row.eventType === "case_resolved");
+    const event = store._dump().events.find((row) => row.eventType === "status_change");
     assert(event, "audit event emitted");
     assertEq(event!.payload.actor_id as string, USER_X, "actor logged");
   });
@@ -473,7 +473,7 @@ async function runAllTests() {
     assertEq(store._dump().events.length, 0, "no event emitted");
   });
 
-  await test("dismissCaseWithAudit: happy path dismisses and emits case_dismissed with reason", async () => {
+  await test("dismissCaseWithAudit: happy path dismisses and emits status_change with reason", async () => {
     const store = createInMemoryCasesStore();
     const created = await createCase(
       TENANT_A,
@@ -491,7 +491,7 @@ async function runAllTests() {
 
     assert(dismissed !== null, "dismiss returned row");
     assertEq(dismissed!.status, "dismissed", "status set");
-    const event = store._dump().events.find((row) => row.eventType === "case_dismissed");
+    const event = store._dump().events.find((row) => row.eventType === "status_change");
     assert(event, "audit event emitted");
     assertEq(event!.payload.reason as string, "Duplicate enquiry", "reason logged");
   });

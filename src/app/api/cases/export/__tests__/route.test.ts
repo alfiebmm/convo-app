@@ -8,6 +8,7 @@ import {
 } from "../route";
 import type { CaseListItemRow } from "@/lib/cases";
 import type { ContactDetailRow } from "@/lib/contacts";
+import type { LogAuditEventInput } from "@/lib/audit/log-event";
 
 const TENANT_A = "a1111111-1111-4111-8111-111111111111";
 const TENANT_B = "b2222222-2222-4222-9222-222222222222";
@@ -144,7 +145,11 @@ function parseCsv(text: string): string[][] {
 function makeDeps(
   rows: CaseListItemRow[],
   canExportPii: boolean,
-  seen: { tenantIds: string[]; statuses: unknown[] } = { tenantIds: [], statuses: [] },
+  seen: {
+    tenantIds: string[];
+    statuses: unknown[];
+    auditEvents?: LogAuditEventInput[];
+  } = { tenantIds: [], statuses: [] },
 ): CaseExportDeps {
   return {
     getSessionUserId: async () => ACTOR,
@@ -159,6 +164,10 @@ function makeDeps(
     getContactDetail: async (tenantId, contactId) => {
       seen.tenantIds.push(tenantId);
       return contactDetail(contactId);
+    },
+    logAuditEvent: async (input) => {
+      seen.auditEvents?.push(input);
+      return "99999999-9999-4999-8999-999999999999";
     },
     now: () => new Date("2026-06-29T12:00:00.000Z"),
   };
@@ -259,6 +268,31 @@ async function run() {
       res.headers.get("Content-Disposition"),
       'attachment; filename="convo-cases-doggo-2026-06-29.csv"',
     );
+  });
+
+  await test("export writes an audit event with filter and row count", async () => {
+    const seen = {
+      tenantIds: [] as string[],
+      statuses: [] as unknown[],
+      auditEvents: [] as LogAuditEventInput[],
+    };
+    await handleCasesExport(
+      new Request("https://app.test/api/cases/export?format=csv&status=open"),
+      makeDeps([caseRow({ status: "open" })], false, seen),
+    );
+
+    assert.equal(seen.auditEvents.length, 1);
+    assert.equal(seen.auditEvents[0].eventType, "export");
+    assert.equal(seen.auditEvents[0].tenantId, TENANT_A);
+    assert.equal(seen.auditEvents[0].actorId, ACTOR);
+    assert.equal(seen.auditEvents[0].caseId, "f6666666-6666-4666-8666-666666666666");
+    assert.deepEqual(seen.auditEvents[0].payload, {
+      scope: "cases",
+      filter: { format: "csv", status: "open" },
+      row_count: 1,
+      format: "csv",
+      pii_redacted: true,
+    });
   });
 }
 

@@ -413,7 +413,7 @@ async function handleDecline(
     conversationId: kase.conversationId,
     actorType: "visitor",
     actorId: body.visitorId,
-    eventType: "capture_declined",
+    eventType: "consent_declined",
     payload: {
       // No value here — the visitor said "no" to capture entirely.
       // Staff still see the case (it was created before the SSE event)
@@ -528,6 +528,19 @@ async function handleSubmit(
   //    payload — staff can correlate via the contact id (when present)
   //    or the attribute snapshot, but the events table never carries
   //    raw email/phone strings.
+  await deps.recordCaseEvent(body.tenantId, {
+    caseId: kase.id,
+    conversationId: kase.conversationId,
+    actorType: "visitor",
+    actorId: body.visitorId,
+    eventType: "consent_granted",
+    payload: {
+      field,
+      contact_id: contact?.id,
+      contact_created: contact ? contactCreated : undefined,
+    },
+  });
+
   await deps.recordCaseEvent(body.tenantId, {
     caseId: kase.id,
     conversationId: kase.conversationId,

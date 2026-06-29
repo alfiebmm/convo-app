@@ -1,4 +1,4 @@
-import { recordCaseEvent } from "@/lib/cases/events";
+import { logAuditEvent } from "@/lib/audit/log-event";
 import type { CasesStore } from "@/lib/cases/store";
 import { assertTenantId, assertUuid } from "@/lib/cases/tenant-guard";
 import {
@@ -44,24 +44,25 @@ export async function revealContactIdentifierForTenant(
 
   const auditCase = latestAuditCase(detail);
   if (auditCase) {
-    await recordCaseEvent(
-      tenantId,
-      {
-        caseId: auditCase.id,
-        conversationId: auditCase.conversationId,
-        actorType: "user",
-        actorId,
-        eventType: "pii_reveal",
+    const event = {
+      caseId: auditCase.id,
+      conversationId: auditCase.conversationId,
+      actorType: "user",
+      actorId,
+      eventType: "pii_reveal",
         payload: {
           scope: "contact",
           contact_id: contactId,
           identifier_id: identifierId,
-          identifier_type: identifier.type,
-          actor_id: actorId,
-        },
+        identifier_type: identifier.type,
+        actor_id: actorId,
       },
-      { store: opts?.casesStore },
-    );
+    } as const;
+    if (opts?.casesStore) {
+      await opts.casesStore.insertEvent(tenantId, event);
+    } else {
+      await logAuditEvent({ tenantId, ...event });
+    }
   } else {
     console.warn("[contacts] skipped pii_reveal audit with no contact case", {
       tenantId,

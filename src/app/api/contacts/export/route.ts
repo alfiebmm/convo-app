@@ -19,6 +19,7 @@ import {
   type ExportColumn,
 } from "@/lib/exports/files";
 import { parseContactExportFilters } from "@/lib/exports/filters";
+import { logAuditEvent } from "@/lib/audit/log-event";
 import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -58,6 +59,7 @@ export interface ContactExportDeps {
   canExportPii: (membership: Membership) => boolean;
   listContacts: typeof listContactsByTenant;
   getContactDetail: typeof getContactDetailById;
+  logAuditEvent: typeof logAuditEvent;
   now: () => Date;
 }
 
@@ -103,6 +105,7 @@ function defaultDeps(): ContactExportDeps {
     canExportPii: canViewCasePii,
     listContacts: listContactsByTenant,
     getContactDetail: getContactDetailById,
+    logAuditEvent,
     now: () => new Date(),
   };
 }
@@ -186,26 +189,28 @@ export async function handleContactsExport(
   }
   const piiRedacted = !deps.canExportPii(membership);
 
-  const exportRows = await Promise.all(
-    rows.map(async (row) =>
-      toContactExportRow(
-        row,
-        await deps.getContactDetail(tenant.id, row.id),
-        piiRedacted,
-      ),
-    ),
+  const details = await Promise.all(
+    rows.map((row) => deps.getContactDetail(tenant.id, row.id)),
   );
+  const exportRows = rows.map((row, index) =>
+    toContactExportRow(row, details[index], piiRedacted),
+  );
+  const auditCase = details.find((detail) => detail?.cases[0])?.cases[0] ?? null;
 
-  // TODO(CON-182): persist to follow_up_events.
-  console.log({
-    event: "export",
-    actor_id: actorId,
-    tenant_id: tenant.id,
-    scope: "contacts",
-    filter: Object.fromEntries(params.entries()),
-    row_count: exportRows.length,
-    format,
-    pii_redacted: piiRedacted,
+  await deps.logAuditEvent({
+    tenantId: tenant.id,
+    actorId,
+    actorType: "user",
+    eventType: "export",
+    caseId: auditCase?.id ?? null,
+    conversationId: auditCase?.conversationId ?? null,
+    payload: {
+      scope: "contacts",
+      filter: Object.fromEntries(params.entries()),
+      row_count: exportRows.length,
+      format,
+      pii_redacted: piiRedacted,
+    },
   });
 
   const body =

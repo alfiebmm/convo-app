@@ -7,6 +7,7 @@ import {
   type ContactExportDeps,
 } from "../route";
 import type { ContactDetailRow, ContactListItemRow } from "@/lib/contacts";
+import type { LogAuditEventInput } from "@/lib/audit/log-event";
 
 const TENANT_A = "a1111111-1111-4111-8111-111111111111";
 const TENANT_B = "b2222222-2222-4222-9222-222222222222";
@@ -114,7 +115,12 @@ function parseCsv(text: string): string[][] {
 function makeDeps(
   rows: ContactListItemRow[],
   canExportPii: boolean,
-  seen: { tenantIds: string[]; q: unknown[]; statuses: unknown[] } = {
+  seen: {
+    tenantIds: string[];
+    q: unknown[];
+    statuses: unknown[];
+    auditEvents?: LogAuditEventInput[];
+  } = {
     tenantIds: [],
     q: [],
     statuses: [],
@@ -136,6 +142,10 @@ function makeDeps(
       seen.tenantIds.push(tenantId);
       const row = rows.find((candidate) => candidate.id === contactId);
       return row ? contactDetail(row) : null;
+    },
+    logAuditEvent: async (input) => {
+      seen.auditEvents?.push(input);
+      return "99999999-9999-4999-8999-999999999999";
     },
     now: () => new Date("2026-06-29T12:00:00.000Z"),
   };
