@@ -2,15 +2,25 @@ import { db } from "@/lib/db";
 import { conversations, messages, content } from "@/lib/db/schema";
 import { eq, desc, sql, and, or } from "drizzle-orm";
 import Link from "next/link";
-import { getCurrentTenant } from "@/lib/auth-context";
+import { getCurrentTenant, getCurrentUser } from "@/lib/auth-context";
 import { redirect } from "next/navigation";
 import { withDashboardErrorLogging } from "@/lib/errors/wrap";
+import { resolveDashboardLandingRedirect } from "@/lib/auth/dashboard-landing";
 
 export const dynamic = "force-dynamic";
 
 async function DashboardPageImpl() {
   const tenant = await getCurrentTenant();
-  if (!tenant) redirect("/onboarding");
+  if (!tenant) {
+    // CON-239: tenantless platform staff land on /platform-admin
+    // rather than the onboarding wizard.
+    const user = await getCurrentUser();
+    const target = resolveDashboardLandingRedirect({
+      hasTenant: false,
+      isPlatformStaff: Boolean(user?.isPlatformStaff),
+    });
+    redirect(target);
+  }
   const tenantId = tenant.id;
 
   // Fetch stats
