@@ -69,6 +69,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // email-magic-link bridge — the explicit logic below is what
       // actually governs new vs returning users.
       allowDangerousEmailAccountLinking: true,
+      // CON-237 follow-up: force Google to show the account picker on
+      // every sign-in. Without this, if the user has an existing Google
+      // session, Google silently returns that identity without giving
+      // them a chance to pick which account they want to use — which
+      // means a user logging into the wrong account ends up being
+      // routed to onboarding before they ever see the picker.
+      authorization: {
+        params: {
+          prompt: "select_account",
+        },
+      },
     }),
     ...(process.env.EMAIL_SERVER_HOST
       ? [
