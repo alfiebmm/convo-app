@@ -9,6 +9,7 @@ import { FollowUpPanel } from "./panels/follow-up-panel";
 import { TopicBoundariesPanel } from "./panels/topic-boundaries-panel";
 import { ConversationLimitsPanel } from "./panels/conversation-limits-panel";
 import type { AuthoringSliceKey, EditorTabKey, ForumConfigRaw } from "./types";
+import type { FollowUpMode } from "./follow-up/mode-detection";
 
 /**
  * CON-192 auto-copy notice — shown when page.tsx pre-filled the editor from
@@ -99,6 +100,9 @@ export function ForumConfigEditor({
     hardBlock: [],
   },
   autoCopied = false,
+  initialActiveTab = "ai_persona",
+  initialFollowUpMode,
+  primaryColor,
 }: {
   initialForumConfig: ForumConfigRaw;
   initialConversationLimits?: {
@@ -115,8 +119,25 @@ export function ForumConfigEditor({
    * yet. Surfaces an inline review-and-save notice above the tabs.
    */
   autoCopied?: boolean;
+  /**
+   * CON-238: starting tab, driven by `?tab=` deep-linking. Defaults to
+   * `ai_persona` (the previous always-first behaviour).
+   */
+  initialActiveTab?: EditorTabKey;
+  /**
+   * CON-238: starting mode for the Follow-up tab, driven by `?mode=`. Lets
+   * the legacy `/dashboard/knowledge/follow-up?mode=quick` redirect land on
+   * the right view.
+   */
+  initialFollowUpMode?: FollowUpMode;
+  /**
+   * Tenant widget primary colour. Threaded down to the Follow-up panel's
+   * read-only sections so the brand accent matches the rest of the
+   * dashboard.
+   */
+  primaryColor: string;
 }) {
-  const [activeTab, setActiveTab] = useState<EditorTabKey>("ai_persona");
+  const [activeTab, setActiveTab] = useState<EditorTabKey>(initialActiveTab);
   const [forumConfig, setForumConfig] =
     useState<ForumConfigRaw>(initialForumConfig);
   const [conversationLimits, setConversationLimits] = useState(
@@ -281,6 +302,9 @@ export function ForumConfigEditor({
           >
             <FollowUpPanel
               initialValue={forumConfig.follow_up}
+              forumConfigRaw={forumConfig}
+              initialMode={initialFollowUpMode}
+              primaryColor={primaryColor}
               onSaved={(v) => handleSliceSaved("follow_up", v)}
               onDirtyChange={(d) => setSliceDirty("follow_up", d)}
             />

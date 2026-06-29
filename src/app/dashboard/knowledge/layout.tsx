@@ -6,7 +6,10 @@ import { KnowledgeTabs } from "./tabs";
  *
  * Tabs:
  *   - Documents  → /dashboard/knowledge/documents (existing K-01/K-06 surface)
- *   - Follow-up  → /dashboard/knowledge/follow-up (CON-158, read-only V1)
+ *
+ * The Follow-up tab moved into Settings → Forum config as the Follow-up
+ * tab (CON-238). The bare `/dashboard/knowledge/follow-up` URL now 308s
+ * across to `/dashboard/settings/forum-config?tab=follow-up`.
  *
  * The tab strip itself is a small client component (`./tabs.tsx`) so it can
  * read `usePathname()` to highlight the active tab. Everything else here is
@@ -25,7 +28,7 @@ export default function KnowledgeLayout({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Knowledge</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Manage what your chatbot knows and how it follows up with visitors.
+            Manage the documents your chatbot draws on when answering visitors.
           </p>
         </div>
         <Link

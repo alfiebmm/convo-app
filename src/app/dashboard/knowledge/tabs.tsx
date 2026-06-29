@@ -17,11 +17,6 @@ const TABS: Tab[] = [
       p === "/dashboard/knowledge" ||
       p.startsWith("/dashboard/knowledge/documents"),
   },
-  {
-    href: "/dashboard/knowledge/follow-up",
-    label: "Follow-up",
-    match: (p) => p.startsWith("/dashboard/knowledge/follow-up"),
-  },
 ];
 
 /**

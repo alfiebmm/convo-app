@@ -1,18 +1,22 @@
-import Link from "next/link";
-
 import type { FollowUpMode, QuickCompatibility } from "./mode-detection";
 
+/**
+ * Mode toggle for the Follow-up tab inside Forum config.
+ *
+ * Lives entirely client-side: the surrounding panel owns the active mode in
+ * React state, so this component takes a callback rather than building hrefs.
+ * CON-238 (relocation from Knowledge → Forum config).
+ */
 export function ModeToggle({
   mode,
   quickCompatibility,
+  onChange,
 }: {
   mode: FollowUpMode;
   quickCompatibility: QuickCompatibility;
+  onChange: (mode: FollowUpMode) => void;
 }) {
   const quickDisabled = !quickCompatibility.compatible;
-  const quickHref = quickDisabled
-    ? "/dashboard/knowledge/follow-up?mode=advanced"
-    : "/dashboard/knowledge/follow-up?mode=quick";
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -40,8 +44,9 @@ export function ModeToggle({
               Quick
             </button>
           ) : (
-            <Link
-              href={quickHref}
+            <button
+              type="button"
+              onClick={() => onChange("quick")}
               className={
                 "rounded-md px-3 py-1.5 text-sm font-semibold transition-colors " +
                 (mode === "quick"
@@ -50,10 +55,11 @@ export function ModeToggle({
               }
             >
               Quick
-            </Link>
+            </button>
           )}
-          <Link
-            href="/dashboard/knowledge/follow-up?mode=advanced"
+          <button
+            type="button"
+            onClick={() => onChange("advanced")}
             className={
               "rounded-md px-3 py-1.5 text-sm font-semibold transition-colors " +
               (mode === "advanced"
@@ -62,7 +68,7 @@ export function ModeToggle({
             }
           >
             Advanced
-          </Link>
+          </button>
         </div>
 
         {mode === "advanced" &&
@@ -76,12 +82,13 @@ export function ModeToggle({
               Switch to Quick setup
             </button>
           ) : (
-            <Link
-              href="/dashboard/knowledge/follow-up?mode=quick"
+            <button
+              type="button"
+              onClick={() => onChange("quick")}
               className="rounded-lg bg-[#FF6B2C] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#E85A1E]"
             >
               Switch to Quick setup
-            </Link>
+            </button>
           ))}
       </div>
     </div>

@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { getCurrentTenant } from "@/lib/auth-context";
+import { APP_CONFIG } from "@/config/app";
 import { ForumConfigEditor } from "./editor";
+import type { EditorTabKey } from "./types";
+import type { FollowUpMode } from "./follow-up/mode-detection";
 import {
   buildLegacyDraft,
   hasLegacySignal,
@@ -8,6 +11,38 @@ import {
   mergeLegacyIntoForumConfig,
 } from "@/lib/forum-config/transform-legacy";
 import { withDashboardErrorLogging } from "@/lib/errors/wrap";
+
+/**
+ * CON-238: map the URL-friendly `?tab=` slug onto the editor's internal
+ * tab key. Hyphens in the URL, underscores in the type. Unknown values
+ * fall back to `undefined` so the editor uses its own default.
+ */
+function resolveInitialTab(
+  raw: string | string[] | undefined,
+): EditorTabKey | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) return undefined;
+  const normalised = value.replace(/-/g, "_");
+  const allowed: EditorTabKey[] = [
+    "ai_persona",
+    "welcome",
+    "topic_scope",
+    "qualifying_questions",
+    "conversation_limits",
+    "follow_up",
+  ];
+  return (allowed as string[]).includes(normalised)
+    ? (normalised as EditorTabKey)
+    : undefined;
+}
+
+function resolveInitialFollowUpMode(
+  raw: string | string[] | undefined,
+): FollowUpMode | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value === "quick" || value === "advanced") return value;
+  return undefined;
+}
 
 /**
  * Settings → Forum config (tabbed authoring UI).
@@ -31,11 +66,21 @@ import { withDashboardErrorLogging } from "@/lib/errors/wrap";
  * Persistence: PATCH /api/settings/forum-config (per-slice atomic write).
  * Read-only follow-up overview remains under Knowledge → Follow-up.
  */
-async function ForumConfigPageImpl() {
+async function ForumConfigPageImpl({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
   const tenant = await getCurrentTenant();
   if (!tenant) redirect("/onboarding");
 
+  const params = (await searchParams) ?? {};
+  const initialActiveTab = resolveInitialTab(params.tab);
+  const initialFollowUpMode = resolveInitialFollowUpMode(params.mode);
+
   const settings = (tenant.settings ?? {}) as Record<string, unknown>;
+  const widget = (settings.widget ?? {}) as { primaryColor?: string };
+  const primaryColor = widget.primaryColor ?? APP_CONFIG.branding.primary;
   const guardrails = (settings.guardrails ?? {}) as Record<string, unknown>;
   const rawTopicBoundaries = (guardrails.topicBoundaries ?? {}) as Record<
     string,
@@ -83,6 +128,9 @@ async function ForumConfigPageImpl() {
         initialConversationLimits={initialConversationLimits}
         initialTopicBoundaries={initialTopicBoundaries}
         autoCopied={autoCopied}
+        initialActiveTab={initialActiveTab}
+        initialFollowUpMode={initialFollowUpMode}
+        primaryColor={primaryColor}
       />
     </div>
   );

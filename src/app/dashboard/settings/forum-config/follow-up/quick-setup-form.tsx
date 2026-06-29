@@ -11,7 +11,7 @@ import {
   Select,
   TextArea,
   TextInput,
-} from "../../settings/forum-config/ui";
+} from "../ui";
 
 import { saveQuickSetup } from "./actions";
 import { QuickSetupPreview } from "./quick-setup-preview";
@@ -92,7 +92,7 @@ export function QuickSetupForm({
       setLastSavedValue(local.data);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-      router.replace("/dashboard/knowledge/follow-up?mode=quick");
+      router.replace("/dashboard/settings/forum-config?tab=follow-up&mode=quick");
       router.refresh();
     });
   }
