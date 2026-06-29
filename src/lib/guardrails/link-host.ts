@@ -69,6 +69,12 @@ export interface LinkHostResult {
   findings: LinkHostFinding[];
 }
 
+export interface StripNonTenantAnchorsResult {
+  content: string;
+  strippedCount: number;
+  hosts: string[];
+}
+
 /**
  * Inputs sanitised on construction:
  *   - Tenant domain stripped of protocol, port, and trailing slash.
@@ -94,6 +100,13 @@ function hostAllowed(host: string | null, tenantDomain: string): boolean {
   // `tenant.com.au.evil.example` smuggling).
   if (h.endsWith("." + tenantDomain)) return true;
   return false;
+}
+
+function hrefAllowed(href: string, tenantDomain: string): boolean {
+  if (isRelativeOrNonNavigable(href)) return true;
+  const probe = href.startsWith("//") ? "https:" + href : href;
+  const { host, protocolOk } = parseHost(probe);
+  return protocolOk && hostAllowed(host, tenantDomain);
 }
 
 /**
@@ -255,4 +268,62 @@ export function validateOutputLinks(
   findings.sort((a, b) => a.index - b.index);
 
   return { ok: findings.length === 0, findings };
+}
+
+function collectFindingHosts(findings: LinkHostFinding[]): string[] {
+  const hosts = new Set<string>();
+  for (const finding of findings) {
+    if (finding.host) hosts.add(finding.host);
+  }
+  return [...hosts].sort();
+}
+
+/**
+ * Strip outbound tenant-policy violations from generated markdown.
+ *
+ * Markdown anchors are reduced to their visible label. Bare external URLs
+ * are removed. Relative links, tenant-domain links, mailto:, tel:, and code
+ * spans are preserved.
+ */
+export function stripNonTenantAnchors(
+  content: string,
+  tenantDomain: string
+): StripNonTenantAnchorsResult {
+  const validation = validateOutputLinks(content, tenantDomain);
+  if (validation.ok) {
+    return {
+      content,
+      strippedCount: 0,
+      hosts: [],
+    };
+  }
+
+  const tenant = normaliseTenantDomain(tenantDomain);
+  const masked = maskCodeSpans(content);
+  let output = content;
+
+  const markdownRe = /\[([^\]]*)\]\s*\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g;
+  output = output.replace(
+    markdownRe,
+    (match, label: string, href: string, offset: number) => {
+      const maskedSlice = masked.slice(offset, offset + match.length);
+      if (maskedSlice.trim() === "") return match;
+      return hrefAllowed(href, tenant) ? match : label;
+    },
+  );
+
+  const bareRe = /\bhttps?:\/\/[^\s<>"'`)\]]+/gi;
+  output = output.replace(bareRe, (match, offset: number) => {
+    const maskedSlice = masked.slice(offset, offset + match.length);
+    if (maskedSlice.trim() === "") return match;
+    const raw = match.replace(/[.,;:!?]+$/, "");
+    const suffix = match.slice(raw.length);
+    return hrefAllowed(raw, tenant) ? match : suffix;
+  });
+
+  return {
+    content: output,
+    strippedCount: validation.findings.length,
+    hosts: collectFindingHosts(validation.findings),
+  };
 }

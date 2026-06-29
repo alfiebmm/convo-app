@@ -26,6 +26,10 @@ import {
   OUTPUT_GUARD_FALLBACK,
 } from "@/lib/guardrails/injection";
 import { resolveCta } from "@/lib/cta/resolve";
+import {
+  stripNonTenantAnchors,
+  validateOutputLinks,
+} from "@/lib/guardrails/link-host";
 import { readQualifying } from "@/lib/qualifying/types";
 import { formatPersonaForPrompt } from "@/lib/qualifying/resolve";
 import { buildGreetingAddendum } from "@/lib/qualifying/greeting";
@@ -58,6 +62,32 @@ function getOpenAI() {
     throw new Error("OPENAI_API_KEY environment variable is not set");
   }
   return new OpenAI({ apiKey });
+}
+
+export function finaliseChatLinkPolicy(params: {
+  content: string;
+  tenantId: string;
+  tenantDomain: string | null | undefined;
+  log?: (payload: Record<string, unknown>) => void;
+}): string {
+  if (!params.tenantDomain) return params.content;
+
+  const validation = validateOutputLinks(params.content, params.tenantDomain);
+  if (validation.ok) return params.content;
+
+  const stripped = stripNonTenantAnchors(
+    params.content,
+    params.tenantDomain,
+  );
+
+  params.log?.({
+    event: "link_policy_strip",
+    tenant_id: params.tenantId,
+    anchor_count: stripped.strippedCount,
+    hosts: stripped.hosts,
+  });
+
+  return stripped.content;
 }
 
 /**
@@ -389,8 +419,6 @@ export async function POST(req: NextRequest) {
           )
         );
 
-        let tokensEmittedToVisitor = false;
-
         try {
           for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content;
@@ -401,12 +429,6 @@ export async function POST(req: NextRequest) {
               const safe = bannedFilter.push(content);
               if (safe) {
                 fullResponse += safe;
-                tokensEmittedToVisitor = true;
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({ type: "token", content: safe })}\n\n`
-                  )
-                );
               }
             }
           }
@@ -416,12 +438,6 @@ export async function POST(req: NextRequest) {
           const tail = bannedFilter.flush();
           if (tail) {
             fullResponse += tail;
-            tokensEmittedToVisitor = true;
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ type: "token", content: tail })}\n\n`
-              )
-            );
           }
 
           if (bannedFilter.redactionCount() > 0) {
@@ -433,14 +449,9 @@ export async function POST(req: NextRequest) {
 
           // CON-98 layer 4: best-effort output guard.
           //
-          // IMPORTANT: by the time we get here we have ALREADY streamed
-          // tokens to the visitor over SSE. We can't unsend them. So:
-          //   - We ALWAYS scan and log.
-          //   - We swap `fullResponse` (the persisted copy) ONLY when no
-          //     tokens were emitted (defensive — should be rare since
-          //     tokens stream as they arrive). In all other cases we log
-          //     the event and let the response stand. The real defence
-          //     is layers 1–3; this is detection-only after the fact.
+          // Tokens are still buffered server-side here. That lets final-
+          // output guards replace or strip the response before the visitor
+          // sees it.
           let persistedContent = fullResponse;
           if (injectionDefenceOn) {
             const leak = scanOutputForLeakage(fullResponse, GLOBAL_RULES);
@@ -453,20 +464,26 @@ export async function POST(req: NextRequest) {
                 patternMatched: leak.marker,
                 rawMessage: fullResponse,
               });
-              if (!tokensEmittedToVisitor) {
-                // Safe to substitute — visitor hasn't seen anything yet.
-                persistedContent = OUTPUT_GUARD_FALLBACK;
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      type: "token",
-                      content: OUTPUT_GUARD_FALLBACK,
-                    })}\n\n`
-                  )
-                );
-              }
-              // else: tokens already sent. Logged. Let it stand.
+              persistedContent = OUTPUT_GUARD_FALLBACK;
             }
+          }
+
+          persistedContent = finaliseChatLinkPolicy({
+            content: persistedContent,
+            tenantId: tenant.id,
+            tenantDomain: tenant.domain,
+            log: (payload) => console.info(payload),
+          });
+
+          if (persistedContent) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "token",
+                  content: persistedContent,
+                })}\n\n`
+              )
+            );
           }
 
           // Persist assistant message after stream complete
@@ -480,8 +497,11 @@ export async function POST(req: NextRequest) {
           if (!isGreetingTurn) try {
             const ctaResult = resolveCta({
               settings: tenant.settings as Record<string, unknown> | null,
-              messages: [...history, { role: "assistant", content: fullResponse }],
-              assistantResponse: fullResponse,
+              messages: [
+                ...history,
+                { role: "assistant", content: persistedContent },
+              ],
+              assistantResponse: persistedContent,
             });
             if (ctaResult.shouldEmit) {
               controller.enqueue(
@@ -556,7 +576,7 @@ export async function POST(req: NextRequest) {
                 visitorMessage: message,
                 history: [
                   ...history,
-                  { role: "assistant", content: fullResponse },
+                  { role: "assistant", content: persistedContent },
                 ],
                 followUpConfig: followUp,
                 tenantConfig: tenantClassifierConfig,
@@ -850,7 +870,7 @@ export async function POST(req: NextRequest) {
                 history: [
                   ...history,
                   { role: "user", content: message },
-                  { role: "assistant", content: fullResponse },
+                  { role: "assistant", content: persistedContent },
                 ],
                 lead: leadOutcome.lead,
                 metadata: (metadata as Record<string, unknown> | null) ?? null,

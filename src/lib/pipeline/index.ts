@@ -93,11 +93,22 @@ export async function processConversation(
       topic.subtopics.join(", ")
     );
 
+    const [tenant] = await db
+      .select({ domain: tenants.domain })
+      .from(tenants)
+      .where(eq(tenants.id, conversation.tenantId))
+      .limit(1);
+
+    if (!tenant?.domain) {
+      throw new Error("Tenant domain is required for article link validation");
+    }
+
     // 4. Generate article
     let article: GeneratedArticle | undefined;
     try {
       article = await generateArticle(
         conversation.tenantId,
+        tenant.domain,
         dedupResult.topicId,
         conversationId,
         topic,
