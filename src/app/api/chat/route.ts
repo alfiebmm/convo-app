@@ -43,6 +43,10 @@ import {
   qualifyingQuestionsSchema,
 } from "@/lib/forum-config/schema";
 import {
+  assertForumConfigCompleteness,
+  REQUIRED_FORUM_CONFIG_SLICES,
+} from "@/lib/forum-config/completeness";
+import {
   runReEvaluation,
   buildCaseEvent,
   emitCaseEvent,
@@ -55,6 +59,8 @@ import { recordCaseEvent } from "@/lib/cases/events";
 import { CLASSIFIER_VERSION } from "@/lib/classifier/schema";
 import { db } from "@/lib/db";
 import { platformInjectionEvents } from "@/lib/db/schema";
+
+const forumConfigIncompleteWarnings = new Set<string>();
 
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -528,6 +534,23 @@ export async function POST(req: NextRequest) {
           // Skipped on greeting turns — there's no visitor message to
           // re-evaluate, so the classifier has nothing to act on.
           if (!isGreetingTurn) try {
+            const completeness = assertForumConfigCompleteness(tenant);
+            if (
+              !completeness.complete &&
+              completeness.missing.length < REQUIRED_FORUM_CONFIG_SLICES.length &&
+              !forumConfigIncompleteWarnings.has(tenant.id)
+            ) {
+              forumConfigIncompleteWarnings.add(tenant.id);
+              console.warn(
+                JSON.stringify({
+                  event: "forum_config_incomplete",
+                  tenant_id: tenant.id,
+                  slug: tenant.slug,
+                  missing: completeness.missing,
+                }),
+              );
+            }
+
             const settings = (tenant.settings ?? {}) as Record<string, unknown>;
             const forumConfigRaw = (settings.forumConfig ?? {}) as Record<
               string,
