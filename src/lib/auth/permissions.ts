@@ -15,6 +15,11 @@ export function canViewCasePii(membership: TenantMembership | null): boolean {
   return ROLE_RANK[membership.role] >= ROLE_RANK.editor;
 }
 
+export function canManageConnectors(membership: TenantMembership | null): boolean {
+  if (!membership) return false;
+  return ROLE_RANK[membership.role] >= ROLE_RANK.admin;
+}
+
 export function canMutateCases(membership: TenantMembership | null): boolean {
   if (!membership) return false;
   return ROLE_RANK[membership.role] >= ROLE_RANK.editor;

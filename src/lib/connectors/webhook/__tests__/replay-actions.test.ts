@@ -7,8 +7,10 @@ import type {
   WebhookOutboxDeliveryRow,
 } from "@/lib/connectors/webhook/deliver";
 import {
+  getConnectorHealthMetricsForTenant,
   listOutboxRowsForTenant,
   replayOutboxRowForTenant,
+  type ConnectorHealthMetrics,
   type WebhookOutboxReplayRow,
   type WebhookOutboxStatus,
   type WebhookReplayStore,
@@ -116,6 +118,46 @@ function createReplayStore(rows: MutableRow[]): WebhookReplayStore & {
       );
       return candidate ? { ...candidate } : null;
     },
+    async getHealthMetrics(tenantId, since) {
+      return computeHealthMetrics(rows, tenantId, since);
+    },
+  };
+}
+
+function computeHealthMetrics(
+  rows: MutableRow[],
+  tenantId: string,
+  since: Date,
+): ConnectorHealthMetrics {
+  const scopedRows = rows.filter(
+    (candidate) =>
+      candidate.tenantId === tenantId &&
+      candidate.attemptCount > 0 &&
+      (candidate.deliveredAt ?? candidate.createdAt) >= since,
+  );
+  const successCount = scopedRows.filter(
+    (candidate) => candidate.status === "sent" && candidate.deliveredAt,
+  ).length;
+  const deliveredRows = scopedRows.filter(
+    (candidate) => candidate.status === "sent" && candidate.deliveredAt,
+  );
+  const totalLatency = deliveredRows.reduce(
+    (sum, candidate) =>
+      sum + (candidate.deliveredAt!.getTime() - candidate.createdAt.getTime()),
+    0,
+  );
+
+  return {
+    totalAttempts24h: scopedRows.length,
+    failureCount24h: scopedRows.filter(
+      (candidate) => candidate.status === "failed" || candidate.status === "abandoned",
+    ).length,
+    avgLatencyMs24h:
+      deliveredRows.length > 0 ? Math.round(totalLatency / deliveredRows.length) : null,
+    successRate24h:
+      scopedRows.length > 0
+        ? Math.round((successCount / scopedRows.length) * 1000) / 10
+        : 0,
   };
 }
 
@@ -206,6 +248,24 @@ test("replayOutboxRowForTenant rejects a cross-tenant row id", async () => {
   assert.equal(rows[0].lastError, "Webhook returned HTTP 500");
 });
 
+test("replayOutboxRowForTenant rejects a same-tenant caller without connector manage permission", async () => {
+  const rows = [row({ id: ROW_A, tenantId: TENANT_A, caseId: CASE_A })];
+  const replayStore = createReplayStore(rows);
+
+  await assert.rejects(
+    replayOutboxRowForTenant(TENANT_A, ROW_A, {
+      replayStore,
+      deliveryStore: createDeliveryStore(rows),
+      now: NOW,
+      canManageConnectors: false,
+    }),
+    /Forbidden/,
+  );
+
+  assert.deepEqual(replayStore.resetTenantCalls, []);
+  assert.equal(rows[0].status, "failed");
+});
+
 test("replayOutboxRowForTenant resets scheduling fields and delivers the selected row", async () => {
   const rows = [row({ id: ROW_A, tenantId: TENANT_A, caseId: CASE_A })];
   const replayStore = createReplayStore(rows);
@@ -228,4 +288,53 @@ test("replayOutboxRowForTenant resets scheduling fields and delivers the selecte
   assert.equal(rows[0].nextAttemptAt, NOW);
   assert.equal(rows[0].lastError, null);
   assert.equal(rows[0].attemptCount, 3);
+});
+
+test("getConnectorHealthMetricsForTenant returns tenant-scoped 24h metrics", async () => {
+  const rows = [
+    row({
+      id: ROW_A,
+      tenantId: TENANT_A,
+      status: "sent",
+      attemptCount: 1,
+      createdAt: new Date("2026-06-27T23:45:00.000Z"),
+      deliveredAt: new Date("2026-06-27T23:45:02.000Z"),
+    }),
+    row({
+      id: "e1111111-1111-4111-8111-111111111112",
+      tenantId: TENANT_A,
+      status: "failed",
+      attemptCount: 1,
+      createdAt: new Date("2026-06-27T23:50:00.000Z"),
+      deliveredAt: null,
+    }),
+    row({
+      id: ROW_B,
+      tenantId: TENANT_B,
+      status: "sent",
+      attemptCount: 1,
+      createdAt: new Date("2026-06-27T23:40:00.000Z"),
+      deliveredAt: new Date("2026-06-27T23:40:01.000Z"),
+    }),
+    row({
+      id: "e1111111-1111-4111-8111-111111111113",
+      tenantId: TENANT_A,
+      status: "sent",
+      attemptCount: 1,
+      createdAt: new Date("2026-06-26T23:45:00.000Z"),
+      deliveredAt: new Date("2026-06-26T23:45:01.000Z"),
+    }),
+  ];
+
+  const result = await getConnectorHealthMetricsForTenant(TENANT_A, {
+    replayStore: createReplayStore(rows),
+    now: NOW,
+  });
+
+  assert.deepEqual(result, {
+    successRate24h: 50,
+    failureCount24h: 1,
+    avgLatencyMs24h: 2000,
+    totalAttempts24h: 2,
+  });
 });
