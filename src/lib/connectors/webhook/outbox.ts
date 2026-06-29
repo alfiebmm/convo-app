@@ -4,7 +4,9 @@ import { db as defaultDb } from "@/lib/db";
 import { connectorOutbox, tenants } from "@/lib/db/schema";
 import { assertTenantId, assertUuid } from "@/lib/cases/tenant-guard";
 import {
-  parseTenantWebhookSettings,
+  parseTenantWebhookConfig,
+  type ForumConfigWebhookDestination,
+  type TenantWebhookConfig,
   type WebhookEvent,
   type WebhookSettings,
 } from "./settings";
@@ -39,7 +41,7 @@ export interface InsertOutboxInput {
 }
 
 export interface WebhookOutboxStore {
-  getTenantWebhookSettings(tenantId: string): Promise<WebhookSettings | null>;
+  getTenantWebhookConfig(tenantId: string): Promise<TenantWebhookConfig>;
   insertOutbox(input: InsertOutboxInput): Promise<{ id: string } | null>;
   findOutboxByIdempotencyKey(
     tenantId: string,
@@ -53,7 +55,7 @@ export function createDrizzleWebhookOutboxStore(
   db: DrizzleDb = defaultDb,
 ): WebhookOutboxStore {
   return {
-    async getTenantWebhookSettings(tenantId) {
+    async getTenantWebhookConfig(tenantId) {
       assertTenantId(tenantId);
       const [tenant] = await db
         .select({ settings: tenants.settings })
@@ -61,7 +63,7 @@ export function createDrizzleWebhookOutboxStore(
         .where(eq(tenants.id, tenantId))
         .limit(1);
 
-      return parseTenantWebhookSettings(tenant?.settings ?? null);
+      return parseTenantWebhookConfig(tenant?.settings ?? null);
     },
 
     async insertOutbox(input) {
@@ -134,6 +136,49 @@ function isWebhookConfigured(settings: WebhookSettings | null): settings is Webh
   return Boolean(settings?.enabled && settings.url && settings.secret_ciphertext);
 }
 
+function caseMatchValue(
+  payload: WebhookPayload,
+  key: "caseType" | "case_type" | "routingKey" | "routing_key",
+): string | null {
+  const kase = payload.case;
+  if (!kase || typeof kase !== "object" || !(key in kase)) return null;
+  const value = (kase as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function caseTypeFromPayload(payload: WebhookPayload): string | null {
+  return (
+    caseMatchValue(payload, "caseType") ??
+    caseMatchValue(payload, "case_type")
+  );
+}
+
+function routingKeyFromPayload(payload: WebhookPayload): string | null {
+  return (
+    caseMatchValue(payload, "routingKey") ??
+    caseMatchValue(payload, "routing_key")
+  );
+}
+
+function matchingForumConfigDestinations(
+  destinations: ForumConfigWebhookDestination[],
+  input: EnqueueWebhookDeliveryInput,
+): ForumConfigWebhookDestination[] {
+  const caseType = caseTypeFromPayload(input.payload);
+  const routingKey = routingKeyFromPayload(input.payload);
+  if (!caseType || !routingKey) return [];
+
+  return destinations.filter(
+    (destination) =>
+      destination.case_type === caseType &&
+      destination.routing_key === routingKey,
+  );
+}
+
+function scopedIdempotencyKey(baseKey: string, destinationId: string): string {
+  return `${baseKey}:${destinationId}`;
+}
+
 export async function enqueueWebhookDelivery(
   input: EnqueueWebhookDeliveryInput,
   opts?: { store?: WebhookOutboxStore; now?: Date },
@@ -145,38 +190,80 @@ export async function enqueueWebhookDelivery(
   }
 
   const store = resolveStore(opts?.store);
-  const settings = await store.getTenantWebhookSettings(input.tenantId);
-  if (!isWebhookConfigured(settings)) {
-    return { status: "skipped-not-configured" };
+  const config = await store.getTenantWebhookConfig(input.tenantId);
+  const destinations: Array<{ id: string }> = [];
+  let configuredConnectorEventSkipped = false;
+
+  if (isWebhookConfigured(config.connector)) {
+    if (config.connector.events.includes(input.event)) {
+      destinations.push({
+        id: config.connector.url,
+      });
+    } else {
+      configuredConnectorEventSkipped = true;
+    }
   }
-  if (!settings.events.includes(input.event)) {
+
+  for (const destination of matchingForumConfigDestinations(
+    config.forumConfigDestinations,
+    input,
+  )) {
+    destinations.push({
+      id: destination.id,
+    });
+  }
+
+  if (destinations.length === 0 && configuredConnectorEventSkipped) {
     return { status: "skipped-event-not-subscribed" };
   }
-
-  const inserted = await store.insertOutbox({
-    tenantId: input.tenantId,
-    caseId: input.caseId,
-    connectorType: "webhook",
-    destinationId: settings.url,
-    payloadVersion: "v1",
-    payload: input.payload,
-    status: "pending",
-    nextAttemptAt: opts?.now ?? new Date(),
-    attemptCount: 0,
-    idempotencyKey: input.idempotencyKey,
-  });
-
-  if (inserted) {
-    return { status: "enqueued", id: inserted.id };
+  if (destinations.length === 0) {
+    return { status: "skipped-not-configured" };
   }
 
-  const existing = await store.findOutboxByIdempotencyKey(
-    input.tenantId,
-    input.idempotencyKey,
-  );
-  if (!existing) {
-    throw new Error("Duplicate webhook outbox row could not be resolved");
+  let firstInserted: { id: string } | null = null;
+  let firstExisting: { id: string } | null = null;
+  const now = opts?.now ?? new Date();
+
+  for (const destination of destinations) {
+    const destinationIdempotencyKey = scopedIdempotencyKey(
+      input.idempotencyKey,
+      destination.id,
+    );
+    const inserted = await store.insertOutbox({
+      tenantId: input.tenantId,
+      caseId: input.caseId,
+      connectorType: "webhook",
+      destinationId: destination.id,
+      payloadVersion: "v1",
+      payload: input.payload,
+      status: "pending",
+      nextAttemptAt: now,
+      attemptCount: 0,
+      idempotencyKey: destinationIdempotencyKey,
+    });
+
+    if (inserted) {
+      firstInserted ??= inserted;
+      continue;
+    }
+
+    const existing = await store.findOutboxByIdempotencyKey(
+      input.tenantId,
+      destinationIdempotencyKey,
+    );
+    if (!existing) {
+      throw new Error("Duplicate webhook outbox row could not be resolved");
+    }
+    firstExisting ??= existing;
   }
 
-  return { status: "skipped-duplicate", existingId: existing.id };
+  if (firstInserted) {
+    return { status: "enqueued", id: firstInserted.id };
+  }
+
+  if (firstExisting) {
+    return { status: "skipped-duplicate", existingId: firstExisting.id };
+  }
+
+  return { status: "skipped-not-configured" };
 }

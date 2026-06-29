@@ -6,7 +6,10 @@ import {
   type InsertOutboxInput,
   type WebhookOutboxStore,
 } from "@/lib/connectors/webhook/outbox";
-import type { WebhookSettings } from "@/lib/connectors/webhook/settings";
+import type {
+  TenantWebhookConfig,
+  WebhookSettings,
+} from "@/lib/connectors/webhook/settings";
 
 const TENANT_A = "a1111111-1111-4111-8111-111111111111";
 const CASE_A = "c1111111-1111-4111-8111-111111111111";
@@ -20,15 +23,22 @@ function configuredSettings(events = ["case.created"]): WebhookSettings {
   };
 }
 
-function createStore(settings: WebhookSettings | null): WebhookOutboxStore & {
+function createStore(
+  settings: WebhookSettings | null,
+  overrides: Partial<TenantWebhookConfig> = {},
+): WebhookOutboxStore & {
   rows: Array<InsertOutboxInput & { id: string }>;
 } {
   const rows: Array<InsertOutboxInput & { id: string }> = [];
   return {
     rows,
-    async getTenantWebhookSettings(tenantId) {
+    async getTenantWebhookConfig(tenantId) {
       assert.equal(tenantId, TENANT_A);
-      return settings;
+      return {
+        connector: settings,
+        forumConfigDestinations: [],
+        ...overrides,
+      };
     },
     async insertOutbox(input) {
       if (
@@ -80,22 +90,36 @@ test("enqueueWebhookDelivery inserts a pending webhook row", async () => {
   assert.equal(store.rows[0].nextAttemptAt, now);
 });
 
-test("enqueueWebhookDelivery skips when webhook is not configured", async () => {
-  const store = createStore(null);
+test("enqueueWebhookDelivery uses forumConfig destinations when connector settings are not configured", async () => {
+  const store = createStore(null, {
+    forumConfigDestinations: [
+      {
+        id: "lead-webhook",
+        case_type: "lead",
+        connector: "webhook",
+        routing_key: "sales",
+        config: { url: "https://tenant.example.com/webhooks/leads" },
+      },
+    ],
+  });
 
   const result = await enqueueWebhookDelivery(
     {
       tenantId: TENANT_A,
       caseId: CASE_A,
       event: "case.created",
-      payload: { event: "case.created" },
+      payload: {
+        event: "case.created",
+        case: { id: CASE_A, caseType: "lead", routingKey: "sales" },
+      },
       idempotencyKey: "case.created:not-configured",
     },
     { store },
   );
 
-  assert.deepEqual(result, { status: "skipped-not-configured" });
-  assert.equal(store.rows.length, 0);
+  assert.deepEqual(result, { status: "enqueued", id: "outbox-1" });
+  assert.equal(store.rows.length, 1);
+  assert.equal(store.rows[0].destinationId, "lead-webhook");
 });
 
 test("enqueueWebhookDelivery skips when event is not subscribed", async () => {

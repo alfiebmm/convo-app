@@ -7,7 +7,7 @@ export type PostSignedWebhookResult = {
 
 export type PostSignedWebhookInput = {
   url: string;
-  secret: string;
+  secret?: string;
   body: string;
   idempotencyKey: string;
   fetchFn?: typeof fetch;
@@ -25,12 +25,12 @@ export async function postSignedWebhook({
   now = Date.now,
 }: PostSignedWebhookInput): Promise<PostSignedWebhookResult> {
   const startedAt = now();
-  const signature = signWebhookPayload(secret, body);
+  const signature = secret ? signWebhookPayload(secret, body) : null;
   const response = await fetchFn(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Convo-Signature": signature.header,
+      ...(signature ? { "X-Convo-Signature": signature.header } : {}),
       "Idempotency-Key": idempotencyKey,
       "User-Agent": "Convo-Webhook/v1",
     },

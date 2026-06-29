@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { webhookDestinationConfigSchema } from "@/lib/connectors/webhook/settings";
+
 /**
  * forum.config.json Schema (K-01)
  * 
@@ -376,6 +378,18 @@ export const destinationSchema = z.object({
   connector: followUpConnectorEnum,
   routing_key: z.string().min(1),
   config: z.record(z.string(), z.unknown()).optional(),
+}).superRefine((destination, ctx) => {
+  if (destination.connector !== "webhook") return;
+
+  const parsed = webhookDestinationConfigSchema.safeParse(destination.config);
+  if (parsed.success) return;
+
+  for (const issue of parsed.error.issues) {
+    ctx.addIssue({
+      ...issue,
+      path: ["config", ...issue.path],
+    });
+  }
 });
 
 // ---- Follow-up root ----

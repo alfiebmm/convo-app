@@ -183,6 +183,33 @@ export default function WebhookDocsPage() {
             <li>Use the outbox replay page to inspect and replay delivery rows.</li>
           </ol>
         </DocsBlock>
+
+        <DocsBlock title="Connector Surfaces">
+          <p>
+            Convo can enqueue webhook deliveries from two tenant settings
+            surfaces. The dashboard webhook connector is the tenant-wide V1
+            surface: one HTTPS URL, one signing secret, and selected event
+            subscriptions. Follow-up forumConfig destinations are routing
+            destinations attached to a case type and routing key, so a matching
+            follow-up case can be sent to the destination configured for that
+            rule path.
+          </p>
+          <p>
+            When both surfaces are configured, they deliver independently and
+            create separate outbox rows. The dashboard connector uses its shared
+            HMAC secret. A forumConfig webhook destination is signed only when
+            its destination config includes{" "}
+            <code className="rounded bg-zinc-100 px-1 py-0.5">
+              secret_ciphertext
+            </code>
+            . In V1, destinations without that field deliver unsigned and do not
+            include{" "}
+            <code className="rounded bg-zinc-100 px-1 py-0.5">
+              X-Convo-Signature
+            </code>
+            .
+          </p>
+        </DocsBlock>
       </section>
     </main>
   );

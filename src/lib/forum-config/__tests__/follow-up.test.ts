@@ -110,6 +110,7 @@ const PRD_FIXTURE = {
       case_type: "lead" as const,
       connector: "webhook" as const,
       routing_key: "marketplace_demand",
+      config: { url: "https://example.com.au/webhooks/leads" },
     },
   ],
 };
@@ -520,6 +521,7 @@ function buildFollowUp(overrides: Record<string, unknown> = {}) {
         case_type: "lead" as const,
         connector: "webhook" as const,
         routing_key: "rk",
+        config: { url: "https://example.com.au/webhooks/leads" },
       },
     ],
     ...overrides,
@@ -586,6 +588,7 @@ test("Linkage: rule with unknown contact_method_id fails", () => {
           case_type: "cx_support",
           connector: "webhook",
           routing_key: "rk",
+          config: { url: "https://example.com.au/webhooks/support" },
         },
       ],
     }),
@@ -651,12 +654,14 @@ test("Linkage: destination case_type with no matching rule fails", () => {
           case_type: "cx_support", // no cx_support rule in fixture
           connector: "webhook",
           routing_key: "rk",
+          config: { url: "https://example.com.au/webhooks/support" },
         },
         {
           id: "d_lead",
           case_type: "lead",
           connector: "webhook",
           routing_key: "rk",
+          config: { url: "https://example.com.au/webhooks/leads" },
         },
       ],
     }),
@@ -734,6 +739,7 @@ test("Minimal AgPages-shaped fixture validates", () => {
         case_type: "lead",
         connector: "webhook",
         routing_key: "ag_buyer",
+        config: { url: "https://example.com.au/webhooks/ag-buyer" },
       },
     ],
   });
@@ -770,6 +776,7 @@ test("Minimal Doggo-shaped fixture validates", () => {
         case_type: "cx_support",
         connector: "webhook",
         routing_key: "doggo_cx",
+        config: { url: "https://example.com.au/webhooks/doggo-cx" },
       },
     ],
   });

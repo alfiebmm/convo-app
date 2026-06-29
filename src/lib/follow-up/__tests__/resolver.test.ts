@@ -782,6 +782,7 @@ test("Empty when:{} rule matches anything at/above threshold (lead)", () => {
         case_type: "lead",
         connector: "webhook",
         routing_key: "lead_default",
+        config: { url: "https://example.com.au/webhooks/leads" },
       },
     ],
   });
@@ -822,7 +823,13 @@ test("page_url_pattern matches → rule fires", () => {
       },
     ],
     destinations: [
-      { id: "d", case_type: "lead", connector: "webhook", routing_key: "r" },
+      {
+        id: "d",
+        case_type: "lead",
+        connector: "webhook",
+        routing_key: "r",
+        config: { url: "https://example.com.au/webhooks/leads" },
+      },
     ],
   });
   const out = classifier({ commercial_intent: { detected: true, confidence: 0.5 } });
@@ -874,7 +881,13 @@ test("location_in is case-insensitive", () => {
       },
     ],
     destinations: [
-      { id: "d", case_type: "lead", connector: "webhook", routing_key: "r" },
+      {
+        id: "d",
+        case_type: "lead",
+        connector: "webhook",
+        routing_key: "r",
+        config: { url: "https://example.com.au/webhooks/leads" },
+      },
     ],
   });
   const out = classifier({
@@ -1044,6 +1057,7 @@ test("offer_follow_up rule with offer_title → ResolvedAction carries it throug
         case_type: "cx_support",
         connector: "webhook",
         routing_key: "cx_default",
+        config: { url: "https://example.com.au/webhooks/support" },
       },
     ],
   });
@@ -1113,6 +1127,7 @@ test("offer_follow_up rule WITHOUT offer_title → ResolvedAction omits the fiel
         case_type: "cx_support",
         connector: "webhook",
         routing_key: "cx_default",
+        config: { url: "https://example.com.au/webhooks/support" },
       },
     ],
   });

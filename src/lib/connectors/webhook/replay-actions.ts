@@ -376,6 +376,7 @@ export async function replayOutboxRowForTenant(
       return row ? [row] : [];
     },
     getTenantWebhookSettings: deliveryStore.getTenantWebhookSettings.bind(deliveryStore),
+    getTenantWebhookConfig: deliveryStore.getTenantWebhookConfig?.bind(deliveryStore),
     markSent: deliveryStore.markSent.bind(deliveryStore),
     markFailed: deliveryStore.markFailed.bind(deliveryStore),
     markRetry: deliveryStore.markRetry.bind(deliveryStore),
