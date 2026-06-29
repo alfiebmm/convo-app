@@ -15,7 +15,7 @@ import {
   quickSetupInputSchema,
 } from "./quick-setup";
 
-const FOLLOW_UP_PATH = "/dashboard/knowledge/follow-up";
+const FOLLOW_UP_PATH = "/dashboard/settings/forum-config";
 
 export type SaveQuickSetupResult =
   | { ok: true }
