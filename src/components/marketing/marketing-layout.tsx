@@ -131,13 +131,13 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
               href="/login"
               className="hidden text-sm font-semibold text-zinc-600 transition hover:text-zinc-950 sm:inline"
             >
-              Login
+              Log in
             </Link>
             <Link
-              href="/login"
+              href="/signup"
               className="rounded-lg bg-[var(--convo-orange)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--convo-orange-hover)]"
             >
-              Start free
+              Sign up
             </Link>
           </div>
         </div>
@@ -219,7 +219,8 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
               links={[
                 ["/use-cases", "Use cases"],
                 ["/contact", "Contact"],
-                ["/login", "Login"],
+                ["/login", "Log in"],
+                ["/signup", "Sign up"],
                 ["/privacy", "Privacy"],
                 ["/terms", "Terms"],
               ]}
@@ -330,16 +331,16 @@ export function CTASection() {
         </div>
         <div className="flex flex-wrap gap-3">
           <Link
-            href="/login"
+            href="/signup"
             className="rounded-lg bg-[var(--convo-orange)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--convo-orange-hover)]"
           >
-            Start free
+            Sign up
           </Link>
           <Link
-            href="/how-it-works"
+            href="/login"
             className="rounded-lg border border-zinc-700 px-5 py-3 text-sm font-semibold text-white transition hover:border-zinc-500"
           >
-            See how it works
+            Log in
           </Link>
         </div>
       </div>

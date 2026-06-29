@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import { APP_CONFIG } from "@/config/app";
 import {
@@ -8,6 +9,7 @@ import {
 } from "@/lib/auth-context";
 import { TenantSwitcher } from "./tenant-switcher";
 import { UserMenu } from "./user-menu";
+import { WelcomeBackToast } from "./welcome-back-toast";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: "📊" },
@@ -98,6 +100,9 @@ export default async function DashboardLayout({
         </div>
         <div className="p-8">{children}</div>
       </main>
+      <Suspense fallback={null}>
+        <WelcomeBackToast />
+      </Suspense>
     </div>
   );
 }

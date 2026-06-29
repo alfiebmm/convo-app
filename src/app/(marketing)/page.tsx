@@ -77,7 +77,7 @@ export default function HomePage() {
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
-                  href="/login"
+                  href="/signup"
                   className="rounded-lg bg-[var(--convo-orange)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--convo-orange-hover)]"
                 >
                   Start free
