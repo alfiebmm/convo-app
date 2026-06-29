@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentTenant } from "@/lib/auth-context";
 import { APP_CONFIG } from "@/config/app";
 import {
+  forumConfigSchema,
   followUpSchema,
   type FollowUp,
 } from "@/lib/forum-config/schema";
@@ -13,6 +14,10 @@ import { RulesSection } from "./rules-table";
 import { DestinationsSection } from "./destinations";
 import { HowToEditCallout } from "./how-to-edit";
 import { FollowUpEmptyState } from "./empty-state";
+import { ModeToggle } from "./mode-toggle";
+import { QuickSetupForm } from "./quick-setup-form";
+import { canSwitchToQuick, resolveRequestedMode } from "./mode-detection";
+import { quickSetupInputFromForumConfig } from "./quick-setup";
 
 /**
  * Knowledge → Follow-up tab (read-only V1).
@@ -31,9 +36,17 @@ import { FollowUpEmptyState } from "./empty-state";
  *   - schema-default population (so a tenant with `follow_up: {}` still
  *     gets `enabled: true`, `default_sensitivity: "balanced"`, etc.).
  */
-export default async function FollowUpTabPage() {
+export default async function FollowUpTabPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const tenant = await getCurrentTenant();
   if (!tenant) redirect("/onboarding");
+  const params = await searchParams;
+  const requestedMode = Array.isArray(params.mode)
+    ? params.mode[0]
+    : params.mode;
 
   // Tenant settings shape: `{ widget?: { primaryColor?: string }, forumConfig?: { follow_up?: ... } }`.
   // The jsonb column is typed as `unknown`-friendly elsewhere; narrow safely.
@@ -44,6 +57,10 @@ export default async function FollowUpTabPage() {
 
   const forumConfig = (settings.forumConfig ?? {}) as Record<string, unknown>;
   const rawFollowUp = forumConfig.follow_up;
+  const parsedForumConfig = forumConfigSchema.safeParse(forumConfig);
+  const safeForumConfig = parsedForumConfig.success
+    ? parsedForumConfig.data
+    : forumConfigSchema.parse({});
 
   // Parse through the schema so defaults are applied and bad shapes can't
   // crash the page. If parsing fails we treat the block as absent.
@@ -62,37 +79,56 @@ export default async function FollowUpTabPage() {
       followUp.rules.length > 0 ||
       followUp.destinations.length > 0);
 
-  if (!followUp || !hasContent) {
-    return <FollowUpEmptyState primaryColor={primaryColor} />;
+  const mode = resolveRequestedMode({ requestedMode, followUp });
+  const quickCompatibility = canSwitchToQuick(followUp ?? {});
+  const quickInitialValue = quickSetupInputFromForumConfig(safeForumConfig);
+
+  if (mode === "quick") {
+    return (
+      <div className="space-y-6">
+        <ModeToggle mode={mode} quickCompatibility={quickCompatibility} />
+        <QuickSetupForm initialValue={quickInitialValue} />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <FollowUpHeader config={followUp} primaryColor={primaryColor} />
+      <ModeToggle mode={mode} quickCompatibility={quickCompatibility} />
 
-      <ContactMethodsSection
-        methods={followUp.contact_methods}
-        primaryColor={primaryColor}
-      />
+      {(!followUp || !hasContent) && (
+        <FollowUpEmptyState primaryColor={primaryColor} />
+      )}
 
-      <CapturePoliciesSection
-        policies={followUp.capture_policies}
-        primaryColor={primaryColor}
-      />
+      {followUp && hasContent && (
+        <>
+          <FollowUpHeader config={followUp} primaryColor={primaryColor} />
 
-      <RulesSection
-        rules={followUp.rules}
-        contactMethods={followUp.contact_methods}
-        capturePolicies={followUp.capture_policies}
-        primaryColor={primaryColor}
-      />
+          <ContactMethodsSection
+            methods={followUp.contact_methods}
+            primaryColor={primaryColor}
+          />
 
-      <DestinationsSection
-        destinations={followUp.destinations}
-        primaryColor={primaryColor}
-      />
+          <CapturePoliciesSection
+            policies={followUp.capture_policies}
+            primaryColor={primaryColor}
+          />
 
-      <HowToEditCallout primaryColor={primaryColor} />
+          <RulesSection
+            rules={followUp.rules}
+            contactMethods={followUp.contact_methods}
+            capturePolicies={followUp.capture_policies}
+            primaryColor={primaryColor}
+          />
+
+          <DestinationsSection
+            destinations={followUp.destinations}
+            primaryColor={primaryColor}
+          />
+
+          <HowToEditCallout primaryColor={primaryColor} />
+        </>
+      )}
     </div>
   );
 }
