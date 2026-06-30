@@ -21,8 +21,12 @@ test("parseAuthFlow rejects anything else", () => {
   assert.equal(parseAuthFlow("signup; flow=login"), null);
 });
 
-test("decideAuthFlow: flow=login + existing user → allow", () => {
-  const decision = decideAuthFlow({ flow: "login", existingUser: true });
+test("decideAuthFlow: flow=login + existing user with tenant → allow", () => {
+  const decision = decideAuthFlow({
+    flow: "login",
+    existingUser: true,
+    hasTenantMembership: true,
+  });
   assert.deepEqual(decision, { kind: "allow", reason: "login-existing" });
 });
 
@@ -34,6 +38,62 @@ test("decideAuthFlow: flow=login + no account → deny + redirect", () => {
     assert.equal(decision.reason, "login-no-account");
   }
 });
+
+// CON-239: tenantless existing user with no staff flag → deny.
+// Otherwise we'd silently shove them into onboarding via NextAuth's
+// newUser redirect, which is exactly the foot-gun CON-237 closed.
+test(
+  "decideAuthFlow: flow=login + existing user, no tenant, not staff → deny",
+  () => {
+    const decision = decideAuthFlow({
+      flow: "login",
+      existingUser: true,
+      hasTenantMembership: false,
+      isPlatformStaff: false,
+    });
+    assert.equal(decision.kind, "deny");
+    if (decision.kind === "deny") {
+      assert.equal(decision.reason, "login-no-account");
+    }
+  },
+);
+
+// CON-239: platform staff can log in even without a tenant membership.
+// The dashboard then routes them to /platform-admin (see
+// `resolveDashboardLandingRedirect`).
+test(
+  "decideAuthFlow: flow=login + platform staff, no tenant → allow (staff)",
+  () => {
+    const decision = decideAuthFlow({
+      flow: "login",
+      existingUser: true,
+      hasTenantMembership: false,
+      isPlatformStaff: true,
+    });
+    assert.equal(decision.kind, "allow");
+    if (decision.kind === "allow") {
+      assert.equal(decision.reason, "login-platform-staff");
+    }
+  },
+);
+
+// CON-239: platform staff who also belong to a tenant get the normal
+// existing-user branch so the tenant dashboard renders by default.
+test(
+  "decideAuthFlow: flow=login + platform staff WITH tenant → allow (existing)",
+  () => {
+    const decision = decideAuthFlow({
+      flow: "login",
+      existingUser: true,
+      hasTenantMembership: true,
+      isPlatformStaff: true,
+    });
+    assert.deepEqual(decision, {
+      kind: "allow",
+      reason: "login-existing",
+    });
+  },
+);
 
 test("decideAuthFlow: flow=signup + new user → allow (will provision)", () => {
   const decision = decideAuthFlow({ flow: "signup", existingUser: false });
@@ -57,7 +117,11 @@ test("decideAuthFlow: missing flow cookie defaults to login (safe)", () => {
   const newUser = decideAuthFlow({ flow: null, existingUser: false });
   assert.equal(newUser.kind, "deny");
 
-  const existing = decideAuthFlow({ flow: null, existingUser: true });
+  const existing = decideAuthFlow({
+    flow: null,
+    existingUser: true,
+    hasTenantMembership: true,
+  });
   assert.equal(existing.kind, "allow");
 });
 

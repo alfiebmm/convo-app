@@ -9,6 +9,7 @@ import {
   type TenantDetail,
   type TenantTab,
 } from "@/lib/platform-admin/tenants-query";
+import { startImpersonationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -184,6 +185,29 @@ function ProfileTab({ detail }: { detail: TenantDetail }) {
                 See Danger zone
               </Link>
             </div>
+          </div>
+          <div className="md:col-span-2">
+            <div className="text-xs font-semibold uppercase text-zinc-500">
+              Impersonate
+            </div>
+            <p className="mt-1 text-sm text-zinc-600">
+              View the tenant dashboard as staff. Logged to the admin audit
+              trail. Session expires after 60 minutes.
+            </p>
+            <form
+              action={async () => {
+                "use server";
+                await startImpersonationAction(tenant.id);
+              }}
+              className="mt-2"
+            >
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 rounded-md bg-[#FF6B2C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#E85A1E]"
+              >
+                Impersonate this tenant
+              </button>
+            </form>
           </div>
         </div>
 

@@ -10,6 +10,7 @@ import {
 import { TenantSwitcher } from "./tenant-switcher";
 import { UserMenu } from "./user-menu";
 import { WelcomeBackToast } from "./welcome-back-toast";
+import { ImpersonationBanner } from "./impersonation-banner";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: "📊" },
@@ -76,6 +77,11 @@ export default async function DashboardLayout({
 
       {/* Main content */}
       <main className="flex-1 bg-slate-50">
+        {/* CON-239: impersonation banner sits above the topbar so it
+            is unmistakably visible on every dashboard page. */}
+        <Suspense fallback={null}>
+          <ImpersonationBanner />
+        </Suspense>
         <div className="h-16 border-b border-slate-200 bg-white flex items-center px-8">
           <div className="ml-auto flex items-center gap-4">
             {userTenants.length > 1 ? (

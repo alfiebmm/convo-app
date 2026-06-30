@@ -8,6 +8,24 @@ import { auth } from "./auth";
 import { db } from "./db";
 import { users, tenantMembers, tenants } from "./db/schema";
 import { eq, and } from "drizzle-orm";
+import {
+  impersonationCookieName,
+  verifyImpersonationCookie,
+} from "./platform-admin/impersonation";
+
+/**
+ * CON-239 — if a valid impersonation cookie is set AND the current
+ * session belongs to that staff user, return the impersonated tenant
+ * id so tenant-scoped queries see the right rows.
+ */
+async function getImpersonatedTenantIdForUser(userId: string) {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(impersonationCookieName)?.value;
+  const payload = await verifyImpersonationCookie(raw);
+  if (!payload) return null;
+  if (payload.staffUserId !== userId) return null;
+  return payload.tenantId;
+}
 
 /**
  * Get the authenticated user from the session.
@@ -34,7 +52,13 @@ export async function getCurrentTenant() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const activeTenantId = await getActiveTenantIdForUser(user.id);
+  // CON-239: impersonation cookie wins when present + valid + bound
+  // to this user. Falls back to the user's own membership.
+  const impersonatedTenantId = user.isPlatformStaff
+    ? await getImpersonatedTenantIdForUser(user.id)
+    : null;
+  const activeTenantId =
+    impersonatedTenantId ?? (await getActiveTenantIdForUser(user.id));
   if (!activeTenantId) return null;
 
   const [tenant] = await db

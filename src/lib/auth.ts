@@ -19,13 +19,14 @@ import Google from "next-auth/providers/google";
 import Nodemailer from "next-auth/providers/nodemailer";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { cookies } from "next/headers";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
   accounts,
   sessions,
   verificationTokens,
+  tenantMembers,
 } from "./db/schema";
 import {
   AUTH_FLOW_COOKIE,
@@ -123,14 +124,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const flow = parseAuthFlow(cookieStore.get(AUTH_FLOW_COOKIE)?.value);
 
       const [existing] = await db
-        .select({ id: users.id })
+        .select({
+          id: users.id,
+          isPlatformStaff: users.isPlatformStaff,
+        })
         .from(users)
         .where(eq(users.email, email))
         .limit(1);
 
+      // CON-239: platform staff can log in without a tenant membership.
+      // We need to know both (a) does the user exist and (b) do they
+      // have any tenant membership at all, so `decideAuthFlow` can
+      // route tenantless staff into `/platform-admin` rather than
+      // bouncing them to `/login?error=no_account`.
+      let hasTenantMembership = false;
+      if (existing) {
+        const [membership] = await db
+          .select({ exists: sql<number>`1` })
+          .from(tenantMembers)
+          .where(eq(tenantMembers.userId, existing.id))
+          .limit(1);
+        hasTenantMembership = Boolean(membership);
+      }
+
       const decision = decideAuthFlow({
         flow,
         existingUser: Boolean(existing),
+        hasTenantMembership,
+        isPlatformStaff: Boolean(existing?.isPlatformStaff),
       });
 
       // Hand the decision to the redirect callback. We always clear the
