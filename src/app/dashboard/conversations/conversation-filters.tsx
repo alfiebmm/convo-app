@@ -81,6 +81,10 @@ function OptionSelect({
   );
 }
 
+function shouldRenderFilter(options: string[], value: string | undefined) {
+  return options.length > 0 || Boolean(value);
+}
+
 const caseTypeOptions = [
   { value: "", label: "Any type" },
   { value: "cx_support", label: "CX support" },
@@ -261,59 +265,71 @@ export function ConversationFilters({
           />
         </FilterShell>
 
-        <FilterShell label="Routing key">
-          <OptionSelect
-            value={filters.routing ?? ""}
-            options={options.routingKeys}
-            onChange={(next) => updateFilter("routing", next)}
-            anyLabel="Any routing key"
-          />
-        </FilterShell>
+        {shouldRenderFilter(options.routingKeys, filters.routing) ? (
+          <FilterShell label="Routing key">
+            <OptionSelect
+              value={filters.routing ?? ""}
+              options={options.routingKeys}
+              onChange={(next) => updateFilter("routing", next)}
+              anyLabel="Any routing key"
+            />
+          </FilterShell>
+        ) : null}
 
-        <FilterShell label="Matched rule">
-          <OptionSelect
-            value={filters.rule ?? ""}
-            options={options.ruleIds}
-            onChange={(next) => updateFilter("rule", next)}
-            anyLabel="Any rule"
-          />
-        </FilterShell>
+        {shouldRenderFilter(options.ruleIds, filters.rule) ? (
+          <FilterShell label="Matched rule">
+            <OptionSelect
+              value={filters.rule ?? ""}
+              options={options.ruleIds}
+              onChange={(next) => updateFilter("rule", next)}
+              anyLabel="Any rule"
+            />
+          </FilterShell>
+        ) : null}
 
-        <FilterShell label="Persona">
-          <OptionSelect
-            value={filters.persona ?? ""}
-            options={options.personas}
-            onChange={(next) => updateFilter("persona", next)}
-            anyLabel="Any persona"
-          />
-        </FilterShell>
+        {shouldRenderFilter(options.personas, filters.persona) ? (
+          <FilterShell label="Persona">
+            <OptionSelect
+              value={filters.persona ?? ""}
+              options={options.personas}
+              onChange={(next) => updateFilter("persona", next)}
+              anyLabel="Any persona"
+            />
+          </FilterShell>
+        ) : null}
 
-        <FilterShell label="Marketplace side">
-          <OptionSelect
-            value={filters["mkt-side"] ?? ""}
-            options={options.marketplaceSides}
-            onChange={(next) => updateFilter("mkt-side", next)}
-            anyLabel="Any side"
-          />
-        </FilterShell>
+        {shouldRenderFilter(options.marketplaceSides, filters["mkt-side"]) ? (
+          <FilterShell label="Marketplace side">
+            <OptionSelect
+              value={filters["mkt-side"] ?? ""}
+              options={options.marketplaceSides}
+              onChange={(next) => updateFilter("mkt-side", next)}
+              anyLabel="Any side"
+            />
+          </FilterShell>
+        ) : null}
 
-        <FilterShell label="Topic">
-          <OptionSelect
-            value={filters.topic ?? ""}
-            options={options.topics}
-            onChange={(next) => updateFilter("topic", next)}
-            anyLabel="Any topic"
-          />
-        </FilterShell>
+        {shouldRenderFilter(options.topics, filters.topic) ? (
+          <FilterShell label="Topic">
+            <OptionSelect
+              value={filters.topic ?? ""}
+              options={options.topics}
+              onChange={(next) => updateFilter("topic", next)}
+              anyLabel="Any topic"
+            />
+          </FilterShell>
+        ) : null}
 
-        <FilterShell label="Connector destination">
-          <OptionSelect
-            value={filters.dest ?? ""}
-            options={options.connectorDestinations}
-            onChange={(next) => updateFilter("dest", next)}
-            anyLabel="Any destination"
-          />
-        </FilterShell>
+        {shouldRenderFilter(options.connectorDestinations, filters.dest) ? (
+          <FilterShell label="Connector destination">
+            <OptionSelect
+              value={filters.dest ?? ""}
+              options={options.connectorDestinations}
+              onChange={(next) => updateFilter("dest", next)}
+              anyLabel="Any destination"
+            />
+          </FilterShell>
+        ) : null}
 
         <FilterShell label="Delivery state">
           <select
