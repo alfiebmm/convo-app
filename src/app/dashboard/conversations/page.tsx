@@ -14,6 +14,7 @@ import {
 import {
   getCaseDetailById,
   listCasesByTenantWithActivity,
+  listConversationFilterOptions,
   type CaseStatus,
   type ListCasesWithActivityFilters,
 } from "@/lib/cases";
@@ -79,11 +80,11 @@ async function ConversationsPageImpl({
   }
   const activeFilters = parseConversationFilters(urlParams);
   const selectedCaseId = typeof params.case === "string" ? params.case : undefined;
-  const convoData = await listCasesByTenantWithActivity(
-    tenant.id,
-    toCaseListFilters(activeFilters)
-  );
-  const tenantUsers = await listTenantUsersForCurrentUser(tenant.id);
+  const [convoData, filterOptions, tenantUsers] = await Promise.all([
+    listCasesByTenantWithActivity(tenant.id, toCaseListFilters(activeFilters)),
+    listConversationFilterOptions(tenant.id),
+    listTenantUsersForCurrentUser(tenant.id),
+  ]);
   const selectedCaseDetail = selectedCaseId
     ? await getCaseDetailById(tenant.id, selectedCaseId)
     : null;
@@ -98,7 +99,7 @@ async function ConversationsPageImpl({
           </p>
         </div>
         <Suspense>
-          <ConversationFilters />
+          <ConversationFilters options={filterOptions} />
         </Suspense>
       </div>
 

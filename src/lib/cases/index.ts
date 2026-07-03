@@ -539,6 +539,41 @@ export async function listCasesByTenantWithActivity(
 }
 
 // ---------------------------------------------------------------------------
+// listConversationFilterOptions
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the distinct values a tenant has ever seen for the columns
+ * that back the Conversations page filter dropdowns. Consumed by the
+ * `/dashboard/conversations` page to swap free-text inputs for
+ * `<select>` menus so tenants can only pick values that will actually
+ * match a case (Bug 1, 3 Jul 2026 — Cam).
+ *
+ * Cheap: 6 small SELECT DISTINCT queries in parallel, tenant-scoped,
+ * capped at 200 options per field by default (raise via
+ * `limitPerField`). Returns empty arrays for a tenant with no cases.
+ *
+ * @throws Error when `tenantId` is missing or not a valid UUID.
+ */
+export async function listConversationFilterOptions(
+  tenantId: string,
+  opts?: CaseHelperOptions & { limitPerField?: number },
+): Promise<{
+  routingKeys: string[];
+  ruleIds: string[];
+  personas: string[];
+  marketplaceSides: string[];
+  topics: string[];
+  connectorDestinations: string[];
+}> {
+  assertTenantId(tenantId);
+  return resolveStore(opts).listConversationFilterOptions(
+    tenantId,
+    opts?.limitPerField,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // getCaseById
 // ---------------------------------------------------------------------------
 
