@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CTASection, MarketingLayout } from "@/components/marketing/marketing-layout";
-import { homePricingTiers } from "@/lib/marketing/content";
+import { homePricingBonuses, homePricingTiers } from "@/lib/marketing/content";
 import {
   faqJsonLd,
   marketingMetadata,
@@ -30,52 +30,7 @@ const comparisons = [
   ["Onboarding", "Self-serve", "Demo-led", "Dedicated"],
 ] as const;
 
-const planBonuses: Record<
-  string,
-  {
-    totalValue: string;
-    items: Array<{
-      label: string;
-      value: string;
-    }>;
-  }
-> = {
-  Starter: {
-    totalValue: "$2,000",
-    items: [
-      {
-        label: "Free site SEO audit",
-        value: "Valued up to $2,000",
-      },
-    ],
-  },
-  Growth: {
-    totalValue: "$4,500",
-    items: [
-      {
-        label: "Free site SEO audit",
-        value: "Valued up to $2,000",
-      },
-      {
-        label: "5 free keyword-optimised blog posts",
-        value: "Usually $2,500",
-      },
-    ],
-  },
-  Scale: {
-    totalValue: "$7,000",
-    items: [
-      {
-        label: "Free site SEO audit",
-        value: "Valued up to $2,000",
-      },
-      {
-        label: "10 free keyword-optimised blog posts",
-        value: "Usually $5,000",
-      },
-    ],
-  },
-};
+const planBonuses = homePricingBonuses;
 
 const pricingFaqs = [
   {
