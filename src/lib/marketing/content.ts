@@ -338,6 +338,39 @@ export const homePricingTiers: ReadonlyArray<HomePricingTier> = [
   },
 ];
 
+export type LaunchBonusItem = {
+  label: string;
+  value: string;
+};
+
+export type LaunchBonus = {
+  totalValue: string;
+  items: ReadonlyArray<LaunchBonusItem>;
+};
+
+export const homePricingBonuses: Readonly<Record<string, LaunchBonus>> = {
+  Starter: {
+    totalValue: "$2,000",
+    items: [
+      { label: "Free site SEO audit", value: "Valued up to $2,000" },
+    ],
+  },
+  Growth: {
+    totalValue: "$4,500",
+    items: [
+      { label: "Free site SEO audit", value: "Valued up to $2,000" },
+      { label: "5 free keyword-optimised blog posts", value: "Usually $2,500" },
+    ],
+  },
+  Scale: {
+    totalValue: "$7,000",
+    items: [
+      { label: "Free site SEO audit", value: "Valued up to $2,000" },
+      { label: "10 free keyword-optimised blog posts", value: "Usually $5,000" },
+    ],
+  },
+};
+
 export const integrations = [
   { name: "WordPress", mark: "W", tone: "bg-blue-50 text-blue-700 border-blue-100" },
   { name: "Shopify", mark: "S", tone: "bg-emerald-50 text-emerald-700 border-emerald-100" },

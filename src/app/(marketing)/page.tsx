@@ -13,6 +13,7 @@ import {
 import {
   homeFaqs,
   homeFeatureCards,
+  homePricingBonuses,
   homePricingTiers,
   homeWorkflowSteps,
   integrations,
@@ -236,8 +237,24 @@ export default function HomePage() {
           title="Annual-first. Three tiers. Pays for itself with one new customer."
           description="Premium pricing because the value gap to a $19 autopilot is wide. One new patient, one new client, one new house sale, and Convo has paid for the year."
         >
+          <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+            <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-bold uppercase tracking-[0.1em] text-white">
+              Limited-time bonus
+            </span>
+            <span className="font-semibold text-emerald-900">
+              Every plan includes a free site SEO audit. Growth and Scale add keyword-optimised blog posts.
+            </span>
+            <Link
+              href="/pricing"
+              className="ml-auto font-semibold text-emerald-900 underline decoration-emerald-400 underline-offset-4 hover:decoration-emerald-700"
+            >
+              See launch bonuses →
+            </Link>
+          </div>
           <div className="grid gap-5 md:grid-cols-3">
-            {homePricingTiers.map((tier) => (
+            {homePricingTiers.map((tier) => {
+              const bonus = homePricingBonuses[tier.name];
+              return (
               <article
                 key={tier.name}
                 className={`flex flex-col rounded-2xl border bg-white p-6 shadow-sm ${
@@ -268,6 +285,32 @@ export default function HomePage() {
                 <p className="mt-1 text-xs text-zinc-400">
                   Or ${tier.monthly} billed monthly
                 </p>
+                {bonus ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[0.7rem] font-bold uppercase tracking-[0.1em] text-emerald-700">
+                        Launch bonus
+                      </span>
+                      <span className="text-xs font-semibold text-emerald-800">
+                        {bonus.totalValue} value
+                      </span>
+                    </div>
+                    <ul className="mt-2 space-y-1 text-xs text-emerald-900">
+                      {bonus.items.map((item) => (
+                        <li key={item.label} className="flex items-start gap-1.5">
+                          <span className="mt-0.5 text-emerald-600">+</span>
+                          <span>
+                            <span className="font-semibold">{item.label}</span>
+                            <span className="text-emerald-700">
+                              {" · "}
+                              {item.value}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <ul className="mt-5 space-y-2 text-sm text-zinc-700">
                   {tier.points.map((point) => (
                     <li key={point} className="flex gap-2">
@@ -287,7 +330,8 @@ export default function HomePage() {
                   {tier.cta}
                 </Link>
               </article>
-            ))}
+              );
+            })}
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-500">
             <p>
