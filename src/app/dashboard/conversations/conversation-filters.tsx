@@ -19,6 +19,68 @@ const SELECT_CLASS =
 const INPUT_CLASS =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400";
 
+/**
+ * Distinct-value option lists surfaced to the filter dropdowns. Populated
+ * from `listConversationFilterOptions` on the server and passed in from
+ * the page (Bug 1, 3 Jul 2026 — Cam).
+ */
+export interface ConversationFilterOptions {
+  routingKeys: string[];
+  ruleIds: string[];
+  personas: string[];
+  marketplaceSides: string[];
+  topics: string[];
+  connectorDestinations: string[];
+}
+
+const EMPTY_OPTIONS: ConversationFilterOptions = {
+  routingKeys: [],
+  ruleIds: [],
+  personas: [],
+  marketplaceSides: [],
+  topics: [],
+  connectorDestinations: [],
+};
+
+/**
+ * Render a labelled `<select>` populated from a distinct-value list.
+ * Includes a stable "Any…" default option. When the currently-selected
+ * filter value exists but is NOT in the option list (e.g. an old URL
+ * pointing at a value that no longer matches any case), we still render
+ * it so the user isn't silently robbed of the filter — it appears with
+ * a "(no matches)" suffix.
+ */
+function OptionSelect({
+  value,
+  options,
+  onChange,
+  anyLabel,
+}: {
+  value: string;
+  options: string[];
+  onChange: (next: string) => void;
+  anyLabel: string;
+}) {
+  const hasStaleValue = value.length > 0 && !options.includes(value);
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={SELECT_CLASS}
+    >
+      <option value="">{anyLabel}</option>
+      {hasStaleValue ? (
+        <option value={value}>{`${value} (no matches)`}</option>
+      ) : null}
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 const caseTypeOptions = [
   { value: "", label: "Any type" },
   { value: "cx_support", label: "CX support" },
@@ -77,7 +139,11 @@ function FilterShell({
   );
 }
 
-export function ConversationFilters() {
+export function ConversationFilters({
+  options = EMPTY_OPTIONS,
+}: {
+  options?: ConversationFilterOptions;
+} = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const search = searchParams.toString();
@@ -196,56 +262,56 @@ export function ConversationFilters() {
         </FilterShell>
 
         <FilterShell label="Routing key">
-          <input
+          <OptionSelect
             value={filters.routing ?? ""}
-            onChange={(event) => updateFilter("routing", event.target.value)}
-            className={INPUT_CLASS}
-            placeholder="Any routing key"
+            options={options.routingKeys}
+            onChange={(next) => updateFilter("routing", next)}
+            anyLabel="Any routing key"
           />
         </FilterShell>
 
         <FilterShell label="Matched rule">
-          <input
+          <OptionSelect
             value={filters.rule ?? ""}
-            onChange={(event) => updateFilter("rule", event.target.value)}
-            className={INPUT_CLASS}
-            placeholder="Any rule"
+            options={options.ruleIds}
+            onChange={(next) => updateFilter("rule", next)}
+            anyLabel="Any rule"
           />
         </FilterShell>
 
         <FilterShell label="Persona">
-          <input
+          <OptionSelect
             value={filters.persona ?? ""}
-            onChange={(event) => updateFilter("persona", event.target.value)}
-            className={INPUT_CLASS}
-            placeholder="Any persona"
+            options={options.personas}
+            onChange={(next) => updateFilter("persona", next)}
+            anyLabel="Any persona"
           />
         </FilterShell>
 
         <FilterShell label="Marketplace side">
-          <input
+          <OptionSelect
             value={filters["mkt-side"] ?? ""}
-            onChange={(event) => updateFilter("mkt-side", event.target.value)}
-            className={INPUT_CLASS}
-            placeholder="Any side"
+            options={options.marketplaceSides}
+            onChange={(next) => updateFilter("mkt-side", next)}
+            anyLabel="Any side"
           />
         </FilterShell>
 
         <FilterShell label="Topic">
-          <input
+          <OptionSelect
             value={filters.topic ?? ""}
-            onChange={(event) => updateFilter("topic", event.target.value)}
-            className={INPUT_CLASS}
-            placeholder="Any topic"
+            options={options.topics}
+            onChange={(next) => updateFilter("topic", next)}
+            anyLabel="Any topic"
           />
         </FilterShell>
 
         <FilterShell label="Connector destination">
-          <input
+          <OptionSelect
             value={filters.dest ?? ""}
-            onChange={(event) => updateFilter("dest", event.target.value)}
-            className={INPUT_CLASS}
-            placeholder="Any destination"
+            options={options.connectorDestinations}
+            onChange={(next) => updateFilter("dest", next)}
+            anyLabel="Any destination"
           />
         </FilterShell>
 

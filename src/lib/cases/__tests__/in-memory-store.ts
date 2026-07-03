@@ -240,6 +240,42 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         .map((r) => ({ ...r }));
     },
 
+    async listConversationFilterOptions(tenantId, limitPerField = 200) {
+      const cap = Math.max(1, Math.min(limitPerField, 1000));
+      const dedupSort = (values: (string | null | undefined)[]): string[] => {
+        const set = new Set<string>();
+        for (const v of values) {
+          if (typeof v === "string" && v.length > 0) set.add(v);
+        }
+        return Array.from(set).sort().slice(0, cap);
+      };
+
+      const tenantCases = cases.filter((c) => c.tenantId === tenantId);
+      const tenantAttrs = attributes.filter((a) => a.tenantId === tenantId);
+      const tenantOutbox = connectors.filter((r) => r.tenantId === tenantId);
+
+      const attrValues = (key: string): string[] => {
+        const values: string[] = [];
+        for (const attr of tenantAttrs) {
+          if (attr.key !== key) continue;
+          const v = (attr.value as { value?: unknown } | null)?.value;
+          if (typeof v === "string" && v.length > 0) values.push(v);
+        }
+        return values;
+      };
+
+      return {
+        routingKeys: dedupSort(tenantCases.map((c) => c.routingKey)),
+        ruleIds: dedupSort(tenantCases.map((c) => c.ruleId)),
+        personas: dedupSort(attrValues("persona")),
+        marketplaceSides: dedupSort(attrValues("marketplace_side")),
+        topics: dedupSort(attrValues("topic")),
+        connectorDestinations: dedupSort(
+          tenantOutbox.map((r) => r.destinationId),
+        ),
+      };
+    },
+
     async getCaseDetailById(
       tenantId,
       caseId

@@ -128,6 +128,15 @@ export interface CaseListItemRow extends CaseRow {
   latestConnectorStatus: string | null;
 }
 
+export interface ConversationFilterOptionsRow {
+  routingKeys: string[];
+  ruleIds: string[];
+  personas: string[];
+  marketplaceSides: string[];
+  topics: string[];
+  connectorDestinations: string[];
+}
+
 export interface CaseDetailMessageRow {
   id: string;
   role: string;
@@ -284,6 +293,21 @@ export interface CasesStore {
     tenantId: string,
     filters: ListCasesWithActivityFilters
   ): Promise<CaseListItemRow[]>;
+
+  /**
+   * Return the distinct values a tenant has ever seen for the columns
+   * that back the Conversations page filter dropdowns. Used to swap
+   * free-text inputs for `<select>` menus so tenants can only pick a
+   * value that will actually match a case (Bug 1, 3 Jul 2026 — Cam).
+   *
+   * Each list is deduped, sorted alphabetically ascending, and capped so
+   * a busy tenant doesn't ship 10,000-option `<select>`s to the browser.
+   * Empty strings and NULLs are filtered out on the SQL side.
+   */
+  listConversationFilterOptions(
+    tenantId: string,
+    limitPerField?: number,
+  ): Promise<ConversationFilterOptionsRow>;
 
   getCaseDetailById(
     tenantId: string,
@@ -629,6 +653,92 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
           (row.latest_connector_destination_id as string | null) ?? null,
         latestConnectorStatus: (row.latest_connector_status as string | null) ?? null,
       }));
+    },
+
+    async listConversationFilterOptions(tenantId, limitPerField = 200) {
+      // Distinct-value queries for the filter dropdowns on
+      // /dashboard/conversations. Each query is tenant-scoped and
+      // filters out NULLs / empty strings on the SQL side. Sorted
+      // alphabetically ascending for a stable UI order.
+      //
+      // We intentionally split into 6 small queries instead of one
+      // giant UNION so a slow-index on one column doesn't drag the
+      // others. The whole helper still runs in parallel below.
+      const cap = Math.max(1, Math.min(limitPerField, 1000));
+
+      const routingKeysP = db.execute(sql`
+        SELECT DISTINCT ${followUpCases.routingKey} AS v
+          FROM ${followUpCases}
+         WHERE ${followUpCases.tenantId} = ${tenantId}
+           AND ${followUpCases.routingKey} IS NOT NULL
+           AND ${followUpCases.routingKey} <> ''
+         ORDER BY v ASC
+         LIMIT ${cap}
+      `);
+      const ruleIdsP = db.execute(sql`
+        SELECT DISTINCT ${followUpCases.ruleId} AS v
+          FROM ${followUpCases}
+         WHERE ${followUpCases.tenantId} = ${tenantId}
+           AND ${followUpCases.ruleId} IS NOT NULL
+           AND ${followUpCases.ruleId} <> ''
+         ORDER BY v ASC
+         LIMIT ${cap}
+      `);
+      // persona / marketplace_side / topic all live in the
+      // follow_up_case_attributes table under a per-key row. Each
+      // attribute value is a `{ "value": string }` jsonb payload.
+      const attributeDistinct = (key: string) => sql`
+        SELECT DISTINCT ${followUpCaseAttributes.value}->>'value' AS v
+          FROM ${followUpCaseAttributes}
+         WHERE ${followUpCaseAttributes.tenantId} = ${tenantId}
+           AND ${followUpCaseAttributes.key} = ${key}
+           AND ${followUpCaseAttributes.value}->>'value' IS NOT NULL
+           AND ${followUpCaseAttributes.value}->>'value' <> ''
+         ORDER BY v ASC
+         LIMIT ${cap}
+      `;
+      const personasP = db.execute(attributeDistinct("persona"));
+      const marketplaceSidesP = db.execute(attributeDistinct("marketplace_side"));
+      const topicsP = db.execute(attributeDistinct("topic"));
+      const destinationsP = db.execute(sql`
+        SELECT DISTINCT ${connectorOutbox.destinationId} AS v
+          FROM ${connectorOutbox}
+         WHERE ${connectorOutbox.tenantId} = ${tenantId}
+           AND ${connectorOutbox.destinationId} IS NOT NULL
+           AND ${connectorOutbox.destinationId} <> ''
+         ORDER BY v ASC
+         LIMIT ${cap}
+      `);
+
+      const [
+        routingKeysR,
+        ruleIdsR,
+        personasR,
+        marketplaceSidesR,
+        topicsR,
+        destinationsR,
+      ] = await Promise.all([
+        routingKeysP,
+        ruleIdsP,
+        personasP,
+        marketplaceSidesP,
+        topicsP,
+        destinationsP,
+      ]);
+
+      const toStrings = (r: { rows: Record<string, unknown>[] }): string[] =>
+        r.rows
+          .map((row) => (typeof row.v === "string" ? row.v : null))
+          .filter((v): v is string => !!v);
+
+      return {
+        routingKeys: toStrings(routingKeysR),
+        ruleIds: toStrings(ruleIdsR),
+        personas: toStrings(personasR),
+        marketplaceSides: toStrings(marketplaceSidesR),
+        topics: toStrings(topicsR),
+        connectorDestinations: toStrings(destinationsR),
+      };
     },
 
     async getCaseDetailById(tenantId, caseId) {
