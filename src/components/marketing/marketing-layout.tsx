@@ -141,8 +141,8 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </div>
-        <nav className="border-t border-zinc-200/70 px-5 py-2 md:hidden">
-          <div className="flex gap-5 overflow-x-auto whitespace-nowrap text-sm font-medium text-zinc-600">
+        <nav className="overflow-hidden border-t border-zinc-200/70 px-5 py-2 md:hidden">
+          <div className="flex max-w-full gap-5 overflow-x-auto whitespace-nowrap text-sm font-medium text-zinc-600">
             {navItems.map((item) => (
               <Link
                 key={item.href}
