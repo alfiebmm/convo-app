@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { test } from "node:test";
+import assert from "node:assert/strict";
 
 import {
   handleCaptureSubmit,
@@ -60,92 +61,86 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
   return JSON.parse(await res.text()) as Record<string, unknown>;
 }
 
-describe("POST /api/cases/:caseId/capture integration", () => {
-  it("submits an identifier-grade email, upserts a tenant-scoped contact, audits with a hash, and links the case", async () => {
-    const { casesStore, contactsStore, deps, kase } = await seedHarness();
+test("POST /api/cases/:caseId/capture integration submits an identifier-grade email, upserts a tenant-scoped contact, audits with a hash, and links the case", async () => {
+  const { casesStore, contactsStore, deps, kase } = await seedHarness();
 
-    const res = await handleCaptureSubmit(
-      mockReq({
-        tenantId: TENANT_ID,
-        visitorId: VISITOR_ID,
-        conversationId: CONVERSATION_ID,
-        action: "submit",
-        field: "email",
-        value: "test@example.com",
-      }),
-      kase.id,
-      deps,
-    );
-
-    expect(res.status).toBe(200);
-    expect(await readJson(res)).toMatchObject({
-      ok: true,
+  const res = await handleCaptureSubmit(
+    mockReq({
+      tenantId: TENANT_ID,
+      visitorId: VISITOR_ID,
+      conversationId: CONVERSATION_ID,
       action: "submit",
       field: "email",
-      contact_created: true,
-    });
+      value: "test@example.com",
+    }),
+    kase.id,
+    deps,
+  );
 
-    const contactsDump = contactsStore._dump();
-    expect(contactsDump.contacts).toHaveLength(1);
-    expect(contactsDump.contacts[0]).toMatchObject({
+  assert.equal(res.status, 200);
+  const body = await readJson(res);
+  assert.equal(body.ok, true);
+  assert.equal(body.action, "submit");
+  assert.equal(body.field, "email");
+  assert.equal(body.contact_created, true);
+
+  const contactsDump = contactsStore._dump();
+  assert.equal(contactsDump.contacts.length, 1);
+  assert.equal(contactsDump.contacts[0].tenantId, TENANT_ID);
+  assert.equal(contactsDump.contacts[0].emailNormalised, "test@example.com");
+
+  const casesDump = casesStore._dump();
+  assert.deepEqual(
+    casesDump.events.map((event) => event.eventType),
+    ["consent_granted", "capture_field_submitted"],
+  );
+  const submittedEvent = casesDump.events.find(
+    (event) => event.eventType === "capture_field_submitted",
+  );
+  assert.ok(submittedEvent);
+  assert.equal(submittedEvent.payload.field, "email");
+  assert.equal(
+    submittedEvent.payload.value_hash,
+    hashIdentifierForAudit("test@example.com"),
+  );
+  assert.equal(submittedEvent.payload.contact_id, contactsDump.contacts[0].id);
+  assert.equal(submittedEvent.payload.contact_created, true);
+  assert.equal(
+    JSON.stringify(submittedEvent.payload).includes("test@example.com"),
+    false,
+  );
+
+  const updatedCase = casesDump.cases.find((row) => row.id === kase.id);
+  assert.equal(updatedCase?.contactId, contactsDump.contacts[0].id);
+});
+
+test("POST /api/cases/:caseId/capture integration records a decline audit event without creating a contact or setting case.contactId", async () => {
+  const { casesStore, contactsStore, deps, kase } = await seedHarness();
+
+  const res = await handleCaptureSubmit(
+    mockReq({
       tenantId: TENANT_ID,
-      emailNormalised: "test@example.com",
-    });
-
-    const casesDump = casesStore._dump();
-    expect(casesDump.events.map((event) => event.eventType)).toEqual([
-      "consent_granted",
-      "capture_field_submitted",
-    ]);
-    const submittedEvent = casesDump.events.find(
-      (event) => event.eventType === "capture_field_submitted",
-    );
-    expect(submittedEvent?.payload).toMatchObject({
-      field: "email",
-      value_hash: hashIdentifierForAudit("test@example.com"),
-      contact_id: contactsDump.contacts[0].id,
-      contact_created: true,
-    });
-    expect(JSON.stringify(submittedEvent?.payload)).not.toContain(
-      "test@example.com",
-    );
-
-    const updatedCase = casesDump.cases.find((row) => row.id === kase.id);
-    expect(updatedCase?.contactId).toBe(contactsDump.contacts[0].id);
-  });
-
-  it("records a decline audit event without creating a contact or setting case.contactId", async () => {
-    const { casesStore, contactsStore, deps, kase } = await seedHarness();
-
-    const res = await handleCaptureSubmit(
-      mockReq({
-        tenantId: TENANT_ID,
-        visitorId: VISITOR_ID,
-        conversationId: CONVERSATION_ID,
-        action: "decline",
-      }),
-      kase.id,
-      deps,
-    );
-
-    expect(res.status).toBe(200);
-    expect(await readJson(res)).toEqual({ ok: true, action: "decline" });
-
-    expect(contactsStore._dump().contacts).toHaveLength(0);
-
-    const casesDump = casesStore._dump();
-    expect(casesDump.events).toHaveLength(1);
-    expect(casesDump.events[0]).toMatchObject({
-      tenantId: TENANT_ID,
-      caseId: kase.id,
+      visitorId: VISITOR_ID,
       conversationId: CONVERSATION_ID,
-      actorType: "visitor",
-      actorId: VISITOR_ID,
-      eventType: "consent_declined",
-      payload: {},
-    });
-    expect(casesDump.cases.find((row) => row.id === kase.id)?.contactId).toBe(
-      null,
-    );
-  });
+      action: "decline",
+    }),
+    kase.id,
+    deps,
+  );
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await readJson(res), { ok: true, action: "decline" });
+
+  assert.equal(contactsStore._dump().contacts.length, 0);
+
+  const casesDump = casesStore._dump();
+  assert.equal(casesDump.events.length, 1);
+  assert.equal(casesDump.events[0].tenantId, TENANT_ID);
+  assert.equal(casesDump.events[0].caseId, kase.id);
+  assert.equal(casesDump.events[0].conversationId, CONVERSATION_ID);
+  assert.equal(casesDump.events[0].actorType, "visitor");
+  assert.equal(casesDump.events[0].actorId, VISITOR_ID);
+  assert.equal(casesDump.events[0].eventType, "consent_declined");
+  assert.deepEqual(casesDump.events[0].payload, {});
+  assert.equal(casesDump.cases.find((row) => row.id === kase.id)?.contactId, null);
 });
