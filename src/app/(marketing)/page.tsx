@@ -251,7 +251,7 @@ export default function HomePage() {
               See launch bonuses →
             </Link>
           </div>
-          <div className="grid gap-5 md:grid-cols-3">
+          <div className="grid items-stretch gap-5 md:grid-cols-3">
             {homePricingTiers.map((tier) => {
               const bonus = homePricingBonuses[tier.name];
               return (
@@ -319,16 +319,18 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <Link
-                  href={tier.href}
-                  className={`mt-6 inline-flex justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                    tier.featured
-                      ? "bg-[var(--convo-orange)] text-white hover:bg-[var(--convo-orange-hover)]"
-                      : "border border-zinc-300 text-zinc-950 hover:border-zinc-500"
-                  }`}
-                >
-                  {tier.cta}
-                </Link>
+                <div className="mt-auto pt-6">
+                  <Link
+                    href={tier.href}
+                    className={`inline-flex w-full justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                      tier.featured
+                        ? "bg-[var(--convo-orange)] text-white hover:bg-[var(--convo-orange-hover)]"
+                        : "border border-zinc-300 text-zinc-950 hover:border-zinc-500"
+                    }`}
+                  >
+                    {tier.cta}
+                  </Link>
+                </div>
               </article>
               );
             })}
