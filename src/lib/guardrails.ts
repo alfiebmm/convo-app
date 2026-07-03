@@ -241,6 +241,68 @@ function readForumConfigVoice(settings: Record<string, unknown>): string {
 }
 
 /**
+ * Detect whether the tenant has a live follow-up program with at least
+ * one capture policy configured. When true, the chat prompt should NOT
+ * volunteer alternate contact routes (contact page, support email) in
+ * response to "can I speak to someone?" — the follow-up card and
+ * capture form handle routing, and the model referring the visitor to
+ * a separate contact channel produces a conflicting UX (Bug 4, 3 Jul 2026).
+ *
+ * Exported for tests. Pure.
+ */
+export function hasActiveCapturePolicy(
+  settings: Record<string, unknown>,
+): boolean {
+  const forumConfig = settings.forumConfig as Record<string, unknown> | undefined;
+  if (!forumConfig) return false;
+  const followUp = forumConfig.follow_up as Record<string, unknown> | undefined;
+  if (!followUp || followUp.enabled === false) return false;
+  const policies = followUp.capture_policies;
+  if (!Array.isArray(policies) || policies.length === 0) return false;
+  const rules = followUp.rules;
+  if (!Array.isArray(rules) || rules.length === 0) return false;
+  // At least one enabled rule that surfaces an offer/capture UI.
+  return rules.some((rule) => {
+    if (!rule || typeof rule !== "object") return false;
+    const r = rule as Record<string, unknown>;
+    if (r.enabled === false) return false;
+    return (
+      r.action === "offer_follow_up" ||
+      r.action === "capture_details_then_flag" ||
+      r.action === "immediate_escalation"
+    );
+  });
+}
+
+/**
+ * Prompt fragment that instructs the model to stop volunteering the
+ * tenant's support/contact-page path when the follow-up program is
+ * armed. The follow-up card + capture form fires post-response; if the
+ * model has already told the visitor "reach out via the contact page"
+ * they now see two conflicting handoffs. Ships as a HARD RULE section
+ * appended after GLOBAL_RULES + the tenant persona so it wins ties.
+ *
+ * Exported so tests can assert the exact copy.
+ */
+export const FOLLOW_UP_ACTIVE_RULE = `# HARD RULE — Follow-up is armed
+
+A follow-up card + contact-capture form fires automatically when this
+visitor's message signals genuine intent to speak to the team. Because
+of that:
+
+- Do NOT tell the visitor to email support, use the contact page, or
+  reach out through another channel. The follow-up card is the routing.
+- Do NOT recite tenant contact details (support email, phone, contact
+  URL) even if they exist in your knowledge. The card handles this.
+- Answer the visitor's actual question first, briefly. If they've asked
+  to speak to someone, acknowledge that briefly (one sentence) and stop
+  — the follow-up card will appear on its own.
+- Never mention the follow-up card or capture form in prose. It renders
+  outside your reply.
+
+`;
+
+/**
  * Build a complete system prompt from tenant guardrails config
  * and conversation context.
  *
@@ -261,7 +323,11 @@ export function buildSystemPrompt(
   const settings = tenant.settings ?? {};
   const guardrails = settings.guardrails as GuardrailsConfig | undefined;
   const forumVoice = readForumConfigVoice(settings);
-  const globalPrompt = GLOBAL_RULES + buildLinkingFooter(tenant.domain);
+  const followUpRule = hasActiveCapturePolicy(settings)
+    ? FOLLOW_UP_ACTIVE_RULE
+    : "";
+  const globalPrompt =
+    GLOBAL_RULES + buildLinkingFooter(tenant.domain) + followUpRule;
 
   // No guardrails audiences configured — use forumConfig voice, widget
   // config, legacy persona, or default. Allowed topics still merge from

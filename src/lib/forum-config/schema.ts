@@ -216,21 +216,78 @@ export const followUpConnectorEnum = z.enum(["webhook", "csv_export"]);
  * keys (e.g. `"abn"`, `"property_size"`). The registry is documented so
  * downstream UI surfaces can offer pickers for known keys without blocking
  * tenants who need bespoke fields.
+ *
+ * Canonicalisation (3 Jul 2026): historically, if a tenant wrote `"Name"`
+ * or `"Phone"` instead of `"name"` / `"mobile"` the field passed as a
+ * string-branch custom key. That meant the widget rendered a generic label
+ * ("Name?" instead of "What's your name?") and the server never promoted
+ * email/mobile submissions to the `contacts` table. We now transparently
+ * canonicalise common aliases at parse time so both the widget UI and the
+ * contact-upsert path bind correctly. Only known aliases are rewritten;
+ * genuine custom keys ("abn", "property_size") pass through untouched.
  */
-export const fieldKeySchema = z.union([
-  z.enum([
-    "name",
-    "email",
-    "mobile",
-    "postcode",
-    "suburb",
-    "state",
-    "company",
-    "free_text_note",
-    "preferred_contact_method",
+const CANONICAL_FIELD_KEY_ALIASES: Record<string, string> = {
+  name: "name",
+  "full name": "name",
+  "full_name": "name",
+  fullname: "name",
+  email: "email",
+  "email address": "email",
+  emailaddress: "email",
+  mobile: "mobile",
+  phone: "mobile",
+  "phone number": "mobile",
+  "mobile number": "mobile",
+  "phonenumber": "mobile",
+  postcode: "postcode",
+  "post code": "postcode",
+  postal: "postcode",
+  "postal code": "postcode",
+  zip: "postcode",
+  "zip code": "postcode",
+  suburb: "suburb",
+  city: "suburb",
+  town: "suburb",
+  state: "state",
+  region: "state",
+  company: "company",
+  business: "company",
+  organisation: "company",
+  organization: "company",
+  free_text_note: "free_text_note",
+  note: "free_text_note",
+  notes: "free_text_note",
+  message: "free_text_note",
+  "free text note": "free_text_note",
+  preferred_contact_method: "preferred_contact_method",
+  "preferred contact": "preferred_contact_method",
+  "preferred contact method": "preferred_contact_method",
+};
+
+function canonicaliseFieldKey(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw;
+  const lower = raw.trim().toLowerCase();
+  const mapped = CANONICAL_FIELD_KEY_ALIASES[lower];
+  return mapped ?? raw;
+}
+
+export const fieldKeySchema = z.preprocess(
+  canonicaliseFieldKey,
+  z.union([
+    z.enum([
+      "name",
+      "email",
+      "mobile",
+      "postcode",
+      "suburb",
+      "state",
+      "company",
+      "free_text_note",
+      "preferred_contact_method",
+    ]),
+    z.string().min(1),
   ]),
-  z.string().min(1),
-]);
+);
 
 // ---- Contact methods ----
 
@@ -265,7 +322,13 @@ export const contactMethodSchema = z
 // ---- Capture policies ----
 
 export const capturePolicySchema = z.object({
-  id: z.string().min(1),
+  // Trim whitespace so a stray trailing space in the DB (e.g. "cx_inquiry ")
+  // doesn't fork identity between the policy id and the rule reference.
+  // Seen on AgPages, 3 Jul 2026.
+  id: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim() : v),
+    z.string().min(1),
+  ),
   case_type: caseTypeEnum,
   required_fields: z.array(fieldKeySchema).default([]),
   optional_fields: z.array(fieldKeySchema).default([]),
@@ -329,8 +392,15 @@ export const followUpRuleSchema = z
     confidence_threshold: z.number().min(0).max(1).default(0.7),
     when: ruleConditionSchema.prefault({}),
     action: actionModeEnum,
-    capture_policy_id: z.string().optional(),
-    contact_method_id: z.string().optional(),
+    // Trim whitespace so `"cx_inquiry "` matches the trimmed policy id.
+    capture_policy_id: z.preprocess(
+      (v) => (typeof v === "string" ? v.trim() : v),
+      z.string().optional(),
+    ),
+    contact_method_id: z.preprocess(
+      (v) => (typeof v === "string" ? v.trim() : v),
+      z.string().optional(),
+    ),
     routing_key: z.string().min(1),
     // CON-169 (Epic D1): visitor-facing title surfaced to the widget when
     // `action: "offer_follow_up"` triggers. Optional — widget falls back to

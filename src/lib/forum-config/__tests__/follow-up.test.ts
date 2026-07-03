@@ -808,6 +808,72 @@ test("CON-94 qualifying_questions still parses identical to baseline", () => {
 });
 
 // ============================================================
+// 3 Jul 2026 — field-key canonicalisation & id trim
+// ============================================================
+
+test("capturePolicySchema canonicalises common field-key aliases", () => {
+  const r = capturePolicySchema.parse({
+    id: "lead_basic",
+    case_type: "lead",
+    required_fields: ["Name", "Email", "Phone"],
+    optional_fields: ["Postcode", "Company"],
+    privacy_notice: "x",
+    privacy_policy_url: "https://example.com/privacy",
+  });
+  assert(
+    JSON.stringify(r.required_fields) === JSON.stringify(["name", "email", "mobile"]),
+    `required_fields should canonicalise to [name,email,mobile], got ${JSON.stringify(r.required_fields)}`,
+  );
+  assert(
+    JSON.stringify(r.optional_fields) === JSON.stringify(["postcode", "company"]),
+    `optional_fields should canonicalise to [postcode,company], got ${JSON.stringify(r.optional_fields)}`,
+  );
+});
+
+test("capturePolicySchema leaves genuine custom field keys untouched", () => {
+  const r = capturePolicySchema.parse({
+    id: "custom_policy",
+    case_type: "lead",
+    required_fields: ["abn", "property_size", "name"],
+    optional_fields: [],
+    privacy_notice: "x",
+    privacy_policy_url: "https://example.com/privacy",
+  });
+  assert(
+    JSON.stringify(r.required_fields) === JSON.stringify(["abn", "property_size", "name"]),
+    `custom keys should pass through, got ${JSON.stringify(r.required_fields)}`,
+  );
+});
+
+test("capturePolicySchema trims whitespace from id", () => {
+  const r = capturePolicySchema.parse({
+    id: "  cx_inquiry  ",
+    case_type: "cx_support",
+    required_fields: ["name"],
+    optional_fields: [],
+    privacy_notice: "x",
+    privacy_policy_url: "https://example.com/privacy",
+  });
+  assert(r.id === "cx_inquiry", `id should be trimmed, got '${r.id}'`);
+});
+
+test("followUpRuleSchema trims whitespace from capture_policy_id", () => {
+  const r = followUpRuleSchema.parse({
+    id: "support_issue",
+    name: "Support",
+    case_type: "cx_support",
+    action: "offer_follow_up",
+    capture_policy_id: "  cx_inquiry ",
+    routing_key: "support",
+    when: {},
+  });
+  assert(
+    r.capture_policy_id === "cx_inquiry",
+    `capture_policy_id should be trimmed, got '${r.capture_policy_id}'`,
+  );
+});
+
+// ============================================================
 // Summary
 // ============================================================
 

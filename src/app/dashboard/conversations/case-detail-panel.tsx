@@ -59,6 +59,90 @@ function formatJsonValue(value: unknown) {
   return JSON.stringify(value);
 }
 
+/**
+ * Render a case-event payload as a short, tenant-friendly summary
+ * instead of dumping raw classifier JSON into the activity timeline.
+ * Payloads may contain internal fields (rule_conditions, classifier
+ * versions, spam_risk, matched_attributes) that should never leak to
+ * the dashboard — tenants see the outcome, staff have server logs for
+ * the internals. Returns `null` when there is nothing tenant-friendly
+ * to show; callers should render an empty state in that case.
+ */
+function formatEventPayloadSummary(
+  eventType: string,
+  payload: Record<string, unknown>,
+): string | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const readString = (key: string): string | null => {
+    const v = payload[key];
+    return typeof v === "string" && v.length > 0 ? v : null;
+  };
+  const readNumber = (key: string): number | null => {
+    const v = payload[key];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+
+  switch (eventType) {
+    case "rule_fired": {
+      const rule = readString("rule_id");
+      const confidence = readNumber("confidence");
+      const pct =
+        confidence !== null ? ` (${Math.round(confidence * 100)}% confidence)` : "";
+      return rule ? `Rule ${formatLabel(rule)} matched${pct}.` : null;
+    }
+    case "case_resolved": {
+      const rule = readString("rule_id");
+      return rule
+        ? `Case resolved by rule ${formatLabel(rule)}.`
+        : "Case resolved.";
+    }
+    case "offer_shown":
+    case "offer_accepted":
+      return null;
+    case "offer_declined":
+      return "Visitor declined the follow-up offer.";
+    case "privacy_notice_shown":
+      return "Privacy notice shown to visitor.";
+    case "consent_granted": {
+      const field = readString("field");
+      return field ? `Visitor consented to share ${formatLabel(field)}.` : null;
+    }
+    case "consent_declined":
+      return "Visitor declined the capture.";
+    case "capture_field_submitted": {
+      const field = readString("field");
+      return field
+        ? `Visitor provided ${formatLabel(field)}.`
+        : "Visitor submitted a contact detail.";
+    }
+    case "capture_field_skipped": {
+      const field = readString("field");
+      return field ? `Visitor skipped ${formatLabel(field)}.` : null;
+    }
+    case "connector_delivery_attempt":
+    case "connector_delivery_success":
+    case "connector_delivery_failure": {
+      const connector = readString("connector") ?? readString("connector_type");
+      return connector ? `Delivery via ${formatLabel(connector)}.` : null;
+    }
+    case "assignment_changed": {
+      const assignee =
+        readString("assigned_to_name") ?? readString("assigned_to");
+      return assignee ? `Assigned to ${assignee}.` : "Assignment updated.";
+    }
+    case "status_changed": {
+      const status = readString("to") ?? readString("status");
+      return status ? `Status changed to ${formatLabel(status)}.` : null;
+    }
+    case "internal_note_added":
+    case "internal_note":
+      return null; // note body renders separately via getNoteBodyHtml
+    default:
+      return null;
+  }
+}
+
 function getNoteBodyHtml(payload: Record<string, unknown>) {
   const value = payload.body_html;
   return typeof value === "string" ? value : "";
@@ -333,7 +417,7 @@ export default function CaseDetailPanel({
           <Section title="Internal notes">
             {!hasNotes ? (
               <p className="text-sm text-slate-400">
-                No internal notes yet. Notes ship in CON-177.
+                No internal notes yet.
               </p>
             ) : (
               <ul className="space-y-2 text-sm text-slate-700">
@@ -393,11 +477,17 @@ export default function CaseDetailPanel({
                               {formatDateTime(event.createdAt)}
                             </span>
                           </div>
-                          {Object.keys(event.payload).length > 0 && (
-                            <p className="mt-1 break-words text-xs text-slate-500">
-                              {formatJsonValue(event.payload)}
-                            </p>
-                          )}
+                          {(() => {
+                            const summary = formatEventPayloadSummary(
+                              event.eventType,
+                              event.payload,
+                            );
+                            return summary ? (
+                              <p className="mt-1 break-words text-xs text-slate-500">
+                                {summary}
+                              </p>
+                            ) : null;
+                          })()}
                         </li>
                       ))}
                     </ol>
