@@ -1419,7 +1419,31 @@ class ConvoWidget {
   ): Promise<void> {
     this.isStreaming = true;
     this.sendBtn.disabled = true;
+    // CON-247: also disable the input element so an in-flight stream
+    // can't be interleaved with keyboard-triggered send() calls that
+    // sneak past the `isStreaming` guard when the button is stuck.
+    this.inputEl.disabled = true;
     this.showTyping();
+
+    // CON-247: hard network watchdog. If the response body stalls (no
+    // new chunk for STREAM_STALL_MS OR the whole stream exceeds
+    // STREAM_HARD_MS), abort the fetch so `finally` fires and we clear
+    // the disabled state instead of leaving the visitor with a stuck
+    // send button. Values are generous to avoid false aborts on slow
+    // networks — this is a safety net, not a UX gate.
+    const STREAM_STALL_MS = 60_000;
+    const STREAM_HARD_MS = 180_000;
+    const abortController = new AbortController();
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+    const resetStallTimer = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => abortController.abort(), STREAM_STALL_MS);
+    };
+    const hardTimer = setTimeout(
+      () => abortController.abort(),
+      STREAM_HARD_MS,
+    );
+    resetStallTimer();
 
     // CON-92 — streaming UX state.
     //  • tokenQueue: tokens received from the server, awaiting paced render.
@@ -1489,6 +1513,7 @@ class ConvoWidget {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
+        signal: abortController.signal,
       });
 
       if (!res.ok || !res.body) {
@@ -1502,6 +1527,8 @@ class ConvoWidget {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        // CON-247: fresh chunk arrived, reset the stall watchdog.
+        resetStallTimer();
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -1580,8 +1607,17 @@ class ConvoWidget {
         "Sorry, I'm having trouble connecting. Please try again in a moment."
       );
     } finally {
+      // CON-247: always tear down watchdogs so an abort doesn't fire
+      // after a healthy completion and confuse the next turn.
+      if (stallTimer) clearTimeout(stallTimer);
+      clearTimeout(hardTimer);
       this.isStreaming = false;
       this.sendBtn.disabled = false;
+      this.inputEl.disabled = false;
+      // If typing indicator somehow survived the drain loop (e.g. abort
+      // fired before the first token), hide it here so we don't leave
+      // the visitor staring at three dots.
+      this.hideTyping();
     }
   }
 
