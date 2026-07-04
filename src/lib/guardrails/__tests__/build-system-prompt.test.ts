@@ -359,6 +359,67 @@ test("audience-mode tenant with legacy deflect rules: section appears and is non
   assert(prompt.includes("Deflect these topics"), "deflect rendered");
 });
 
+// CON-245 site-context footer
+
+test("CON-245: site-context footer present when tenant has name + domain (no audiences)", () => {
+  const prompt = buildSystemPrompt(tenant({}), {});
+  assert(prompt.includes("## Site context"), "site context header");
+  assert(
+    prompt.includes(`browsing your site (${DOMAIN})`),
+    "domain injected",
+  );
+  assert(
+    prompt.includes(`go to ${NAME}`),
+    "tenant name injected in guardrail phrasing",
+  );
+});
+
+test("CON-245: site-context footer present with audiences branch too", () => {
+  const prompt = buildSystemPrompt(
+    tenant({
+      guardrails: {
+        audiences: [
+          {
+            id: "default",
+            name: "Visitor",
+            urlPatterns: ["*"],
+            persona: "Helpful.",
+            ctaMessages: [],
+            ctaAfterTurns: 5,
+          },
+        ],
+        topicBoundaries: { deflect: [], hardBlock: [] },
+        conversationLimits: { maxTurnsBeforeCTA: 5, idleTimeoutMinutes: 10 },
+      },
+    }),
+    { pageUrl: "https://acme.com.au/" },
+  );
+  assert(prompt.includes("## Site context"), "footer applies in audiences branch");
+  assert(prompt.includes(`(${DOMAIN})`), "domain injected");
+});
+
+test("CON-245: site-context footer omitted when tenant.domain is missing", () => {
+  const prompt = buildSystemPrompt(
+    { name: NAME, domain: null, settings: {} },
+    {},
+  );
+  assert(
+    !prompt.includes("## Site context"),
+    "no site-context footer without domain",
+  );
+});
+
+test("CON-245: site-context footer omitted when tenant.name is missing", () => {
+  const prompt = buildSystemPrompt(
+    { name: "", domain: DOMAIN, settings: {} },
+    {},
+  );
+  assert(
+    !prompt.includes("## Site context"),
+    "no site-context footer without name",
+  );
+});
+
 // ─── Summary ─────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed`);

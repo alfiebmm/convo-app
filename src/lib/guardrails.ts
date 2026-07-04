@@ -174,6 +174,24 @@ You may draw on factual knowledge from any source, but do not cite or link to th
 `;
 }
 
+// CON-245: site-context hard-rule. The model previously had no cue that
+// the visitor was already on the tenant's site — leading to replies like
+// "you can visit the AgPages site" to a visitor on www.agpages.com.au.
+// Returns empty string when tenantName or tenantDomain is unknown so
+// behaviour stays additive. Cam repro 4 Jul 2026 on case 05c0db2c.
+export function buildOnSiteFooter(
+  tenantName?: string | null,
+  tenantDomain?: string | null,
+): string {
+  const name = (tenantName ?? "").trim();
+  const domain = (tenantDomain ?? "").trim();
+  if (!name || !domain) return "";
+  return `## Site context
+The visitor is currently browsing your site (${domain}). Do not tell them to "visit our site", "go to ${name}", or "visit the ${name} website" — they're already here. Do not tell them to "navigate to" the site or "head over to" it as if it were somewhere else. When directing them to more information, point to specific pages or sections (e.g. "the harvesting services section", "our pricing page") using the linking rule above; never refer to the site as a destination they need to reach.
+
+`;
+}
+
 /**
  * Collect allowed topics from the two live sources and dedupe.
  *
@@ -327,7 +345,10 @@ export function buildSystemPrompt(
     ? FOLLOW_UP_ACTIVE_RULE
     : "";
   const globalPrompt =
-    GLOBAL_RULES + buildLinkingFooter(tenant.domain) + followUpRule;
+    GLOBAL_RULES +
+    buildLinkingFooter(tenant.domain) +
+    buildOnSiteFooter(tenant.name, tenant.domain) +
+    followUpRule;
 
   // No guardrails audiences configured — use forumConfig voice, widget
   // config, legacy persona, or default. Allowed topics still merge from
