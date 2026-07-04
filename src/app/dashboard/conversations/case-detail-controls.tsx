@@ -29,6 +29,7 @@ export function CasePanelCloseButton() {
   function close() {
     const next = new URLSearchParams(searchParams.toString());
     next.delete("case");
+    next.delete("conversation");
     const query = next.toString();
     router.push(`/dashboard/conversations${query ? `?${query}` : ""}`);
   }

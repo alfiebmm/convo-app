@@ -2,6 +2,7 @@ export const CONVERSATION_FILTER_STORAGE_KEY = "convo:conversations:filters";
 
 export const CONVERSATION_FILTER_PARAM_KEYS = [
   "case-type",
+  "has-case",
   "follow-up",
   "status",
   "priority",
@@ -22,6 +23,7 @@ export type ConversationFilterParamKey =
 
 export interface ConversationFilterState {
   "case-type"?: string;
+  "has-case"?: string;
   "follow-up"?: string;
   status?: string;
   priority?: string;
@@ -44,6 +46,7 @@ export function parseConversationFilters(
   for (const key of CONVERSATION_FILTER_PARAM_KEYS) {
     const raw = params.get(key);
     if (!raw) continue;
+    if (key === "has-case" && raw !== "yes" && raw !== "no") continue;
     if (key === "follow-up" && raw !== "true" && raw !== "false") continue;
     filters[key] = raw.trim();
   }
@@ -83,6 +86,9 @@ export function parseStoredConversationFilters(
     for (const key of CONVERSATION_FILTER_PARAM_KEYS) {
       const value = source[key];
       if (typeof value === "string" && value.trim()) {
+        if (key === "has-case" && value !== "yes" && value !== "no") {
+          continue;
+        }
         if (key === "follow-up" && value !== "true" && value !== "false") {
           continue;
         }

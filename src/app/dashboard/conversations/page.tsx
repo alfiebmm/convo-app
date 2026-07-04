@@ -1,5 +1,6 @@
 import ConversationList from "./conversation-list";
 import CaseDetailPanel from "./case-detail-panel";
+import ConversationDetailPanel from "./conversation-detail-panel";
 import { ConversationFilters } from "./conversation-filters";
 import { Suspense } from "react";
 import {
@@ -13,7 +14,8 @@ import {
 } from "./filter-state";
 import {
   getCaseDetailById,
-  listCasesByTenantWithActivity,
+  getConversationDetailById,
+  listConversationsByTenantWithOptionalCase,
   listConversationFilterOptions,
   type CaseStatus,
   type ListCasesWithActivityFilters,
@@ -41,6 +43,10 @@ function toCaseListFilters(
 ): ListCasesWithActivityFilters {
   return {
     caseType: filters["case-type"],
+    hasCase:
+      filters["has-case"] === undefined
+        ? undefined
+        : filters["has-case"] === "yes",
     followUpRequired:
       filters["follow-up"] === undefined
         ? undefined
@@ -80,14 +86,23 @@ async function ConversationsPageImpl({
   }
   const activeFilters = parseConversationFilters(urlParams);
   const selectedCaseId = typeof params.case === "string" ? params.case : undefined;
+  const selectedConversationId =
+    typeof params.conversation === "string" ? params.conversation : undefined;
   const [convoData, filterOptions, tenantUsers] = await Promise.all([
-    listCasesByTenantWithActivity(tenant.id, toCaseListFilters(activeFilters)),
+    listConversationsByTenantWithOptionalCase(
+      tenant.id,
+      toCaseListFilters(activeFilters)
+    ),
     listConversationFilterOptions(tenant.id),
     listTenantUsersForCurrentUser(tenant.id),
   ]);
   const selectedCaseDetail = selectedCaseId
     ? await getCaseDetailById(tenant.id, selectedCaseId)
     : null;
+  const selectedConversationDetail =
+    !selectedCaseDetail && selectedConversationId
+      ? await getConversationDetailById(tenant.id, selectedConversationId)
+      : null;
 
   return (
     <div>
@@ -114,11 +129,15 @@ async function ConversationsPageImpl({
         <ConversationList
           conversations={convoData}
           selectedCaseId={selectedCaseDetail?.case.id}
+          selectedConversationId={selectedConversationDetail?.conversation.id}
         />
       )}
 
       {selectedCaseDetail && (
         <CaseDetailPanel detail={selectedCaseDetail} tenantUsers={tenantUsers} />
+      )}
+      {selectedConversationDetail && (
+        <ConversationDetailPanel detail={selectedConversationDetail} />
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { CaseListItemRow } from "@/lib/cases";
+import type { CaseListItemRow, ConversationListItemRow } from "@/lib/cases";
 
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-green-100 text-green-800",
@@ -42,8 +42,10 @@ function truncateReason(reason: string | null) {
   return reason.length > 80 ? `${reason.slice(0, 80).trimEnd()}...` : reason;
 }
 
-function isFollowUpRequired(conversation: CaseListItemRow) {
-  return conversation.status !== "resolved" && conversation.status !== "dismissed";
+function isFollowUpRequired(kase: CaseListItemRow | null) {
+  return Boolean(
+    kase && kase.status !== "resolved" && kase.status !== "dismissed"
+  );
 }
 
 function Pill({
@@ -75,12 +77,27 @@ function ConnectorState({ conversation }: { conversation: CaseListItemRow }) {
   );
 }
 
+export function getConversationListItemDisplay(row: ConversationListItemRow) {
+  const kase = row.case;
+  return {
+    followUpRequired: isFollowUpRequired(kase),
+    caseType: kase ? formatLabel(kase.caseType) : "—",
+    status: kase ? formatLabel(kase.status) : "No case",
+    priority: kase ? formatLabel(kase.priority) : "—",
+    reason: kase ? truncateReason(kase.reason) : "Conversation only",
+    contact: kase ? kase.contactDisplayName ?? "No contact" : "—",
+    owner: kase ? kase.assignedOwnerName ?? "Unassigned" : "—",
+  };
+}
+
 export default function ConversationList({
   conversations,
   selectedCaseId,
+  selectedConversationId,
 }: {
-  conversations: CaseListItemRow[];
+  conversations: ConversationListItemRow[];
   selectedCaseId?: string;
+  selectedConversationId?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -88,86 +105,113 @@ export default function ConversationList({
   function openCase(caseId: string) {
     const next = new URLSearchParams(searchParams.toString());
     next.set("case", caseId);
+    next.delete("conversation");
     router.push(`/dashboard/conversations?${next.toString()}`);
+  }
+
+  function openConversation(conversationId: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("conversation", conversationId);
+    next.delete("case");
+    router.push(`/dashboard/conversations?${next.toString()}`);
+  }
+
+  function openRow(row: ConversationListItemRow) {
+    if (row.case) {
+      openCase(row.case.id);
+      return;
+    }
+    openConversation(row.conversation.id);
   }
 
   return (
     <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="divide-y divide-slate-100 md:hidden">
-        {conversations.map((conversation) => (
-          <button
-            key={conversation.id}
-            type="button"
-            onClick={() => openCase(conversation.id)}
-            className={`block w-full px-4 py-4 text-left transition-colors hover:bg-slate-50 ${
-              selectedCaseId === conversation.id ? "bg-slate-50" : ""
-            }`}
-          >
+        {conversations.map((row) => {
+          const kase = row.case;
+          const display = getConversationListItemDisplay(row);
+          const isSelected = kase
+            ? selectedCaseId === kase.id
+            : selectedConversationId === row.conversation.id;
+          return (
+            <button
+              key={row.conversation.id}
+              type="button"
+              onClick={() => openRow(row)}
+              className={`block w-full px-4 py-4 text-left transition-colors hover:bg-slate-50 ${
+                isSelected ? "bg-slate-50" : ""
+              }`}
+            >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Pill
                     className={
-                      isFollowUpRequired(conversation)
+                      display.followUpRequired
                         ? "bg-amber-100 text-amber-800"
                         : "bg-slate-100 text-slate-700"
                     }
                   >
-                    {isFollowUpRequired(conversation)
-                      ? "Required"
-                      : "No follow-up"}
+                    {display.followUpRequired ? "Required" : "No follow-up"}
                   </Pill>
                   <Pill
                     className={
-                      STATUS_COLORS[conversation.status] ??
-                      "bg-slate-100 text-slate-800"
+                      kase
+                        ? STATUS_COLORS[kase.status] ??
+                          "bg-slate-100 text-slate-800"
+                        : "bg-slate-100 text-slate-700"
                     }
                   >
-                    {formatLabel(conversation.status)}
+                    {display.status}
                   </Pill>
                 </div>
                 <p className="mt-2 text-sm font-medium text-slate-900">
-                  {conversation.contactDisplayName ?? "No contact"}
+                  {display.contact}
                 </p>
                 <p
                   className="mt-1 text-sm text-slate-500"
-                  title={conversation.reason ?? undefined}
+                  title={kase?.reason ?? undefined}
                 >
-                  {truncateReason(conversation.reason)}
+                  {display.reason}
                 </p>
               </div>
               <span className="shrink-0 text-right text-xs text-slate-400">
-                {formatDate(conversation.lastActivityAt)}
+                {formatDate(row.conversation.lastActivityAt)}
               </span>
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
               <div>
                 <dt className="text-slate-400">Type</dt>
                 <dd className="mt-0.5 text-slate-700">
-                  {formatLabel(conversation.caseType)}
+                  {display.caseType}
                 </dd>
               </div>
               <div>
                 <dt className="text-slate-400">Priority</dt>
                 <dd className="mt-0.5 text-slate-700">
-                  {formatLabel(conversation.priority)}
+                  {display.priority}
                 </dd>
               </div>
               <div>
                 <dt className="text-slate-400">Owner</dt>
                 <dd className="mt-0.5 text-slate-700">
-                  {conversation.assignedOwnerName ?? "Unassigned"}
+                  {display.owner}
                 </dd>
               </div>
               <div>
                 <dt className="text-slate-400">Connector</dt>
                 <dd className="mt-0.5">
-                  <ConnectorState conversation={conversation} />
+                  {kase ? (
+                    <ConnectorState conversation={kase} />
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
                 </dd>
               </div>
             </dl>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       <div className="hidden overflow-x-auto md:block">
@@ -186,74 +230,87 @@ export default function ConversationList({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {conversations.map((conversation) => (
-              <tr
-                key={conversation.id}
-                onClick={() => openCase(conversation.id)}
-                className={`cursor-pointer transition-colors hover:bg-slate-50 ${
-                  selectedCaseId === conversation.id ? "bg-slate-50" : ""
-                }`}
-              >
+            {conversations.map((row) => {
+              const kase = row.case;
+              const display = getConversationListItemDisplay(row);
+              const isSelected = kase
+                ? selectedCaseId === kase.id
+                : selectedConversationId === row.conversation.id;
+              return (
+                <tr
+                  key={row.conversation.id}
+                  onClick={() => openRow(row)}
+                  className={`cursor-pointer transition-colors hover:bg-slate-50 ${
+                    isSelected ? "bg-slate-50" : ""
+                  }`}
+                >
                 <td className="px-4 py-3">
                   <Pill
                     className={
-                      isFollowUpRequired(conversation)
+                      display.followUpRequired
                         ? "bg-amber-100 text-amber-800"
                         : "bg-slate-100 text-slate-700"
                     }
                   >
-                    {isFollowUpRequired(conversation) ? "Yes" : "No"}
+                    {display.followUpRequired ? "Yes" : "No"}
                   </Pill>
                 </td>
                 <td className="px-4 py-3 text-slate-700">
-                  {formatLabel(conversation.caseType)}
+                  {display.caseType}
                 </td>
                 <td className="px-4 py-3">
-                  {conversation.priority ? (
+                  {kase?.priority ? (
                     <Pill
                       className={
-                        PRIORITY_COLORS[conversation.priority] ??
+                        PRIORITY_COLORS[kase.priority] ??
                         "bg-slate-100 text-slate-700"
                       }
                     >
-                      {formatLabel(conversation.priority)}
+                      {formatLabel(kase.priority)}
                     </Pill>
                   ) : (
-                    <span className="text-slate-400">None</span>
+                    <span className="text-slate-400">—</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   <Pill
                     className={
-                      STATUS_COLORS[conversation.status] ??
-                      "bg-slate-100 text-slate-800"
+                      kase
+                        ? STATUS_COLORS[kase.status] ??
+                          "bg-slate-100 text-slate-800"
+                        : "bg-slate-100 text-slate-700"
                     }
                   >
-                    {formatLabel(conversation.status)}
+                    {display.status}
                   </Pill>
                 </td>
                 <td
                   className="max-w-[260px] px-4 py-3 text-slate-600"
-                  title={conversation.reason ?? undefined}
+                  title={kase?.reason ?? undefined}
                 >
                   <span className="block truncate">
-                    {truncateReason(conversation.reason)}
+                    {display.reason}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-700">
-                  {conversation.contactDisplayName ?? "No contact"}
+                  {display.contact}
                 </td>
                 <td className="px-4 py-3 text-slate-700">
-                  {conversation.assignedOwnerName ?? "Unassigned"}
+                  {display.owner}
                 </td>
                 <td className="px-4 py-3">
-                  <ConnectorState conversation={conversation} />
+                  {kase ? (
+                    <ConnectorState conversation={kase} />
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
-                  {formatDate(conversation.lastActivityAt)}
+                  {formatDate(row.conversation.lastActivityAt)}
                 </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

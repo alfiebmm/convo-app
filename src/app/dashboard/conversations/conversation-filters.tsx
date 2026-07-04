@@ -91,6 +91,12 @@ const caseTypeOptions = [
   { value: "lead", label: "Lead" },
 ];
 
+const hasCaseOptions = [
+  { value: "", label: "Any" },
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
+
 const followUpOptions = [
   { value: "", label: "Any follow-up" },
   { value: "true", label: "Required" },
@@ -207,6 +213,20 @@ export function ConversationFilters({
             className={SELECT_CLASS}
           >
             {caseTypeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </FilterShell>
+
+        <FilterShell label="Has case">
+          <select
+            value={filters["has-case"] ?? ""}
+            onChange={(event) => updateFilter("has-case", event.target.value)}
+            className={SELECT_CLASS}
+          >
+            {hasCaseOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
