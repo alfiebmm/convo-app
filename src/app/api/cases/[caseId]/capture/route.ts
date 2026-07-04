@@ -50,7 +50,14 @@
  *           400 on bad input (the path field is surfaced);
  *           404 on unknown tenant/conversation/case or any scope mismatch.
  *
- * No CORS headers — widget is served same-origin from the app domain.
+ * CORS: widget is served from the app domain (`convoapp.com.au`) but
+ * embedded on tenant sites (e.g. `www.agpages.com.au`, `doggo.com.au`)
+ * so every widget → api call is cross-origin. We attach permissive CORS
+ * headers on both the OPTIONS preflight and the POST response so the
+ * browser will allow the request. Matches the pattern used by
+ * `/api/chat`, `/api/widget/*`, `/api/conversations/qualifying`, etc.
+ * (CON-246, 4 Jul 2026 — Cam caught this end-to-end in a real browser
+ * after curl-based smoke tests passed and hid the bug.)
  *
  * NB: We DO NOT log raw identifier values (email/phone/postcode) at the
  * route layer. Audit payloads stored in `follow_up_events` redact values
@@ -298,10 +305,16 @@ type ParsedBody = z.infer<typeof baseBodySchema>;
 // Response helpers
 // ---------------------------------------------------------------------------
 
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -586,6 +599,21 @@ async function postImpl(
 export const POST = withApiErrorLogging(postImpl, {
   route: "/api/cases/[caseId]/capture",
 });
+
+/**
+ * CORS preflight for cross-origin widget POSTs (CON-246).
+ *
+ * Without this, browsers block the actual POST because the response has
+ * no `Access-Control-Allow-*` headers, and the widget's fetch call
+ * throws — which the widget's catch block surfaces as
+ * "We couldn't save that just now, please try again."
+ */
+export function OPTIONS(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
+}
 
 // Suppress the unused-import warning for the contacts store dep that is
 // only exercised through the default dep wiring. esbuild/tsc keep the

@@ -77,10 +77,21 @@ const requestBodySchema = z.object({
 // Helpers
 // ---------------------------------------------------------------------------
 
+// CORS: the widget loads from `convoapp.com.au` but embeds on tenant
+// domains (e.g. www.agpages.com.au). Every widget → api POST is
+// cross-origin, so we mirror the permissive headers used by the other
+// widget endpoints. Without these, browsers block the preflight and
+// the widget's fetch throws. (CON-246, 4 Jul 2026.)
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -156,4 +167,12 @@ export async function handleCaseEvent(
 
 export async function POST(req: NextRequest) {
   return handleCaseEvent(req);
+}
+
+/** CORS preflight for cross-origin widget POSTs (CON-246). */
+export function OPTIONS(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
 }

@@ -13,6 +13,7 @@
 
 import {
   handleCaseEvent,
+  OPTIONS as CaseEventsOPTIONS,
   type CaseEventDeps,
 } from "../route";
 
@@ -255,6 +256,45 @@ async function runAll() {
     assertEq(res.status, 200, "status");
     const body = (await readJson(res)) as { ok?: boolean };
     assertEq(body.ok, true, "ok flag");
+  });
+
+  // CON-246: same cross-origin CORS fix as `/api/cases/[caseId]/capture`.
+  // Widget is served from convoapp.com.au and embeds on tenant domains;
+  // without CORS the browser blocks the POST.
+  await test("OPTIONS preflight returns 204 with wildcard CORS headers (CON-246)", async () => {
+    const res = CaseEventsOPTIONS();
+    assertEq(res.status, 204, "status");
+    assertEq(
+      res.headers.get("Access-Control-Allow-Origin"),
+      "*",
+      "Access-Control-Allow-Origin",
+    );
+    const methods = res.headers.get("Access-Control-Allow-Methods") ?? "";
+    assert(methods.includes("POST"), "methods includes POST");
+    assert(methods.includes("OPTIONS"), "methods includes OPTIONS");
+    assertEq(
+      res.headers.get("Access-Control-Allow-Headers"),
+      "Content-Type",
+      "Access-Control-Allow-Headers",
+    );
+  });
+
+  await test("POST response carries CORS headers so the browser accepts it (CON-246)", async () => {
+    const res = await handleCaseEvent(
+      mockReq({
+        tenantId: TENANT_A_ID,
+        visitorId: VISITOR_A_ID,
+        conversationId: CONVO_A_ID,
+        caseEventType: "offer_accepted",
+      }),
+      makeDeps(),
+    );
+    assertEq(res.status, 200, "status");
+    assertEq(
+      res.headers.get("Access-Control-Allow-Origin"),
+      "*",
+      "POST response has ACAO wildcard",
+    );
   });
 
   await test("valid offer_declined → 200 { ok: true }", async () => {
