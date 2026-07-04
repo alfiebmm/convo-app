@@ -27,6 +27,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   handleCaptureSubmit,
+  OPTIONS as CaptureOPTIONS,
   hashIdentifierForAudit,
   isIdentifierField,
   validateCaptureField,
@@ -729,6 +730,47 @@ async function runAll() {
   });
 
   // ----- Boundary -----
+
+  // CON-246: cross-origin CORS preflight support. Widget is served from
+  // convoapp.com.au and embeds on tenant domains; without CORS the
+  // browser blocks the POST and the widget surfaces "couldn't save".
+  await test("OPTIONS preflight returns 204 with wildcard CORS headers (CON-246)", async () => {
+    const res = CaptureOPTIONS();
+    assertEq(res.status, 204, "status");
+    assertEq(
+      res.headers.get("Access-Control-Allow-Origin"),
+      "*",
+      "Access-Control-Allow-Origin",
+    );
+    const methods = res.headers.get("Access-Control-Allow-Methods") ?? "";
+    assert(methods.includes("POST"), "methods includes POST");
+    assert(methods.includes("OPTIONS"), "methods includes OPTIONS");
+    assertEq(
+      res.headers.get("Access-Control-Allow-Headers"),
+      "Content-Type",
+      "Access-Control-Allow-Headers",
+    );
+  });
+
+  await test("POST response carries CORS headers so the browser accepts it (CON-246)", async () => {
+    const world = makeWorld();
+    const res = await handleCaptureSubmit(
+      mockReq({
+        tenantId: TENANT_A,
+        visitorId: VISITOR_A,
+        conversationId: CONVO_A,
+        action: "privacy_notice_shown",
+      }),
+      CASE_A,
+      makeDeps(world),
+    );
+    assertEq(res.status, 200, "status");
+    assertEq(
+      res.headers.get("Access-Control-Allow-Origin"),
+      "*",
+      "POST response has ACAO wildcard",
+    );
+  });
 
   await test("existing case.contactId is NOT overwritten on second submit", async () => {
     const world = makeWorld();
