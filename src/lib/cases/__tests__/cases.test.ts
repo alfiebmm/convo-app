@@ -28,6 +28,7 @@ import {
   getCaseDetailById,
   listCasesByTenant,
   listCasesByTenantWithActivity,
+  listConversationsByTenantWithOptionalCase,
   requeueOutboxRow,
   resolveCaseWithAudit,
   updateCaseStatus,
@@ -100,6 +101,9 @@ const TENANT_A = "a1111111-1111-4111-8111-111111111111";
 const TENANT_B = "b2222222-2222-4222-9222-222222222222";
 const CONVO_A = "cccccccc-cccc-4ccc-accc-cccccccccccc";
 const CONVO_B = "dddddddd-dddd-4ddd-addd-dddddddddddd";
+const CONVO_C = "11111111-3333-4333-8333-333333333333";
+const CONVO_D = "11111111-4444-4444-8444-444444444444";
+const CONVO_E = "11111111-5555-4555-8555-555555555555";
 const USER_X = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const OUTBOX_A = "77777777-7777-4777-8777-777777777777";
 
@@ -863,6 +867,69 @@ async function runAllTests() {
 
     assertEq(rows.length, 1, "combined filters return one row");
     assertEq(rows[0].id, included.id, "included case returned");
+  });
+
+  // -------------------------------------------------------------------------
+  // listConversationsByTenantWithOptionalCase — CON-244 conversations tab
+  // -------------------------------------------------------------------------
+
+  await test("listConversationsByTenantWithOptionalCase: default returns every tenant conversation and has-case filters split them", async () => {
+    const store = createInMemoryCasesStore();
+    const started = new Date("2026-07-01T00:00:00.000Z");
+    for (const [idx, id] of [CONVO_A, CONVO_B, CONVO_C, CONVO_D, CONVO_E].entries()) {
+      store._seedConversation({
+        id,
+        tenantId: TENANT_A,
+        startedAt: new Date(started.getTime() + idx * 60_000),
+      });
+    }
+    await createCase(
+      TENANT_A,
+      { conversationId: CONVO_A, caseType: "lead", priority: "high" },
+      { store }
+    );
+    await createCase(
+      TENANT_A,
+      { conversationId: CONVO_B, caseType: "cx_support", priority: "low" },
+      { store }
+    );
+
+    const allRows = await listConversationsByTenantWithOptionalCase(
+      TENANT_A,
+      {},
+      { store }
+    );
+    assertEq(allRows.length, 5, "default returns all five conversations");
+
+    const withCase = await listConversationsByTenantWithOptionalCase(
+      TENANT_A,
+      { hasCase: true },
+      { store }
+    );
+    assertEq(withCase.length, 2, "hasCase=true returns the two cased rows");
+    assert(
+      withCase.every((row) => row.case !== null),
+      "hasCase=true rows all include a case"
+    );
+
+    const withoutCase = await listConversationsByTenantWithOptionalCase(
+      TENANT_A,
+      { hasCase: false },
+      { store }
+    );
+    assertEq(withoutCase.length, 3, "hasCase=false returns the three no-case rows");
+    assert(
+      withoutCase.every((row) => row.case === null),
+      "hasCase=false rows all have null case"
+    );
+
+    const leadRows = await listConversationsByTenantWithOptionalCase(
+      TENANT_A,
+      { caseType: "lead" },
+      { store }
+    );
+    assertEq(leadRows.length, 1, "caseType=lead returns one row");
+    assertEq(leadRows[0].case?.caseType, "lead", "lead row has lead case data");
   });
 
   // -------------------------------------------------------------------------

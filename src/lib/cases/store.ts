@@ -97,6 +97,7 @@ export interface ListCasesFilters {
 export interface ListCasesWithActivityFilters {
   caseType?: string;
   followUpRequired?: boolean;
+  hasCase?: boolean;
   status?: CaseStatus;
   priority?: string;
   assignedTo?: string | null;
@@ -126,6 +127,21 @@ export interface CaseListItemRow extends CaseRow {
   latestConnectorType: string | null;
   latestConnectorDestinationId: string | null;
   latestConnectorStatus: string | null;
+}
+
+export interface ConversationListItemRow {
+  conversation: {
+    id: string;
+    tenantId: string;
+    status: string;
+    visitorId: string | null;
+    messageCount: number;
+    startedAt: Date;
+    latestMessageAt: Date | null;
+    latestCaseEventAt: Date | null;
+    lastActivityAt: Date;
+  };
+  case: CaseListItemRow | null;
 }
 
 export interface ConversationFilterOptionsRow {
@@ -195,6 +211,21 @@ export interface CaseDetailRow {
   attributes: CaseAttributeRow[];
   events: CaseEventRow[];
   connectors: CaseDetailConnectorRow[];
+}
+
+export interface ConversationDetailRow {
+  conversation: {
+    id: string;
+    tenantId: string;
+    status: string;
+    visitorId: string | null;
+    messageCount: number;
+    metadata: Record<string, unknown>;
+    startedAt: Date;
+    completedAt: Date | null;
+    createdAt: Date;
+  };
+  messages: CaseDetailMessageRow[];
 }
 
 export interface CaseEventRow {
@@ -294,6 +325,11 @@ export interface CasesStore {
     filters: ListCasesWithActivityFilters
   ): Promise<CaseListItemRow[]>;
 
+  listConversationsWithOptionalCase(
+    tenantId: string,
+    filters: ListCasesWithActivityFilters
+  ): Promise<ConversationListItemRow[]>;
+
   /**
    * Return the distinct values a tenant has ever seen for the columns
    * that back the Conversations page filter dropdowns. Used to swap
@@ -313,6 +349,11 @@ export interface CasesStore {
     tenantId: string,
     caseId: string
   ): Promise<CaseDetailRow | null>;
+
+  getConversationDetailById(
+    tenantId: string,
+    conversationId: string
+  ): Promise<ConversationDetailRow | null>;
 
   insertEvent(tenantId: string, input: RecordCaseEventInput): Promise<CaseEventRow>;
 
@@ -655,6 +696,252 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
       }));
     },
 
+    async listConversationsWithOptionalCase(tenantId, filters) {
+      const where: SQL[] = [sql`base.conversation_tenant_id = ${tenantId}`];
+
+      if (filters.hasCase === true) {
+        where.push(sql`base.id IS NOT NULL`);
+      } else if (filters.hasCase === false) {
+        where.push(sql`base.id IS NULL`);
+      }
+      if (filters.caseType) {
+        where.push(sql`base.case_type = ${filters.caseType}`);
+      }
+      if (filters.followUpRequired !== undefined) {
+        if (filters.followUpRequired) {
+          where.push(sql`base.status NOT IN ('resolved', 'dismissed')`);
+        } else {
+          where.push(sql`base.status IN ('resolved', 'dismissed')`);
+        }
+      }
+      if (filters.status) {
+        where.push(sql`base.status = ${filters.status}`);
+      }
+      if (filters.priority) {
+        where.push(sql`base.priority = ${filters.priority}`);
+      }
+      if (filters.assignedTo !== undefined) {
+        if (filters.assignedTo === null) {
+          where.push(sql`base.assigned_to IS NULL AND base.id IS NOT NULL`);
+        } else {
+          where.push(sql`base.assigned_to = ${filters.assignedTo}::uuid`);
+        }
+      }
+      if (filters.routingKey) {
+        where.push(sql`base.routing_key = ${filters.routingKey}`);
+      }
+      if (filters.ruleId) {
+        where.push(sql`base.rule_id = ${filters.ruleId}`);
+      }
+      if (filters.persona) {
+        where.push(sql`base.persona = ${filters.persona}`);
+      }
+      if (filters.marketplaceSide) {
+        where.push(sql`base.marketplace_side = ${filters.marketplaceSide}`);
+      }
+      if (filters.topic) {
+        where.push(sql`base.topic = ${filters.topic}`);
+      }
+      if (filters.connectorDestination) {
+        where.push(
+          sql`base.latest_connector_destination_id = ${filters.connectorDestination}`
+        );
+      }
+      if (filters.connectorDeliveryState) {
+        where.push(sql`base.latest_connector_status = ${filters.connectorDeliveryState}`);
+      }
+      if (filters.from) {
+        where.push(sql`base.last_activity_at >= ${filters.from}`);
+      }
+      if (filters.to) {
+        where.push(sql`base.last_activity_at <= ${filters.to}`);
+      }
+
+      const limit = filters.limit ?? 100;
+      const offset = filters.offset ?? 0;
+
+      const result = await db.execute(sql`
+        WITH latest_messages AS (
+          SELECT ${messages.conversationId} AS conversation_id,
+                 MAX(${messages.createdAt}) AS latest_message_at
+            FROM ${messages}
+           GROUP BY ${messages.conversationId}
+        ),
+        latest_case_events AS (
+          SELECT ${followUpEvents.caseId} AS case_id,
+                 MAX(${followUpEvents.createdAt}) AS latest_case_event_at
+            FROM ${followUpEvents}
+           WHERE ${followUpEvents.tenantId} = ${tenantId}
+           GROUP BY ${followUpEvents.caseId}
+        ),
+        latest_connectors AS (
+          SELECT DISTINCT ON (${connectorOutbox.caseId})
+                 ${connectorOutbox.caseId} AS case_id,
+                 ${connectorOutbox.connectorType} AS connector_type,
+                 ${connectorOutbox.destinationId} AS destination_id,
+                 ${connectorOutbox.status} AS status
+            FROM ${connectorOutbox}
+           WHERE ${connectorOutbox.tenantId} = ${tenantId}
+           ORDER BY ${connectorOutbox.caseId}, ${connectorOutbox.createdAt} DESC
+        ),
+        case_attributes AS (
+          SELECT ${followUpCaseAttributes.caseId} AS case_id,
+                 MAX(${followUpCaseAttributes.value} #>> '{}')
+                   FILTER (WHERE ${followUpCaseAttributes.key} = 'persona') AS persona,
+                 MAX(${followUpCaseAttributes.value} #>> '{}')
+                   FILTER (WHERE ${followUpCaseAttributes.key} = 'marketplace_side') AS marketplace_side,
+                 MAX(${followUpCaseAttributes.value} #>> '{}')
+                   FILTER (WHERE ${followUpCaseAttributes.key} = 'topic') AS topic
+            FROM ${followUpCaseAttributes}
+           WHERE ${followUpCaseAttributes.tenantId} = ${tenantId}
+             AND ${followUpCaseAttributes.key} IN ('persona', 'marketplace_side', 'topic')
+           GROUP BY ${followUpCaseAttributes.caseId}
+        ),
+        base AS (
+          SELECT ${followUpCases.id} AS "id",
+                 ${followUpCases.tenantId} AS "tenant_id",
+                 ${followUpCases.conversationId} AS "conversation_id",
+                 ${followUpCases.contactId} AS "contact_id",
+                 ${followUpCases.caseType} AS "case_type",
+                 ${followUpCases.status} AS "status",
+                 ${followUpCases.priority} AS "priority",
+                 ${followUpCases.routingKey} AS "routing_key",
+                 ${followUpCases.title} AS "title",
+                 ${followUpCases.summary} AS "summary",
+                 ${followUpCases.reason} AS "reason",
+                 ${followUpCases.source} AS "source",
+                 ${followUpCases.ruleId} AS "rule_id",
+                 ${followUpCases.classifierConfidence} AS "classifier_confidence",
+                 ${followUpCases.assignedTo} AS "assigned_to",
+                 ${followUpCases.externalSystem} AS "external_system",
+                 ${followUpCases.externalId} AS "external_id",
+                 ${followUpCases.createdAt} AS "created_at",
+                 ${followUpCases.updatedAt} AS "updated_at",
+                 ${followUpCases.resolvedAt} AS "resolved_at",
+                 ${conversations.id} AS "conversation_row_id",
+                 ${conversations.tenantId} AS "conversation_tenant_id",
+                 ${conversations.status} AS "conversation_status",
+                 ${conversations.visitorId} AS "conversation_visitor_id",
+                 ${conversations.messageCount} AS "conversation_message_count",
+                 ${conversations.startedAt} AS "conversation_started_at",
+                 latest_messages.latest_message_at AS "latest_message_at",
+                 latest_case_events.latest_case_event_at AS "latest_case_event_at",
+                 GREATEST(
+                   COALESCE(latest_messages.latest_message_at, ${conversations.startedAt}),
+                   COALESCE(latest_case_events.latest_case_event_at, ${conversations.startedAt}),
+                   ${conversations.startedAt}
+                 ) AS "last_activity_at",
+                 ${contacts.displayName} AS "contact_display_name",
+                 ${users.name} AS "assigned_owner_name",
+                 latest_connectors.connector_type AS "latest_connector_type",
+                 latest_connectors.destination_id AS "latest_connector_destination_id",
+                 latest_connectors.status AS "latest_connector_status",
+                 case_attributes.persona AS "persona",
+                 case_attributes.marketplace_side AS "marketplace_side",
+                 case_attributes.topic AS "topic"
+            FROM ${conversations}
+            LEFT JOIN ${followUpCases}
+              ON ${followUpCases.conversationId} = ${conversations.id}
+             AND ${followUpCases.tenantId} = ${tenantId}
+            LEFT JOIN latest_messages
+              ON latest_messages.conversation_id = ${conversations.id}
+            LEFT JOIN latest_case_events
+              ON latest_case_events.case_id = ${followUpCases.id}
+            LEFT JOIN ${contacts}
+              ON ${contacts.id} = ${followUpCases.contactId}
+             AND ${contacts.tenantId} = ${tenantId}
+            LEFT JOIN ${users}
+              ON ${users.id} = ${followUpCases.assignedTo}
+            LEFT JOIN latest_connectors
+              ON latest_connectors.case_id = ${followUpCases.id}
+            LEFT JOIN case_attributes
+              ON case_attributes.case_id = ${followUpCases.id}
+           WHERE ${conversations.tenantId} = ${tenantId}
+        )
+        SELECT *
+          FROM base
+         WHERE ${and(...where)}
+         ORDER BY base.last_activity_at DESC, base.created_at DESC NULLS LAST, base.conversation_started_at DESC
+         LIMIT ${limit}
+        OFFSET ${offset}
+      `);
+
+      const raw =
+        (result as unknown as { rows?: Record<string, unknown>[] }).rows ??
+        (result as unknown as Record<string, unknown>[]);
+
+      return raw.map((row) => {
+        const conversation = {
+          id: String(row.conversation_row_id),
+          tenantId: String(row.conversation_tenant_id),
+          status: String(row.conversation_status),
+          visitorId: (row.conversation_visitor_id as string | null) ?? null,
+          messageCount: Number(row.conversation_message_count ?? 0),
+          startedAt: new Date(String(row.conversation_started_at)),
+          latestMessageAt: row.latest_message_at
+            ? new Date(String(row.latest_message_at))
+            : null,
+          latestCaseEventAt: row.latest_case_event_at
+            ? new Date(String(row.latest_case_event_at))
+            : null,
+          lastActivityAt: new Date(String(row.last_activity_at)),
+        };
+
+        if (!row.id) {
+          return { conversation, case: null };
+        }
+
+        return {
+          conversation,
+          case: {
+            id: String(row.id),
+            tenantId: String(row.tenant_id),
+            conversationId: String(row.conversation_id),
+            contactId: (row.contact_id as string | null) ?? null,
+            caseType: String(row.case_type),
+            status: row.status as CaseStatus,
+            priority: (row.priority as string | null) ?? null,
+            routingKey: (row.routing_key as string | null) ?? null,
+            title: (row.title as string | null) ?? null,
+            summary: (row.summary as string | null) ?? null,
+            reason: (row.reason as string | null) ?? null,
+            source: (row.source as string | null) ?? null,
+            ruleId: (row.rule_id as string | null) ?? null,
+            classifierConfidence:
+              row.classifier_confidence === null ||
+              row.classifier_confidence === undefined
+                ? null
+                : Number(row.classifier_confidence),
+            assignedTo: (row.assigned_to as string | null) ?? null,
+            externalSystem: (row.external_system as string | null) ?? null,
+            externalId: (row.external_id as string | null) ?? null,
+            createdAt: new Date(String(row.created_at)),
+            updatedAt: new Date(String(row.updated_at)),
+            resolvedAt: row.resolved_at
+              ? new Date(String(row.resolved_at))
+              : null,
+            conversationStatus: conversation.status,
+            conversationVisitorId: conversation.visitorId,
+            conversationMessageCount: conversation.messageCount,
+            conversationStartedAt: conversation.startedAt,
+            latestMessageAt: conversation.latestMessageAt,
+            latestCaseEventAt: conversation.latestCaseEventAt,
+            lastActivityAt: conversation.lastActivityAt,
+            contactDisplayName:
+              (row.contact_display_name as string | null) ?? null,
+            assignedOwnerName:
+              (row.assigned_owner_name as string | null) ?? null,
+            latestConnectorType:
+              (row.latest_connector_type as string | null) ?? null,
+            latestConnectorDestinationId:
+              (row.latest_connector_destination_id as string | null) ?? null,
+            latestConnectorStatus:
+              (row.latest_connector_status as string | null) ?? null,
+          },
+        };
+      });
+    },
+
     async listConversationFilterOptions(tenantId, limitPerField = 200) {
       // Distinct-value queries for the filter dropdowns on
       // /dashboard/conversations. Each query is tenant-scoped and
@@ -987,6 +1274,56 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
           deliveredAt: connector.deliveredAt
             ? new Date(String(connector.deliveredAt))
             : null,
+        })),
+      };
+    },
+
+    async getConversationDetailById(tenantId, conversationId) {
+      const [conversationRow] = await db
+        .select()
+        .from(conversations)
+        .where(
+          and(
+            eq(conversations.tenantId, tenantId),
+            eq(conversations.id, conversationId)
+          )
+        )
+        .limit(1);
+      if (!conversationRow) return null;
+
+      const messageRows = await db
+        .select({
+          id: messages.id,
+          role: messages.role,
+          content: messages.content,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId))
+        .orderBy(messages.createdAt);
+
+      const asRecord = (value: unknown): Record<string, unknown> =>
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {};
+
+      return {
+        conversation: {
+          id: conversationRow.id,
+          tenantId: conversationRow.tenantId,
+          status: conversationRow.status,
+          visitorId: conversationRow.visitorId,
+          messageCount: conversationRow.messageCount,
+          metadata: asRecord(conversationRow.metadata),
+          startedAt: conversationRow.startedAt,
+          completedAt: conversationRow.completedAt,
+          createdAt: conversationRow.createdAt,
+        },
+        messages: messageRows.map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          createdAt: message.createdAt,
         })),
       };
     },

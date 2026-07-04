@@ -23,6 +23,8 @@ import type {
   CaseStatus,
   CaseListItemRow,
   CasesStore,
+  ConversationDetailRow,
+  ConversationListItemRow,
   CreateCaseInput,
   ListCasesFilters,
   ListCasesWithActivityFilters,
@@ -30,7 +32,24 @@ import type {
   SetCaseAttributeInput,
 } from "../store";
 
+interface InMemoryConversationRow {
+  id: string;
+  tenantId: string;
+  status: string;
+  visitorId: string | null;
+  messageCount: number;
+  metadata: Record<string, unknown>;
+  startedAt: Date;
+  completedAt: Date | null;
+  createdAt: Date;
+}
+
 export interface InMemoryCasesStore extends CasesStore {
+  _seedConversation(row: Partial<InMemoryConversationRow> & {
+    id: string;
+    tenantId: string;
+  }): void;
+  _seedMessage(message: CaseDetailMessageRow & { conversationId: string }): void;
   _seedCaseDetail(caseId: string, detail: {
     contact?: CaseDetailContactRow | null;
     messages?: CaseDetailMessageRow[];
@@ -50,6 +69,8 @@ export interface InMemoryCasesStore extends CasesStore {
 
 export function createInMemoryCasesStore(): InMemoryCasesStore {
   const cases: CaseRow[] = [];
+  const conversations: InMemoryConversationRow[] = [];
+  const messages: (CaseDetailMessageRow & { conversationId: string })[] = [];
   const events: CaseEventRow[] = [];
   const attributes: CaseAttributeRow[] = [];
   const connectors: ConnectorOutboxRow[] = [];
@@ -90,6 +111,25 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         resolvedAt: null,
       };
       cases.push(row);
+      if (
+        !conversations.some(
+          (conversation) =>
+            conversation.tenantId === tenantId &&
+            conversation.id === input.conversationId
+        )
+      ) {
+        conversations.push({
+          id: input.conversationId,
+          tenantId,
+          status: "active",
+          visitorId: null,
+          messageCount: 0,
+          metadata: {},
+          startedAt: now,
+          completedAt: null,
+          createdAt: now,
+        });
+      }
       return { ...row };
     },
 
@@ -240,6 +280,143 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         .map((r) => ({ ...r }));
     },
 
+    async listConversationsWithOptionalCase(
+      tenantId,
+      filters: ListCasesWithActivityFilters
+    ): Promise<ConversationListItemRow[]> {
+      let rows = conversations
+        .filter((conversation) => conversation.tenantId === tenantId)
+        .map((conversation) => {
+          const rowCase =
+            cases.find(
+              (c) =>
+                c.tenantId === tenantId &&
+                c.conversationId === conversation.id
+            ) ?? null;
+          const caseEvents = rowCase
+            ? events.filter((e) => e.tenantId === tenantId && e.caseId === rowCase.id)
+            : [];
+          const latestCaseEventAt =
+            caseEvents
+              .map((e) => e.createdAt)
+              .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+          const latestMessageAt =
+            messages
+              .filter((message) => message.conversationId === conversation.id)
+              .map((message) => message.createdAt)
+              .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+          const lastActivityAt = [
+            conversation.startedAt,
+            latestMessageAt,
+            latestCaseEventAt,
+          ]
+            .filter((date): date is Date => date instanceof Date)
+            .sort((a, b) => b.getTime() - a.getTime())[0];
+          const caseListItem: CaseListItemRow | null = rowCase
+            ? {
+                ...rowCase,
+                conversationStatus: conversation.status,
+                conversationVisitorId: conversation.visitorId,
+                conversationMessageCount: conversation.messageCount,
+                conversationStartedAt: conversation.startedAt,
+                latestMessageAt,
+                latestCaseEventAt,
+                lastActivityAt,
+                contactDisplayName: null,
+                assignedOwnerName: null,
+                latestConnectorType: null,
+                latestConnectorDestinationId: null,
+                latestConnectorStatus: null,
+              }
+            : null;
+          return {
+            conversation: {
+              id: conversation.id,
+              tenantId: conversation.tenantId,
+              status: conversation.status,
+              visitorId: conversation.visitorId,
+              messageCount: conversation.messageCount,
+              startedAt: conversation.startedAt,
+              latestMessageAt,
+              latestCaseEventAt,
+              lastActivityAt,
+            },
+            case: caseListItem,
+          };
+        });
+
+      if (filters.hasCase === true) {
+        rows = rows.filter((row) => row.case !== null);
+      } else if (filters.hasCase === false) {
+        rows = rows.filter((row) => row.case === null);
+      }
+      if (filters.caseType) {
+        rows = rows.filter((row) => row.case?.caseType === filters.caseType);
+      }
+      if (filters.followUpRequired !== undefined) {
+        rows = rows.filter((row) => {
+          if (!row.case) return false;
+          return filters.followUpRequired
+            ? row.case.status !== "resolved" && row.case.status !== "dismissed"
+            : row.case.status === "resolved" || row.case.status === "dismissed";
+        });
+      }
+      if (filters.status) {
+        rows = rows.filter((row) => row.case?.status === filters.status);
+      }
+      if (filters.priority) {
+        rows = rows.filter((row) => row.case?.priority === filters.priority);
+      }
+      if (filters.assignedTo !== undefined) {
+        rows = rows.filter((row) => row.case?.assignedTo === filters.assignedTo);
+      }
+      if (filters.routingKey) {
+        rows = rows.filter((row) => row.case?.routingKey === filters.routingKey);
+      }
+      if (filters.ruleId) {
+        rows = rows.filter((row) => row.case?.ruleId === filters.ruleId);
+      }
+      if (filters.persona || filters.marketplaceSide || filters.topic) {
+        rows = rows.filter((row) => {
+          if (!row.case) return false;
+          const attrs = attributes.filter(
+            (a) => a.tenantId === tenantId && a.caseId === row.case!.id
+          );
+          const attrValue = (key: string) =>
+            attrs.find((a) => a.key === key)?.value;
+          return (
+            (!filters.persona || attrValue("persona") === filters.persona) &&
+            (!filters.marketplaceSide ||
+              attrValue("marketplace_side") === filters.marketplaceSide) &&
+            (!filters.topic || attrValue("topic") === filters.topic)
+          );
+        });
+      }
+      if (filters.from) {
+        rows = rows.filter(
+          (row) => row.conversation.lastActivityAt >= filters.from!
+        );
+      }
+      if (filters.to) {
+        rows = rows.filter((row) => row.conversation.lastActivityAt <= filters.to!);
+      }
+
+      const offset = filters.offset ?? 0;
+      const limit = filters.limit ?? 50;
+      return rows
+        .sort(
+          (a, b) =>
+            b.conversation.lastActivityAt.getTime() -
+              a.conversation.lastActivityAt.getTime() ||
+            b.conversation.startedAt.getTime() - a.conversation.startedAt.getTime()
+        )
+        .slice(offset, offset + limit)
+        .map((row) => ({
+          conversation: { ...row.conversation },
+          case: row.case ? { ...row.case } : null,
+        }));
+    },
+
     async listConversationFilterOptions(tenantId, limitPerField = 200) {
       const cap = Math.max(1, Math.min(limitPerField, 1000));
       const dedupSort = (values: (string | null | undefined)[]): string[] => {
@@ -325,6 +502,29 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
       };
     },
 
+    async getConversationDetailById(
+      tenantId,
+      conversationId
+    ): Promise<ConversationDetailRow | null> {
+      const conversation = conversations.find(
+        (candidate) =>
+          candidate.tenantId === tenantId && candidate.id === conversationId
+      );
+      if (!conversation) return null;
+      return {
+        conversation: { ...conversation, metadata: { ...conversation.metadata } },
+        messages: messages
+          .filter((message) => message.conversationId === conversationId)
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+          .map((message) => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            createdAt: message.createdAt,
+          })),
+      };
+    },
+
     async insertEvent(
       tenantId,
       input: RecordCaseEventInput
@@ -406,6 +606,33 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
 
     _seedConnector(row) {
       connectors.push({ ...row, payload: { ...row.payload } });
+    },
+
+    _seedConversation(row) {
+      const now = row.startedAt ?? new Date();
+      conversations.push({
+        id: row.id,
+        tenantId: row.tenantId,
+        status: row.status ?? "active",
+        visitorId: row.visitorId ?? null,
+        messageCount: row.messageCount ?? 0,
+        metadata: row.metadata ?? {},
+        startedAt: row.startedAt ?? now,
+        completedAt: row.completedAt ?? null,
+        createdAt: row.createdAt ?? now,
+      });
+    },
+
+    _seedMessage(message) {
+      messages.push({ ...message });
+      const conversation = conversations.find(
+        (candidate) => candidate.id === message.conversationId
+      );
+      if (conversation) {
+        conversation.messageCount = messages.filter(
+          (candidate) => candidate.conversationId === message.conversationId
+        ).length;
+      }
     },
 
     _dump() {

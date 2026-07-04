@@ -34,6 +34,8 @@ import {
   type CaseStatus,
   type CasesStore,
   type ConnectorOutboxRow,
+  type ConversationDetailRow,
+  type ConversationListItemRow,
   type CreateCaseInput,
   type ListCasesFilters,
   type ListCasesWithActivityFilters,
@@ -47,6 +49,8 @@ export type {
   CaseStatus,
   CasesStore,
   ConnectorOutboxRow,
+  ConversationDetailRow,
+  ConversationListItemRow,
   CreateCaseInput,
   ListCasesFilters,
   ListCasesWithActivityFilters,
@@ -539,6 +543,31 @@ export async function listCasesByTenantWithActivity(
 }
 
 // ---------------------------------------------------------------------------
+// listConversationsByTenantWithOptionalCase
+// ---------------------------------------------------------------------------
+
+/**
+ * List every tenant-scoped conversation with its follow-up case attached when
+ * one exists. Case-only filters still apply to the nullable case side, which
+ * means no-case rows are dropped whenever such a filter is set.
+ */
+export async function listConversationsByTenantWithOptionalCase(
+  tenantId: string,
+  filters: ListCasesWithActivityFilters = {},
+  opts?: CaseHelperOptions
+): Promise<ConversationListItemRow[]> {
+  assertTenantId(tenantId);
+  if (filters.assignedTo !== undefined && filters.assignedTo !== null) {
+    assertUuid(filters.assignedTo, "filters.assignedTo");
+  }
+
+  return resolveStore(opts).listConversationsWithOptionalCase(
+    tenantId,
+    filters
+  );
+}
+
+// ---------------------------------------------------------------------------
 // listConversationFilterOptions
 // ---------------------------------------------------------------------------
 
@@ -675,4 +704,15 @@ export async function getCaseDetailById(
     ...detail,
     internalLinks: resolveInternalLinks(detail),
   };
+}
+
+export async function getConversationDetailById(
+  tenantId: string,
+  conversationId: string,
+  opts?: CaseHelperOptions
+): Promise<ConversationDetailRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(conversationId, "conversationId");
+
+  return resolveStore(opts).getConversationDetailById(tenantId, conversationId);
 }
