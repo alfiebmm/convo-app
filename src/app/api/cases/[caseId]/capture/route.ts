@@ -76,7 +76,7 @@ import {
   type CaseHelperOptions,
   type CaseRow,
 } from "@/lib/cases";
-import { setCaseAttribute } from "@/lib/cases/attributes";
+import { setCaseAttribute, getCaseAttributes } from "@/lib/cases/attributes";
 import { recordCaseEvent } from "@/lib/cases/events";
 import {
   upsertContact,
@@ -84,6 +84,7 @@ import {
   normaliseEmail,
   normalisePhone,
   type ContactRow,
+  type UpsertContactInput,
 } from "@/lib/contacts";
 import {
   getDefaultCasesStore,
@@ -244,6 +245,12 @@ export type CaptureRouteDeps = {
     opts?: CaseHelperOptions,
   ) => Promise<CaseRow | null>;
   setCaseAttribute: typeof setCaseAttribute;
+  /**
+   * Read all attributes on a case (CON-248). The capture route uses
+   * this to look up the `persona` attribute written by the chat route
+   * at case-creation time so it can enrich the contact row on upsert.
+   */
+  getCaseAttributes: typeof getCaseAttributes;
   recordCaseEvent: typeof recordCaseEvent;
   upsertContact: typeof upsertContact;
   linkContactToConversation: typeof linkContactToConversation;
@@ -273,6 +280,7 @@ const defaultDeps: CaptureRouteDeps = {
   getConversationForVisitor,
   getCaseById,
   setCaseAttribute,
+  getCaseAttributes,
   recordCaseEvent,
   upsertContact,
   linkContactToConversation,
@@ -514,10 +522,37 @@ async function handleSubmit(
   //    attributes only; we never promote a postcode-only visitor to a
   //    contact row (that creates noisy half-records in the CRM).
   if (isIdentifierField(field)) {
-    const upsertInput =
+    // CON-248: pull the persona attribute the chat route wrote at
+    // case-creation time (via `setCaseAttribute` after `createCase`)
+    // and merge it into the contact's `attributes` on upsert so the
+    // contacts list + CSV export show the persona column populated.
+    // Best-effort — a failure here just leaves the contact without
+    // the persona enrichment; capture flow continues.
+    let personaAttr: string | null = null;
+    try {
+      const attrs = await deps.getCaseAttributes(body.tenantId, kase.id);
+      const personaRow = attrs.find((a) => a.key === "persona");
+      if (personaRow && typeof personaRow.value === "string") {
+        personaAttr = personaRow.value;
+      }
+    } catch (attrErr) {
+      console.warn(
+        "[capture] failed to read persona attribute (non-fatal):",
+        attrErr instanceof Error ? attrErr.message : String(attrErr),
+      );
+    }
+
+    const upsertInput: UpsertContactInput =
       field === "email"
         ? { emailNormalised: normaliseEmail(normalised) ?? undefined }
         : { phoneNormalised: normalisePhone(normalised) ?? undefined };
+
+    if (personaAttr !== null) {
+      upsertInput.attributes = {
+        ...(upsertInput.attributes ?? {}),
+        persona: personaAttr,
+      };
+    }
 
     const result = await deps.upsertContact(body.tenantId, upsertInput);
     contact = result.contact;

@@ -112,6 +112,9 @@ interface ContactRecord {
   tenantId: string;
   emailNormalised?: string | null;
   phoneNormalised?: string | null;
+  // CON-248: track attributes so we can assert persona enrichment
+  // (contacts.attributes shallow-merge from the real store).
+  attributes?: Record<string, unknown>;
 }
 
 interface LinkRecord {
@@ -186,6 +189,7 @@ function makeDeps(
         value: input.value,
       });
       return {
+        tenantId,
         caseId: input.caseId,
         key: input.key,
         value: input.value,
@@ -194,6 +198,19 @@ function makeDeps(
         detectedAt: new Date(),
       };
     }) as CaptureRouteDeps["setCaseAttribute"],
+    getCaseAttributes: (async (tenantId, caseId) => {
+      return world.attributes
+        .filter((a) => a.tenantId === tenantId && a.caseId === caseId)
+        .map((a) => ({
+          tenantId: a.tenantId,
+          caseId: a.caseId,
+          key: a.key,
+          value: a.value,
+          source: null,
+          confidence: null,
+          detectedAt: new Date(),
+        }));
+    }) as CaptureRouteDeps["getCaseAttributes"],
     recordCaseEvent: (async (tenantId, input) => {
       world.events.push({
         tenantId,
@@ -235,6 +252,7 @@ function makeDeps(
         tenantId,
         emailNormalised: input.emailNormalised ?? null,
         phoneNormalised: input.phoneNormalised ?? null,
+        attributes: input.attributes ?? {},
       };
       world.contacts.push(created);
       return {
@@ -279,7 +297,7 @@ function makeContactRow(rec: ContactRecord): ContactRow {
     emailNormalised: rec.emailNormalised ?? null,
     phoneNormalised: rec.phoneNormalised ?? null,
     preferredContactMethod: null,
-    attributes: {},
+    attributes: rec.attributes ?? {},
     consentState: null,
     privacyNoticeVersion: null,
     firstSeenAt: now,
@@ -664,6 +682,137 @@ async function runAll() {
     assertEq(world.contacts.length, 1, "no duplicate contact");
     assertEq(world.events.length, 4, "four audit events");
   });
+
+  // -------------------------------------------------------------------------
+  // CON-248 — persona enrichment on contact upsert
+  // -------------------------------------------------------------------------
+
+  await test(
+    "CON-248: submit email with existing persona attribute enriches contact.attributes.persona",
+    async () => {
+      const world = makeWorld();
+      // Simulate the chat route having written the persona attribute at
+      // case-creation time (CON-248 step 3).
+      world.attributes.push({
+        tenantId: TENANT_A,
+        caseId: CASE_A,
+        key: "persona",
+        value: "farmer",
+      });
+
+      const res = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "email",
+          value: "farmer@example.com",
+        }),
+        CASE_A,
+        makeDeps(world),
+      );
+      assertEq(res.status, 200, "status");
+      assertEq(world.contacts.length, 1, "contact created");
+      const contactAttrs = world.contacts[0].attributes ?? {};
+      assertEq(
+        contactAttrs.persona as string,
+        "farmer",
+        "contact enriched with persona from case attributes",
+      );
+    },
+  );
+
+  await test(
+    "CON-248: submit email with no persona attribute skips enrichment",
+    async () => {
+      const world = makeWorld();
+      // world.attributes intentionally empty — no chat-route persona write.
+
+      const res = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "email",
+          value: "blake@example.com",
+        }),
+        CASE_A,
+        makeDeps(world),
+      );
+      assertEq(res.status, 200, "status");
+      assertEq(world.contacts.length, 1, "contact created");
+      const contactAttrs = world.contacts[0].attributes ?? {};
+      assertEq(
+        contactAttrs.persona,
+        undefined,
+        "no persona key when no case attribute exists",
+      );
+    },
+  );
+
+  await test(
+    "CON-248: submit mobile with persona attribute enriches contact",
+    async () => {
+      const world = makeWorld();
+      world.attributes.push({
+        tenantId: TENANT_A,
+        caseId: CASE_A,
+        key: "persona",
+        value: "contractor",
+      });
+
+      await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "mobile",
+          value: "0400123456",
+        }),
+        CASE_A,
+        makeDeps(world),
+      );
+      assertEq(world.contacts.length, 1, "contact created");
+      const contactAttrs = world.contacts[0].attributes ?? {};
+      assertEq(
+        contactAttrs.persona as string,
+        "contractor",
+        "mobile-path also enriches persona",
+      );
+    },
+  );
+
+  await test(
+    "CON-248: submit name (non-identifier) does NOT trigger persona enrichment (no contact row)",
+    async () => {
+      const world = makeWorld();
+      world.attributes.push({
+        tenantId: TENANT_A,
+        caseId: CASE_A,
+        key: "persona",
+        value: "farmer",
+      });
+
+      const res = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "name",
+          value: "Blake",
+        }),
+        CASE_A,
+        makeDeps(world),
+      );
+      assertEq(res.status, 200, "status");
+      // Name is not an identifier field — no contact upsert at all.
+      assertEq(world.contacts.length, 0, "no contact for name-only capture");
+    },
+  );
 
   await test("skip writes audit only", async () => {
     const world = makeWorld();
