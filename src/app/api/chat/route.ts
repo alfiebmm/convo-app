@@ -55,6 +55,7 @@ import {
   type CaseSseContactMethod,
 } from "@/lib/follow-up/lifecycle";
 import { createCase, getCaseByConversation } from "@/lib/cases";
+import { setCaseAttribute } from "@/lib/cases/attributes";
 import { recordCaseEvent } from "@/lib/cases/events";
 import { CLASSIFIER_VERSION } from "@/lib/classifier/schema";
 import { db } from "@/lib/db";
@@ -698,6 +699,41 @@ export async function POST(req: NextRequest) {
                         source: "follow_up_classifier",
                       });
                       persistedCaseId = created.id;
+                    }
+
+                    // CON-248: persist the derived visitor persona onto
+                    // the case as a `follow_up_case_attributes` row so
+                    // the dashboard persona filter, conversations list,
+                    // and contacts export light up. Best-effort — a
+                    // failure here does NOT block the case row or the
+                    // widget event (mirrors the audit-event fallthrough
+                    // policy below). Skip the write when the derivation
+                    // produced no usable persona (source === "unknown").
+                    if (
+                      lifecycleResult.derivedPersona.persona !== null &&
+                      lifecycleResult.derivedPersona.persona.length > 0
+                    ) {
+                      try {
+                        await setCaseAttribute(tenant.id, {
+                          caseId: persistedCaseId,
+                          key: "persona",
+                          value: lifecycleResult.derivedPersona.persona,
+                          source: lifecycleResult.derivedPersona.source,
+                        });
+                      } catch (attrErr) {
+                        console.error(
+                          "[follow-up] failed to persist persona attribute (non-fatal):",
+                          {
+                            tenantId: tenant.id,
+                            conversationId: convoId,
+                            caseId: persistedCaseId,
+                            err:
+                              attrErr instanceof Error
+                                ? attrErr.message
+                                : String(attrErr),
+                          },
+                        );
+                      }
                     }
 
                     // CON-170: append an audit event capturing the

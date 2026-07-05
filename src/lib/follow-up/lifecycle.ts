@@ -49,7 +49,10 @@ import type {
   ContactMethod,
   FollowUp,
 } from "@/lib/forum-config/schema";
-import { deriveVisitorPersona } from "@/lib/persona/derive-visitor-persona";
+import {
+  deriveVisitorPersona,
+  type DerivedVisitorPersona,
+} from "@/lib/persona/derive-visitor-persona";
 
 import { resolveAction } from "./resolver";
 import type { ConversationContext, ResolvedAction } from "./resolver-types";
@@ -419,6 +422,15 @@ export type LifecycleInput = {
 export type LifecycleResult = {
   action: ResolvedAction;
   classifierResult: ClassifyConversationResult;
+  /**
+   * The derived visitor persona for this turn (CON-246). Declared
+   * qualifying-answer wins; classifier persona is the fallback.
+   *
+   * Callers use this to persist the persona into `contacts.attributes`
+   * and `follow_up_case_attributes` at case-creation time (CON-248)
+   * without recomputing the derivation.
+   */
+  derivedPersona: DerivedVisitorPersona;
 };
 
 /**
@@ -494,7 +506,7 @@ export async function runReEvaluation(
     // `actionRequiresCasePersistence`, and uses `createCase` +
     // `recordCaseEvent`. CON-170 / D2a wires that.
 
-    return { action, classifierResult };
+    return { action, classifierResult, derivedPersona };
   } catch (err) {
     // Belt-and-braces. Classifier already non-throwing; resolver is pure.
     // If something downstream changes that contract, we still must not

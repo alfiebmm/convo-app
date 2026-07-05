@@ -7,7 +7,7 @@ import {
   type CaptureRouteDeps,
 } from "../route";
 import { getCaseById } from "@/lib/cases";
-import { setCaseAttribute } from "@/lib/cases/attributes";
+import { setCaseAttribute, getCaseAttributes } from "@/lib/cases/attributes";
 import { recordCaseEvent } from "@/lib/cases/events";
 import { createInMemoryCasesStore } from "@/lib/cases/__tests__/in-memory-store";
 import { upsertContact, linkContactToConversation } from "@/lib/contacts";
@@ -43,6 +43,8 @@ async function seedHarness() {
       getCaseById(tenantId, caseId, { store: casesStore }),
     setCaseAttribute: (tenantId, input) =>
       setCaseAttribute(tenantId, input, { store: casesStore }),
+    getCaseAttributes: (tenantId, caseId) =>
+      getCaseAttributes(tenantId, caseId, { store: casesStore }),
     recordCaseEvent: (tenantId, input) =>
       recordCaseEvent(tenantId, input, { store: casesStore }),
     upsertContact: (tenantId, input) =>

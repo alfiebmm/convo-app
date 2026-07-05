@@ -414,7 +414,7 @@ All fields optional. When present, evaluated as a logical AND. An empty `when: {
 - `exclude_topics: string[]`
 - `sentiment_in: string[]`
 - `urgency_in: string[]`
-- `marketplace_side_in: string[]`
+- `persona_in: string[]` (CON-246 — matches the derived visitor persona; declared qualifying-question answer wins, classifier persona is the fallback)
 - `page_url_pattern: string` (regex, applied at runtime by Epic B)
 - `repeated_loop_count_gte: number`
 - `unanswered_confidence_lte: number` (0–1)
