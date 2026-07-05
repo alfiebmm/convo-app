@@ -273,8 +273,6 @@ function fullConditionSummary(when: RuleCondition): string {
     parts.push(`sentiment ∈ ${when.sentiment_in.join("|")}`);
   if (when.urgency_in?.length)
     parts.push(`urgency ∈ ${when.urgency_in.join("|")}`);
-  if (when.marketplace_side_in?.length)
-    parts.push(`side ∈ ${when.marketplace_side_in.join("|")}`);
   if (when.page_url_pattern) parts.push(`url ~ ${when.page_url_pattern}`);
   if (when.repeated_loop_count_gte !== undefined)
     parts.push(`loops ≥ ${when.repeated_loop_count_gte}`);

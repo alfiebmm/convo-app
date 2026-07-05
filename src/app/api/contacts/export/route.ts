@@ -43,7 +43,6 @@ type ContactExportRow = Record<string, ExportCellValue> & {
   company: string;
   location: string;
   persona: string;
-  marketplace_side: string;
   service_or_product: string;
   related_case_type: string;
   open_case_status: string;
@@ -73,7 +72,6 @@ const CONTACT_COLUMNS: ExportColumn<ContactExportRow>[] = [
   { key: "company", header: "company" },
   { key: "location", header: "location" },
   { key: "persona", header: "persona" },
-  { key: "marketplace_side", header: "marketplace_side" },
   { key: "service_or_product", header: "service_or_product" },
   { key: "related_case_type", header: "related_case_type" },
   { key: "open_case_status", header: "open_case_status" },
@@ -143,7 +141,6 @@ function toContactExportRow(
     company: row.company ?? "",
     location: row.location ?? "",
     persona: row.persona ?? "",
-    marketplace_side: row.marketplaceSide ?? "",
     service_or_product: row.serviceOrProduct ?? "",
     related_case_type: row.relatedCaseType ?? "",
     open_case_status: row.openCaseStatus ?? "",

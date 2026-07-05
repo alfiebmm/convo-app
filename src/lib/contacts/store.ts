@@ -49,7 +49,7 @@ export type ContactListSort =
 export interface ListContactsByTenantFilters {
   q?: string;
   persona?: string;
-  mktSide?: string;
+
   caseType?: string;
   caseStatus?: string;
   from?: Date;
@@ -62,7 +62,6 @@ export interface ContactListItemRow extends ContactRow {
   company: string | null;
   location: string | null;
   persona: string | null;
-  marketplaceSide: string | null;
   serviceOrProduct: string | null;
   relatedCaseType: string | null;
   openCaseStatus: string | null;
@@ -333,9 +332,6 @@ export function createDrizzleContactsStore(
       if (filters.persona) {
         where.push(sql`base.persona = ${filters.persona}`);
       }
-      if (filters.mktSide) {
-        where.push(sql`base.marketplace_side = ${filters.mktSide}`);
-      }
       if (filters.caseType) {
         where.push(sql`base.related_case_type = ${filters.caseType}`);
       }
@@ -391,7 +387,6 @@ export function createDrizzleContactsStore(
                  ${contacts.attributes}->>'company' AS "company",
                  ${contacts.attributes}->>'location' AS "location",
                  ${contacts.attributes}->>'persona' AS "persona",
-                 ${contacts.attributes}->>'marketplace_side' AS "marketplace_side",
                  COALESCE(
                    ${contacts.attributes}->>'service_or_product',
                    ${contacts.attributes}->>'service',
@@ -450,7 +445,6 @@ export function createDrizzleContactsStore(
           company: (row.company as string | null) ?? null,
           location: (row.location as string | null) ?? null,
           persona: (row.persona as string | null) ?? null,
-          marketplaceSide: (row.marketplace_side as string | null) ?? null,
           serviceOrProduct: (row.service_or_product as string | null) ?? null,
           relatedCaseType: (row.related_case_type as string | null) ?? null,
           openCaseStatus: (row.open_case_status as string | null) ?? null,

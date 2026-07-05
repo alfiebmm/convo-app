@@ -591,7 +591,6 @@ export async function listConversationFilterOptions(
   routingKeys: string[];
   ruleIds: string[];
   personas: string[];
-  marketplaceSides: string[];
   topics: string[];
   connectorDestinations: string[];
 }> {

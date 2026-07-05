@@ -212,7 +212,7 @@ function QuestionEditor({
 
       <Field
         label="Persona field"
-        hint="Internal name for storing the answer (e.g. visitor_intent, marketplace_side). Lowercase, no spaces."
+        hint="Internal name for storing the answer (e.g. persona, visitor_role, visitor_intent). Lowercase, no spaces."
       >
         <TextInput
           value={value.persona_field}

@@ -5,7 +5,6 @@ export const CONTACT_FILTER_STORAGE_KEY = "convo:contacts:filters";
 export const CONTACT_FILTER_PARAM_KEYS = [
   "q",
   "persona",
-  "mkt-side",
   "case-type",
   "case-status",
   "from",
@@ -26,7 +25,6 @@ const CONTACT_SORTS = new Set<ContactListSort>([
 export interface ContactFilterState {
   q?: string;
   persona?: string;
-  "mkt-side"?: string;
   "case-type"?: string;
   "case-status"?: string;
   from?: string;

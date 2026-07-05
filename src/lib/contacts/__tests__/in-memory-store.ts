@@ -116,7 +116,6 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
       company: stringAttr(contact.attributes, "company"),
       location: stringAttr(contact.attributes, "location"),
       persona: stringAttr(contact.attributes, "persona"),
-      marketplaceSide: stringAttr(contact.attributes, "marketplace_side"),
       serviceOrProduct:
         stringAttr(contact.attributes, "service_or_product") ??
         stringAttr(contact.attributes, "service") ??
@@ -224,11 +223,6 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
       }
       if (filters.persona) {
         rows = rows.filter((contact) => contact.persona === filters.persona);
-      }
-      if (filters.mktSide) {
-        rows = rows.filter(
-          (contact) => contact.marketplaceSide === filters.mktSide,
-        );
       }
       if (filters.caseType) {
         rows = rows.filter(

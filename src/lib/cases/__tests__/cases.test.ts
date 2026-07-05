@@ -834,11 +834,6 @@ async function runAllTests() {
     );
     await setCaseAttribute(
       TENANT_A,
-      { caseId: included.id, key: "marketplace_side", value: "demand" },
-      { store }
-    );
-    await setCaseAttribute(
-      TENANT_A,
       { caseId: included.id, key: "topic", value: "pricing" },
       { store }
     );
@@ -859,7 +854,6 @@ async function runAllTests() {
         routingKey: "sales",
         ruleId: "lead-capture",
         persona: "buyer",
-        marketplaceSide: "demand",
         topic: "pricing",
       },
       { store }

@@ -104,7 +104,6 @@ export interface ListCasesWithActivityFilters {
   routingKey?: string;
   ruleId?: string;
   persona?: string;
-  marketplaceSide?: string;
   topic?: string;
   connectorDestination?: string;
   connectorDeliveryState?: string;
@@ -148,7 +147,6 @@ export interface ConversationFilterOptionsRow {
   routingKeys: string[];
   ruleIds: string[];
   personas: string[];
-  marketplaceSides: string[];
   topics: string[];
   connectorDestinations: string[];
 }
@@ -521,9 +519,6 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
       if (filters.persona) {
         where.push(sql`base.persona = ${filters.persona}`);
       }
-      if (filters.marketplaceSide) {
-        where.push(sql`base.marketplace_side = ${filters.marketplaceSide}`);
-      }
       if (filters.topic) {
         where.push(sql`base.topic = ${filters.topic}`);
       }
@@ -574,12 +569,10 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  MAX(${followUpCaseAttributes.value} #>> '{}')
                    FILTER (WHERE ${followUpCaseAttributes.key} = 'persona') AS persona,
                  MAX(${followUpCaseAttributes.value} #>> '{}')
-                   FILTER (WHERE ${followUpCaseAttributes.key} = 'marketplace_side') AS marketplace_side,
-                 MAX(${followUpCaseAttributes.value} #>> '{}')
                    FILTER (WHERE ${followUpCaseAttributes.key} = 'topic') AS topic
             FROM ${followUpCaseAttributes}
            WHERE ${followUpCaseAttributes.tenantId} = ${tenantId}
-             AND ${followUpCaseAttributes.key} IN ('persona', 'marketplace_side', 'topic')
+             AND ${followUpCaseAttributes.key} IN ('persona', 'topic')
            GROUP BY ${followUpCaseAttributes.caseId}
         ),
         base AS (
@@ -619,7 +612,6 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  latest_connectors.destination_id AS "latest_connector_destination_id",
                  latest_connectors.status AS "latest_connector_status",
                  case_attributes.persona AS "persona",
-                 case_attributes.marketplace_side AS "marketplace_side",
                  case_attributes.topic AS "topic"
             FROM ${followUpCases}
             INNER JOIN ${conversations}
@@ -736,9 +728,6 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
       if (filters.persona) {
         where.push(sql`base.persona = ${filters.persona}`);
       }
-      if (filters.marketplaceSide) {
-        where.push(sql`base.marketplace_side = ${filters.marketplaceSide}`);
-      }
       if (filters.topic) {
         where.push(sql`base.topic = ${filters.topic}`);
       }
@@ -789,12 +778,10 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  MAX(${followUpCaseAttributes.value} #>> '{}')
                    FILTER (WHERE ${followUpCaseAttributes.key} = 'persona') AS persona,
                  MAX(${followUpCaseAttributes.value} #>> '{}')
-                   FILTER (WHERE ${followUpCaseAttributes.key} = 'marketplace_side') AS marketplace_side,
-                 MAX(${followUpCaseAttributes.value} #>> '{}')
                    FILTER (WHERE ${followUpCaseAttributes.key} = 'topic') AS topic
             FROM ${followUpCaseAttributes}
            WHERE ${followUpCaseAttributes.tenantId} = ${tenantId}
-             AND ${followUpCaseAttributes.key} IN ('persona', 'marketplace_side', 'topic')
+             AND ${followUpCaseAttributes.key} IN ('persona', 'topic')
            GROUP BY ${followUpCaseAttributes.caseId}
         ),
         base AS (
@@ -837,7 +824,6 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  latest_connectors.destination_id AS "latest_connector_destination_id",
                  latest_connectors.status AS "latest_connector_status",
                  case_attributes.persona AS "persona",
-                 case_attributes.marketplace_side AS "marketplace_side",
                  case_attributes.topic AS "topic"
             FROM ${conversations}
             LEFT JOIN ${followUpCases}
@@ -971,9 +957,9 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
          ORDER BY v ASC
          LIMIT ${cap}
       `);
-      // persona / marketplace_side / topic all live in the
-      // follow_up_case_attributes table under a per-key row. Each
-      // attribute value is a `{ "value": string }` jsonb payload.
+      // persona / topic live in the follow_up_case_attributes table
+      // under a per-key row. Each attribute value is a
+      // `{ "value": string }` jsonb payload.
       const attributeDistinct = (key: string) => sql`
         SELECT DISTINCT ${followUpCaseAttributes.value}->>'value' AS v
           FROM ${followUpCaseAttributes}
@@ -985,7 +971,6 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
          LIMIT ${cap}
       `;
       const personasP = db.execute(attributeDistinct("persona"));
-      const marketplaceSidesP = db.execute(attributeDistinct("marketplace_side"));
       const topicsP = db.execute(attributeDistinct("topic"));
       const destinationsP = db.execute(sql`
         SELECT DISTINCT ${connectorOutbox.destinationId} AS v
@@ -1001,14 +986,12 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
         routingKeysR,
         ruleIdsR,
         personasR,
-        marketplaceSidesR,
         topicsR,
         destinationsR,
       ] = await Promise.all([
         routingKeysP,
         ruleIdsP,
         personasP,
-        marketplaceSidesP,
         topicsP,
         destinationsP,
       ]);
@@ -1022,7 +1005,6 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
         routingKeys: toStrings(routingKeysR),
         ruleIds: toStrings(ruleIdsR),
         personas: toStrings(personasR),
-        marketplaceSides: toStrings(marketplaceSidesR),
         topics: toStrings(topicsR),
         connectorDestinations: toStrings(destinationsR),
       };

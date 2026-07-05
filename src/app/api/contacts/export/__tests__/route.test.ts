@@ -47,7 +47,6 @@ function contactRow(overrides: Partial<ContactListItemRow>): ContactListItemRow 
     company: "Doggo, Pty Ltd",
     location: "Sydney",
     persona: "owner",
-    marketplaceSide: "buyer",
     serviceOrProduct: "Training",
     relatedCaseType: "sales",
     openCaseStatus: "open",

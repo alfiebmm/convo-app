@@ -30,7 +30,6 @@ function toContactListFilters(
   return {
     q: filters.q,
     persona: filters.persona,
-    mktSide: filters["mkt-side"],
     caseType: filters["case-type"],
     caseStatus: filters["case-status"],
     from: parseDateParam(filters.from),

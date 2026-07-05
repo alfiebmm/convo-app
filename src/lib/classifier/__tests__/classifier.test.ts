@@ -167,7 +167,6 @@ function fullOutput(partial: {
   topic?: string;
   sentiment?: ClassifierOutput["attributes"]["sentiment"];
   urgency?: ClassifierOutput["attributes"]["urgency"];
-  marketplace_side?: ClassifierOutput["attributes"]["marketplace_side"];
   location?: string | null;
   product_or_service?: string | null;
   spam_risk?: ClassifierOutput["attributes"]["spam_risk"];
@@ -189,8 +188,6 @@ function fullOutput(partial: {
         topic: partial.topic ?? base.attributes.topic,
         sentiment: partial.sentiment ?? base.attributes.sentiment,
         urgency: partial.urgency ?? base.attributes.urgency,
-        marketplace_side:
-          partial.marketplace_side ?? base.attributes.marketplace_side,
         location: partial.location ?? null,
         product_or_service: partial.product_or_service ?? null,
         spam_risk: partial.spam_risk ?? base.attributes.spam_risk,
@@ -232,7 +229,6 @@ const doggoFixtures: Fixture[] = [
         topic: "puppy_pricing",
         sentiment: "neutral",
         urgency: "normal",
-        marketplace_side: "demand",
         location: "Sydney",
         product_or_service: "labrador puppy",
         commercial_intent: {
@@ -247,7 +243,6 @@ const doggoFixtures: Fixture[] = [
     assertions: (o) => {
       assertEq(o.attributes.persona, "customer", "persona");
       assertEq(o.attributes.intent, "request_quote", "intent");
-      assertEq(o.attributes.marketplace_side, "demand", "marketplace_side");
       assert(o.commercial_intent.detected, "commercial_intent.detected");
       assert(o.commercial_intent.confidence >= 0.75, "commercial_intent.confidence ≥ 0.75");
     },
@@ -267,7 +262,6 @@ const doggoFixtures: Fixture[] = [
         topic: "litter_availability",
         sentiment: "neutral",
         urgency: "normal",
-        marketplace_side: "demand",
         product_or_service: "cavoodle puppy",
         commercial_intent: { detected: true, confidence: 0.8, reason: "buying intent implied" },
         missing_fields: ["name", "mobile"],
@@ -275,7 +269,6 @@ const doggoFixtures: Fixture[] = [
     ),
     assertions: (o) => {
       assertEq(o.attributes.intent, "check_availability", "intent");
-      assertEq(o.attributes.marketplace_side, "demand", "marketplace_side");
     },
   },
   {
@@ -296,7 +289,6 @@ const doggoFixtures: Fixture[] = [
         topic: "listing_a_litter",
         sentiment: "positive",
         urgency: "normal",
-        marketplace_side: "supply",
         product_or_service: "groodle litter",
         commercial_intent: {
           detected: true,
@@ -308,7 +300,6 @@ const doggoFixtures: Fixture[] = [
     assertions: (o) => {
       assertEq(o.attributes.persona, "partner", "persona");
       assertEq(o.attributes.intent, "offer_service", "intent");
-      assertEq(o.attributes.marketplace_side, "supply", "marketplace_side");
     },
   },
   {
@@ -326,13 +317,11 @@ const doggoFixtures: Fixture[] = [
         topic: "listing_a_litter",
         sentiment: "positive",
         urgency: "low",
-        marketplace_side: "supply",
         commercial_intent: { detected: true, confidence: 0.8, reason: "partnership ask" },
       }),
     ),
     assertions: (o) => {
       assertEq(o.attributes.intent, "become_partner", "intent");
-      assertEq(o.attributes.marketplace_side, "supply", "marketplace_side");
     },
   },
   {
@@ -350,7 +339,6 @@ const doggoFixtures: Fixture[] = [
         topic: "human_request",
         sentiment: "frustrated",
         urgency: "high",
-        marketplace_side: "unknown",
         support_need: {
           detected: true,
           confidence: 0.95,
@@ -386,7 +374,6 @@ const doggoFixtures: Fixture[] = [
         topic: "deposit_refund",
         sentiment: "frustrated",
         urgency: "normal",
-        marketplace_side: "demand",
         support_need: {
           detected: true,
           confidence: 0.8,
@@ -423,7 +410,6 @@ const doggoFixtures: Fixture[] = [
         topic: "site_navigation",
         sentiment: "frustrated",
         urgency: "normal",
-        marketplace_side: "demand",
         unanswered_confidence: 0.3,
         repeated_loop_count: 2,
         support_need: { detected: true, confidence: 0.7, reason: "stuck navigating" },
@@ -449,7 +435,6 @@ const doggoFixtures: Fixture[] = [
         topic: "complaint",
         sentiment: "angry",
         urgency: "high",
-        marketplace_side: "unknown",
         support_need: { detected: true, confidence: 0.9, reason: "explicit complaint" },
         unanswered_confidence: 0.15,
         repeated_loop_count: 2,
@@ -478,7 +463,6 @@ const doggoFixtures: Fixture[] = [
         topic: "breed_information",
         sentiment: "neutral",
         urgency: "low",
-        marketplace_side: "unknown",
         commercial_intent: { detected: false, confidence: 0.2, reason: "info-only" },
         unanswered_confidence: 0.8,
       }),
@@ -507,7 +491,6 @@ const doggoFixtures: Fixture[] = [
         topic: "spam",
         sentiment: "neutral",
         urgency: "low",
-        marketplace_side: "unknown",
         spam_risk: "high",
       }),
     ),
@@ -540,7 +523,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "contractor_quote",
         sentiment: "neutral",
         urgency: "normal",
-        marketplace_side: "demand",
         location: "Wagga",
         product_or_service: "fencing",
         commercial_intent: { detected: true, confidence: 0.9, reason: "explicit service ask" },
@@ -550,7 +532,6 @@ const agpagesFixtures: Fixture[] = [
     assertions: (o) => {
       assertEq(o.attributes.persona, "customer", "persona");
       assertEq(o.attributes.intent, "enquire", "intent");
-      assertEq(o.attributes.marketplace_side, "demand", "marketplace_side");
     },
   },
   {
@@ -568,7 +549,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "contractor_quote",
         sentiment: "neutral",
         urgency: "normal",
-        marketplace_side: "demand",
         product_or_service: "aerial spraying — canola",
         commercial_intent: { detected: true, confidence: 0.85, reason: "explicit pricing ask" },
       }),
@@ -596,7 +576,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "contractor_availability",
         sentiment: "positive",
         urgency: "normal",
-        marketplace_side: "supply",
         product_or_service: "shearing",
         commercial_intent: { detected: true, confidence: 0.85, reason: "supply availability ask" },
       }),
@@ -604,7 +583,6 @@ const agpagesFixtures: Fixture[] = [
     assertions: (o) => {
       assertEq(o.attributes.persona, "supplier", "persona");
       assertEq(o.attributes.intent, "offer_service", "intent");
-      assertEq(o.attributes.marketplace_side, "supply", "marketplace_side");
     },
   },
   {
@@ -625,13 +603,11 @@ const agpagesFixtures: Fixture[] = [
         topic: "become_a_contractor",
         sentiment: "positive",
         urgency: "low",
-        marketplace_side: "supply",
         commercial_intent: { detected: true, confidence: 0.8, reason: "partnership ask" },
       }),
     ),
     assertions: (o) => {
       assertEq(o.attributes.intent, "become_partner", "intent");
-      assertEq(o.attributes.marketplace_side, "supply", "marketplace_side");
     },
   },
   {
@@ -654,7 +630,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "job_followup",
         sentiment: "frustrated",
         urgency: "normal",
-        marketplace_side: "demand",
         support_need: {
           detected: true,
           confidence: 0.85,
@@ -683,7 +658,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "human_request",
         sentiment: "neutral",
         urgency: "high",
-        marketplace_side: "unknown",
         support_need: {
           detected: true,
           confidence: 0.95,
@@ -717,7 +691,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "site_navigation",
         sentiment: "frustrated",
         urgency: "normal",
-        marketplace_side: "demand",
         unanswered_confidence: 0.3,
         repeated_loop_count: 2,
       }),
@@ -742,7 +715,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "service_complaint",
         sentiment: "angry",
         urgency: "high",
-        marketplace_side: "demand",
         support_need: { detected: true, confidence: 0.95, reason: "service-failure complaint" },
         unanswered_confidence: 0.1,
       }),
@@ -768,7 +740,6 @@ const agpagesFixtures: Fixture[] = [
         topic: "general_research",
         sentiment: "neutral",
         urgency: "low",
-        marketplace_side: "demand",
         location: "Victoria",
         commercial_intent: { detected: false, confidence: 0.35, reason: "research, not commit" },
         unanswered_confidence: 0.7,
@@ -798,13 +769,12 @@ const agpagesFixtures: Fixture[] = [
         topic: "spam",
         sentiment: "neutral",
         urgency: "low",
-        marketplace_side: "unknown",
         spam_risk: "high",
       }),
     ),
     assertions: (o) => {
       assertEq(o.attributes.spam_risk, "high", "spam_risk high");
-      assertEq(o.classifier_version, "v1", "classifier_version locked to v1");
+      assertEq(o.classifier_version, "v2", "classifier_version locked to v2");
     },
   },
 ];
@@ -928,7 +898,7 @@ async function runUnitTests() {
   await test("graceful: schema validation failure returns safe default", async () => {
     // Valid JSON but wrong shape (persona enum mismatch).
     const bad = JSON.stringify({
-      classifier_version: "v1",
+      classifier_version: "v2",
       attributes: { persona: "not_a_real_persona" },
     });
     const client = mockClient([bad]);
@@ -1017,11 +987,7 @@ async function runLiveSmoke() {
       // attribute calibration (e.g. `persona: "customer"` from an implicit
       // signal) is C4's tuning-harness job. Asserting fixture-level enums
       // here would conflate two layers and create flaky CI.
-      assert(r.output.classifier_version === "v1", "version stamp");
-      assert(
-        ["demand", "supply", "unknown"].includes(r.output.attributes.marketplace_side),
-        "marketplace_side enum",
-      );
+      assert(r.output.classifier_version === "v2", "version stamp");
       assert(
         ["low", "normal", "high"].includes(r.output.attributes.urgency),
         "urgency enum",

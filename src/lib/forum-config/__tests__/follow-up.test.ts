@@ -252,7 +252,6 @@ test("ruleConditionSchema accepts all PRD §9 + §8 fields together", () => {
     exclude_topics: ["general"],
     sentiment_in: ["positive"],
     urgency_in: ["high"],
-    marketplace_side_in: ["demand"],
     page_url_pattern: "^/services/",
     repeated_loop_count_gte: 2,
     unanswered_confidence_lte: 0.4,
@@ -730,7 +729,7 @@ test("Minimal AgPages-shaped fixture validates", () => {
         action: "capture_details_then_flag",
         capture_policy_id: "ag_lead",
         routing_key: "ag_buyer",
-        when: { marketplace_side_in: ["demand"], product_or_service_in: ["land"] },
+        when: { persona_in: ["farmer"], product_or_service_in: ["land"] },
       },
     ],
     destinations: [

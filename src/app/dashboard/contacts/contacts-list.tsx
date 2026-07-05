@@ -192,7 +192,6 @@ export default function ContactsList({
               <th className="px-4 py-3">Company</th>
               <th className="px-4 py-3">Location</th>
               <th className="px-4 py-3">Persona</th>
-              <th className="px-4 py-3">Marketplace side</th>
               <th className="px-4 py-3">Service or product</th>
               <th className="px-4 py-3">Related case</th>
               <th className="px-4 py-3">
@@ -230,9 +229,6 @@ export default function ContactsList({
                 </td>
                 <td className="px-4 py-3 text-slate-700">
                   {contact.persona ?? "None"}
-                </td>
-                <td className="px-4 py-3 text-slate-700">
-                  {contact.marketplaceSide ?? "None"}
                 </td>
                 <td className="px-4 py-3 text-slate-700">
                   {contact.serviceOrProduct ?? "None"}

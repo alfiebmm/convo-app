@@ -35,7 +35,7 @@ function assertEq<T>(actual: T, expected: T, msg: string) {
   }
 }
 
-test("conversation filters: URL-param contract round-trips all 13 filters", () => {
+test("conversation filters: URL-param contract round-trips all filters", () => {
   const filters: ConversationFilterState = {
     "case-type": "lead",
     "has-case": "yes",
@@ -46,7 +46,6 @@ test("conversation filters: URL-param contract round-trips all 13 filters", () =
     routing: "sales",
     rule: "lead-capture",
     persona: "buyer",
-    "mkt-side": "supply",
     topic: "pricing",
     dest: "hubspot-main",
     delivery: "pending",
@@ -57,7 +56,7 @@ test("conversation filters: URL-param contract round-trips all 13 filters", () =
   const params = conversationFiltersToSearchParams(filters);
   assertEq(
     params.toString(),
-    "case-type=lead&has-case=yes&follow-up=true&status=open&priority=high&assigned=unassigned&routing=sales&rule=lead-capture&persona=buyer&mkt-side=supply&topic=pricing&dest=hubspot-main&delivery=pending&from=2026-06-01&to=2026-06-20",
+    "case-type=lead&has-case=yes&follow-up=true&status=open&priority=high&assigned=unassigned&routing=sales&rule=lead-capture&persona=buyer&topic=pricing&dest=hubspot-main&delivery=pending&from=2026-06-01&to=2026-06-20",
     "stable kebab-case query string"
   );
 

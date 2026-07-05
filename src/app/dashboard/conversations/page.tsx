@@ -57,7 +57,6 @@ function toCaseListFilters(
     routingKey: filters.routing,
     ruleId: filters.rule,
     persona: filters.persona,
-    marketplaceSide: filters["mkt-side"],
     topic: filters.topic,
     connectorDestination: filters.dest,
     connectorDeliveryState: filters.delivery,

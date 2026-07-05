@@ -351,7 +351,6 @@ export const ruleConditionSchema = z.object({
   exclude_topics: z.array(z.string()).optional(),
   sentiment_in: z.array(z.string()).optional(),
   urgency_in: z.array(z.string()).optional(),
-  marketplace_side_in: z.array(z.string()).optional(),
   page_url_pattern: z.string().optional(),
   repeated_loop_count_gte: z.number().int().nonnegative().optional(),
   unanswered_confidence_lte: z.number().min(0).max(1).optional(),
