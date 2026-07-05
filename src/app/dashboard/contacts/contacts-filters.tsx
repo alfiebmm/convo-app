@@ -123,15 +123,6 @@ export function ContactsFilters() {
           />
         </FilterShell>
 
-        <FilterShell label="Marketplace side">
-          <input
-            value={filters["mkt-side"] ?? ""}
-            onChange={(event) => updateFilter("mkt-side", event.target.value)}
-            className={INPUT_CLASS}
-            placeholder="Any side"
-          />
-        </FilterShell>
-
         <FilterShell label="Case type">
           <input
             value={filters["case-type"] ?? ""}

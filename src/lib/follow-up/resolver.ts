@@ -146,10 +146,12 @@ function includesCi(
  * Evaluate a rule's `when` block. All present fields must match (AND).
  * Missing fields = no constraint.
  *
- * `qualifyingPersona.persona` (from CON-94) is treated as an OR-companion
- * to the classifier's `attributes.persona` for the `persona_in` check —
- * if the qualifying answer is in the list, the condition matches even if
- * the classifier said `unknown`.
+ * `context.derivedPersona` (CON-246) is the pre-computed persona value
+ * combining the tenant's `persona_field` mapping, the visitor's declared
+ * answer, and the classifier's persona enum fallback. It is treated as an
+ * OR-companion to the classifier's `attributes.persona` for the
+ * `persona_in` check — if the derived value is in the list, the condition
+ * matches even when the classifier's own enum did not.
  *
  * Returns the matched-attribute snapshot regardless of `matched`; an
  * unmatched rule simply discards it.
@@ -162,17 +164,16 @@ export function evaluateConditions(
   const attrs = classifierOutput.attributes;
   const matched: Record<string, unknown> = {};
 
-  // persona_in — classifier persona OR qualifying persona (CON-94)
+  // persona_in — classifier persona OR derived persona (CON-246)
   if (when.persona_in !== undefined) {
     const classifierMatch = when.persona_in.includes(attrs.persona);
-    const qualifyingPersona = context.qualifyingPersona?.persona;
-    const qualifyingMatch =
-      qualifyingPersona !== undefined &&
-      when.persona_in.includes(qualifyingPersona);
-    if (!classifierMatch && !qualifyingMatch) {
+    const derivedPersona = context.derivedPersona?.persona ?? null;
+    const derivedMatch =
+      derivedPersona !== null && when.persona_in.includes(derivedPersona);
+    if (!classifierMatch && !derivedMatch) {
       return { matched: false, matchedAttributes: {} };
     }
-    matched.persona = classifierMatch ? attrs.persona : qualifyingPersona;
+    matched.persona = classifierMatch ? attrs.persona : derivedPersona;
   }
 
   // intent_in
@@ -213,14 +214,6 @@ export function evaluateConditions(
       return { matched: false, matchedAttributes: {} };
     }
     matched.urgency = attrs.urgency;
-  }
-
-  // marketplace_side_in
-  if (when.marketplace_side_in !== undefined) {
-    if (!when.marketplace_side_in.includes(attrs.marketplace_side)) {
-      return { matched: false, matchedAttributes: {} };
-    }
-    matched.marketplace_side = attrs.marketplace_side;
   }
 
   // page_url_pattern — regex against context.pageUrl

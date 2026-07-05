@@ -281,7 +281,6 @@ export async function listContactsByTenant(
   return resolveStore(opts).listContactsByTenant(tenantId, {
     q: cleanText(filters.q),
     persona: cleanText(filters.persona),
-    mktSide: cleanText(filters.mktSide),
     caseType: cleanText(filters.caseType),
     caseStatus: cleanText(filters.caseStatus),
     from: cleanDate(filters.from),

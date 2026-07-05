@@ -61,14 +61,13 @@ catch classifier-prompt regressions.
     "persona": "customer"
   },
   "mock_classifier_output": {        // replayed in mocked mode
-    "classifier_version": "v1",
+    "classifier_version": "v2",
     "attributes": {
       "persona": "customer",
       "intent": "request_quote",
       "topic": "labrador pricing",
       "sentiment": "neutral",
       "urgency": "low",
-      "marketplace_side": "demand",
       "location": null,
       "product_or_service": "labrador puppy",
       "spam_risk": "low"
@@ -119,11 +118,12 @@ consistent. Some patterns from this initial corpus:
 - **High-intent lead (pricing / availability):** set
   `commercial_intent.confidence ≥ 0.80`, `commercial_intent.detected: true`,
   pick `persona: "customer"`, pick the matching `intent` enum,
-  `marketplace_side: "demand"`, low `support_need`, mid
-  `unanswered_confidence` (~0.5).
-- **Supply-side partner/supplier:** `persona: "partner"`/`"supplier"`,
+  low `support_need`, mid `unanswered_confidence` (~0.5). Use
+  `qualifying_persona` on the fixture to exercise the CON-246
+  declared-persona path.
+- **Partner/supplier signal:** `persona: "partner"`/`"supplier"`,
   `intent: "offer_service"` / `"become_partner"`,
-  `marketplace_side: "supply"`, `commercial_intent ≥ 0.70`.
+  `commercial_intent ≥ 0.70`.
 - **Direct human request:** `direct_human_request: true`,
   `support_need.confidence ≥ 0.85`. The resolver overrides rule confidence
   to 1.0 for this signal (see `computeRuleConfidence`).

@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 
-export const CLASSIFIER_VERSION = "v1" as const;
+export const CLASSIFIER_VERSION = "v2" as const;
 
 // ---- Attribute enums ----------------------------------------------------
 
@@ -63,12 +63,6 @@ export const classifierSentimentEnum = z.enum([
 
 export const classifierUrgencyEnum = z.enum(["low", "normal", "high"]);
 
-export const classifierMarketplaceSideEnum = z.enum([
-  "demand",
-  "supply",
-  "unknown",
-]);
-
 export const classifierSpamRiskEnum = z.enum(["low", "medium", "high"]);
 
 // ---- Attributes block ---------------------------------------------------
@@ -79,7 +73,6 @@ export const classifierAttributesSchema = z.object({
   topic: z.string().min(1).max(120),
   sentiment: classifierSentimentEnum,
   urgency: classifierUrgencyEnum,
-  marketplace_side: classifierMarketplaceSideEnum,
   location: z.string().min(1).max(120).nullable(),
   product_or_service: z.string().min(1).max(160).nullable(),
   spam_risk: classifierSpamRiskEnum,
@@ -129,7 +122,6 @@ export function safeDefaultClassifierOutput(): ClassifierOutput {
       topic: "unknown",
       sentiment: "neutral",
       urgency: "low",
-      marketplace_side: "unknown",
       location: null,
       product_or_service: null,
       spam_risk: "low",

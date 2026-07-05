@@ -25,7 +25,7 @@
   ],
   "page_url": "https://agpages.com.au/contractors",
   "mock_classifier_output": {
-    "classifier_version": "v1",
+    "classifier_version": "v2",
     "attributes": {
       "persona": "customer",
       "intent": "site_navigation",

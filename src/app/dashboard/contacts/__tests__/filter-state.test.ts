@@ -39,7 +39,6 @@ test("contact filters: URL-param contract round-trips all filters", () => {
   const filters: ContactFilterState = {
     q: "alice",
     persona: "buyer",
-    "mkt-side": "demand",
     "case-type": "lead",
     "case-status": "open",
     from: "2026-06-01",
@@ -51,7 +50,7 @@ test("contact filters: URL-param contract round-trips all filters", () => {
   const params = contactFiltersToSearchParams(filters);
   assertEq(
     params.toString(),
-    "q=alice&persona=buyer&mkt-side=demand&case-type=lead&case-status=open&from=2026-06-01&to=2026-06-20&page=2&sort=name-asc",
+    "q=alice&persona=buyer&case-type=lead&case-status=open&from=2026-06-01&to=2026-06-20&page=2&sort=name-asc",
     "stable kebab-case query string",
   );
 

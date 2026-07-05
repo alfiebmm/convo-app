@@ -168,7 +168,7 @@ The decision matrix. Each rule pairs a `when` condition block with an
 highest-priority matching rule wins.
 
 - `when`: any combination of `persona_in`, `intent_in`, `topic_in`,
-  `exclude_topics`, `sentiment_in`, `urgency_in`, `marketplace_side_in`,
+  `exclude_topics`, `sentiment_in`, `urgency_in`,
   `page_url_pattern`, `repeated_loop_count_gte`,
   `unanswered_confidence_lte`, `direct_human_request`, `location_in`,
   `product_or_service_in`. Empty `when: {}` matches every conversation.

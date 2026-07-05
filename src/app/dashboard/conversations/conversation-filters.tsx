@@ -28,7 +28,6 @@ export interface ConversationFilterOptions {
   routingKeys: string[];
   ruleIds: string[];
   personas: string[];
-  marketplaceSides: string[];
   topics: string[];
   connectorDestinations: string[];
 }
@@ -37,7 +36,6 @@ const EMPTY_OPTIONS: ConversationFilterOptions = {
   routingKeys: [],
   ruleIds: [],
   personas: [],
-  marketplaceSides: [],
   topics: [],
   connectorDestinations: [],
 };
@@ -314,17 +312,6 @@ export function ConversationFilters({
               options={options.personas}
               onChange={(next) => updateFilter("persona", next)}
               anyLabel="Any persona"
-            />
-          </FilterShell>
-        ) : null}
-
-        {shouldRenderFilter(options.marketplaceSides, filters["mkt-side"]) ? (
-          <FilterShell label="Marketplace side">
-            <OptionSelect
-              value={filters["mkt-side"] ?? ""}
-              options={options.marketplaceSides}
-              onChange={(next) => updateFilter("mkt-side", next)}
-              anyLabel="Any side"
             />
           </FilterShell>
         ) : null}

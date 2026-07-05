@@ -589,9 +589,12 @@ export async function POST(req: NextRequest) {
                 allowed_topics: parsedTopics.data,
               };
 
-              const qualifying = (
-                metadata as Record<string, unknown> | undefined
-              )?.qualifying as Record<string, string> | undefined;
+              // CON-246: pull the flat qualifying-answers map from
+              // `metadata.qualifying.persona`. `readQualifying` above
+              // returned the full `ConversationQualifying` blob; we
+              // hand its `.persona` map to the lifecycle so it can
+              // derive the visitor persona once per turn.
+              const qualifyingAnswers = qualifyingState?.persona ?? null;
 
               const lifecycleResult = await runReEvaluation({
                 tenantId: tenant.id,
@@ -603,13 +606,13 @@ export async function POST(req: NextRequest) {
                 ],
                 followUpConfig: followUp,
                 tenantConfig: tenantClassifierConfig,
+                qualifyingAnswers,
                 conversationContext: {
                   tenantId: tenant.id,
                   conversationId: convoId,
                   pageUrl: (metadata as Record<string, unknown>)?.pageUrl as
                     | string
                     | undefined,
-                  qualifyingPersona: qualifying,
                 },
               });
 

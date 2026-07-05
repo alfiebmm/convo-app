@@ -24,6 +24,7 @@ import type {
   RuleCondition,
   Sensitivity,
 } from "@/lib/forum-config/schema";
+import type { DerivedVisitorPersona } from "@/lib/persona/derive-visitor-persona";
 
 /**
  * Audit payload attached to every non-default `ResolvedAction`.
@@ -113,14 +114,18 @@ export type ResolvedAction =
  * Conversation-side context the resolver needs that is not contained in the
  * classifier output. Treated as readonly.
  *
- * `qualifyingPersona` mirrors `conversations.metadata.qualifying` from
- * CON-94: a flat string→string map of answers to qualifying questions, e.g.
- * `{ persona: "breeder" }`. The resolver only reads the `persona` key for
- * the `persona_in` condition override; other keys are ignored at V1.
+ * `derivedPersona` is the pre-computed output of
+ * `deriveVisitorPersona(...)` (CON-246). It combines the tenant's
+ * `qualifying_questions.preset.persona_field` mapping, the visitor's
+ * declared answers, and the classifier's `attributes.persona` fallback
+ * into a single per-turn persona value the resolver uses for `persona_in`
+ * matching. Callers pre-compute it once per resolve (see
+ * `runReEvaluation` in `lifecycle.ts`) so the resolver stays a pure
+ * function.
  */
 export type ConversationContext = {
   tenantId: string;
   conversationId: string;
   pageUrl?: string;
-  qualifyingPersona?: Record<string, string>;
+  derivedPersona?: DerivedVisitorPersona;
 };

@@ -88,7 +88,6 @@ export function buildClassifierPrompt(input: BuildPromptInput): BuildPromptOutpu
           sentiment:
             "positive | neutral | negative | frustrated | angry",
           urgency: "low | normal | high",
-          marketplace_side: "demand | supply | unknown",
           location: "short string OR null",
           product_or_service: "short string OR null",
           spam_risk: "low | medium | high",

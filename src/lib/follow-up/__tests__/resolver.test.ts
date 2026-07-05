@@ -407,7 +407,13 @@ test("Doggo · qualifying persona overrides classifier 'unknown' (breeder via CO
   const action = resolveAction({
     classifierOutput: out,
     followUpConfig: DOGGO,
-    conversationContext: ctx({ qualifyingPersona: { persona: "partner" } }),
+    conversationContext: ctx({
+      derivedPersona: {
+        persona: "partner",
+        personaField: "persona",
+        source: "qualifying",
+      },
+    }),
   });
   const a = expectType(action, "refer_to_approved_contact_method");
   assertEq(a.rule_id, "breeder_listing_interest", "rule");
@@ -741,7 +747,13 @@ test("AgPages · qualifying persona 'farmer' overrides classifier 'unknown'", ()
   const action = resolveAction({
     classifierOutput: out,
     followUpConfig: AGPAGES,
-    conversationContext: ctx({ qualifyingPersona: { persona: "customer" } }),
+    conversationContext: ctx({
+      derivedPersona: {
+        persona: "customer",
+        personaField: "persona",
+        source: "qualifying",
+      },
+    }),
   });
   const a = expectType(action, "capture_details_then_flag");
   assertEq(a.rule_id, "farmer_service_request", "rule");

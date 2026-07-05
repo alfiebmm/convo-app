@@ -39,6 +39,49 @@ import type {
   ConversationContext,
   ResolvedAction,
 } from "../src/lib/follow-up/resolver-types";
+import type { DerivedVisitorPersona } from "../src/lib/persona/derive-visitor-persona";
+
+// ---------------------------------------------------------------------------
+// Harness helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a `DerivedVisitorPersona` for the harness from a fixture's
+ * `qualifying_persona` map and the (possibly-mocked) classifier output.
+ *
+ * The harness pre-scripts classifier output and fixture-declares the
+ * visitor's qualifying answers as a flat `{ persona_field: value }` map
+ * (mirroring `conversations.metadata.qualifying.persona` in prod). To
+ * exercise the CON-246 declared-vs-classifier ordering deterministically
+ * we honour the fixture's declared `persona` key when present, else fall
+ * back to the classifier's `attributes.persona`.
+ *
+ * Fixtures whose `qualifying_persona` maps use a non-`persona` key are
+ * treated as "no declared answer" — no tenant config is loaded here to
+ * infer the true `persona_field`, so this helper stays conservative.
+ */
+function buildHarnessDerivedPersona(
+  qualifyingPersona: Record<string, string> | undefined,
+  classifierOutput: ClassifierOutput,
+): DerivedVisitorPersona {
+  const declared =
+    typeof qualifyingPersona?.persona === "string" &&
+    qualifyingPersona.persona.length > 0
+      ? qualifyingPersona.persona
+      : null;
+  if (declared !== null) {
+    return {
+      persona: declared,
+      personaField: "persona",
+      source: "qualifying",
+    };
+  }
+  return {
+    persona: classifierOutput.attributes.persona,
+    personaField: "persona",
+    source: "classifier",
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -132,7 +175,6 @@ interface FixtureExpected {
   attributes?: {
     persona?: string;
     intent?: string;
-    marketplace_side?: string;
   };
   min_confidence?: number;
 }
@@ -315,7 +357,10 @@ async function runFixtureMocked(fixture: Fixture): Promise<FixtureResult> {
     tenantId: fixture.tenant,
     conversationId: `harness:${basename(fixture.__file)}`,
     pageUrl: fixture.page_url,
-    qualifyingPersona: fixture.qualifying_persona,
+    derivedPersona: buildHarnessDerivedPersona(
+      fixture.qualifying_persona,
+      classifierOutput,
+    ),
   };
   const actual = resolveAction({
     classifierOutput,
@@ -355,7 +400,10 @@ async function runFixtureLive(fixture: Fixture): Promise<FixtureResult> {
     tenantId: fixture.tenant,
     conversationId: `harness-live:${basename(fixture.__file)}`,
     pageUrl: fixture.page_url,
-    qualifyingPersona: fixture.qualifying_persona,
+    derivedPersona: buildHarnessDerivedPersona(
+      fixture.qualifying_persona,
+      result.output,
+    ),
   };
   const actual = resolveAction({
     classifierOutput: result.output,

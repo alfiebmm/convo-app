@@ -53,7 +53,6 @@ export function parseCaseExportFilters(
     routingKey: filters.routing,
     ruleId: filters.rule,
     persona: filters.persona,
-    marketplaceSide: filters["mkt-side"],
     topic: filters.topic,
     connectorDestination: filters.dest,
     connectorDeliveryState: filters.delivery,
@@ -70,7 +69,6 @@ export function parseContactExportFilters(
   return {
     q: filters.q,
     persona: filters.persona,
-    mktSide: filters["mkt-side"],
     caseType: filters["case-type"],
     caseStatus: filters["case-status"],
     from: parseDateParam(filters.from),

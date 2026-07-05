@@ -344,7 +344,6 @@ async function runAllTests() {
         displayName: "Buyer Contact",
         attributes: {
           persona: "buyer",
-          marketplace_side: "demand",
           service_or_product: "consulting",
         },
       },
@@ -357,7 +356,6 @@ async function runAllTests() {
         displayName: "Supplier Contact",
         attributes: {
           persona: "supplier",
-          marketplace_side: "supply",
           product: "directory listing",
         },
       },
@@ -388,7 +386,6 @@ async function runAllTests() {
       TENANT_A,
       {
         persona: "buyer",
-        mktSide: "demand",
         caseType: "lead",
         caseStatus: "open",
         sort: "last-seen-desc",

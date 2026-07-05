@@ -10,7 +10,6 @@ export const CONVERSATION_FILTER_PARAM_KEYS = [
   "routing",
   "rule",
   "persona",
-  "mkt-side",
   "topic",
   "dest",
   "delivery",
@@ -31,7 +30,6 @@ export interface ConversationFilterState {
   routing?: string;
   rule?: string;
   persona?: string;
-  "mkt-side"?: string;
   topic?: string;
   dest?: string;
   delivery?: string;

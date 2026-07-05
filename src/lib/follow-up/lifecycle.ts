@@ -49,6 +49,7 @@ import type {
   ContactMethod,
   FollowUp,
 } from "@/lib/forum-config/schema";
+import { deriveVisitorPersona } from "@/lib/persona/derive-visitor-persona";
 
 import { resolveAction } from "./resolver";
 import type { ConversationContext, ResolvedAction } from "./resolver-types";
@@ -401,6 +402,14 @@ export type LifecycleInput = {
   tenantConfig: ClassifierTenantConfig;
   conversationContext: ConversationContext;
   /**
+   * Flat map of the visitor's qualifying-question answers, mirroring
+   * `conversations.metadata.qualifying.persona` (CON-94). Passed as raw
+   * data so the lifecycle can call `deriveVisitorPersona()` once per
+   * turn and attach the result to the resolver context (CON-246). Omit
+   * when the visitor has not answered any qualifying questions.
+   */
+  qualifyingAnswers?: Record<string, string> | null;
+  /**
    * Optional classifier override for tests. Production callers leave this
    * undefined and the real `classifyConversation` is invoked.
    */
@@ -457,11 +466,25 @@ export async function runReEvaluation(
       tenantConfig: input.tenantConfig,
     });
 
-    // 4. Resolve. Pure function, no I/O.
+    // 4a. Derive the visitor persona once per turn (CON-246). Declared
+    //     qualifying answer wins; classifier persona is the fallback.
+    //     Pure function — no I/O.
+    const derivedPersona = deriveVisitorPersona(
+      {
+        qualifying_questions: input.tenantConfig.qualifying_questions,
+      },
+      input.qualifyingAnswers ?? null,
+      classifierResult.output,
+    );
+
+    // 4b. Resolve. Pure function, no I/O.
     const action = resolveAction({
       classifierOutput: classifierResult.output,
       followUpConfig: input.followUpConfig,
-      conversationContext: input.conversationContext,
+      conversationContext: {
+        ...input.conversationContext,
+        derivedPersona,
+      },
     });
 
     // Persistence (case row + audit event) happens at the chat-route

@@ -219,7 +219,7 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
       if (filters.ruleId) {
         rows = rows.filter((c) => c.ruleId === filters.ruleId);
       }
-      if (filters.persona || filters.marketplaceSide || filters.topic) {
+      if (filters.persona || filters.topic) {
         rows = rows.filter((c) => {
           const attrs = attributes.filter(
             (a) => a.tenantId === tenantId && a.caseId === c.id
@@ -228,8 +228,6 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
             attrs.find((a) => a.key === key)?.value;
           return (
             (!filters.persona || attrValue("persona") === filters.persona) &&
-            (!filters.marketplaceSide ||
-              attrValue("marketplace_side") === filters.marketplaceSide) &&
             (!filters.topic || attrValue("topic") === filters.topic)
           );
         });
@@ -376,7 +374,7 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
       if (filters.ruleId) {
         rows = rows.filter((row) => row.case?.ruleId === filters.ruleId);
       }
-      if (filters.persona || filters.marketplaceSide || filters.topic) {
+      if (filters.persona || filters.topic) {
         rows = rows.filter((row) => {
           if (!row.case) return false;
           const attrs = attributes.filter(
@@ -386,8 +384,6 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
             attrs.find((a) => a.key === key)?.value;
           return (
             (!filters.persona || attrValue("persona") === filters.persona) &&
-            (!filters.marketplaceSide ||
-              attrValue("marketplace_side") === filters.marketplaceSide) &&
             (!filters.topic || attrValue("topic") === filters.topic)
           );
         });
@@ -445,7 +441,6 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
         routingKeys: dedupSort(tenantCases.map((c) => c.routingKey)),
         ruleIds: dedupSort(tenantCases.map((c) => c.ruleId)),
         personas: dedupSort(attrValues("persona")),
-        marketplaceSides: dedupSort(attrValues("marketplace_side")),
         topics: dedupSort(attrValues("topic")),
         connectorDestinations: dedupSort(
           tenantOutbox.map((r) => r.destinationId),
