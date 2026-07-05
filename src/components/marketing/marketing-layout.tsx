@@ -139,41 +139,76 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
             >
               Sign up
             </Link>
+            <details className="group relative md:hidden">
+              <summary
+                className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-900 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden"
+                aria-label="Open menu"
+              >
+                <span className="sr-only">Menu</span>
+                <span className="flex h-4 w-5 flex-col justify-between">
+                  <span className="h-0.5 rounded-full bg-current transition group-open:translate-y-[7px] group-open:rotate-45" />
+                  <span className="h-0.5 rounded-full bg-current transition group-open:opacity-0" />
+                  <span className="h-0.5 rounded-full bg-current transition group-open:-translate-y-[7px] group-open:-rotate-45" />
+                </span>
+              </summary>
+              <div className="absolute right-0 top-12 w-[min(20rem,calc(100vw-2.5rem))] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl shadow-zinc-950/15">
+                <nav className="max-h-[calc(100vh-6rem)] overflow-y-auto p-2">
+                  <div className="space-y-1">
+                    {navItems.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-orange-50 hover:text-zinc-950"
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                  <div className="mt-2 border-t border-zinc-100 pt-2">
+                    <p className="px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-zinc-400">
+                      Features
+                    </p>
+                    <div className="ml-3 border-l border-zinc-200 pl-2">
+                      {featureCards.map((feature) => (
+                        <Link
+                          key={feature.href}
+                          href={feature.href}
+                          className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-950"
+                        >
+                          {feature.title}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-2 border-t border-zinc-100 pt-2">
+                    <p className="px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-zinc-400">
+                      Industries
+                    </p>
+                    <div className="ml-3 border-l border-zinc-200 pl-2">
+                      {industryNavLinks
+                        .filter((link) => link.href !== "/resources/examples")
+                        .map((link) => (
+                          <Link
+                            key={link.href}
+                            href={link.href}
+                            className="block rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-950"
+                          >
+                            {link.label}
+                          </Link>
+                        ))}
+                    </div>
+                  </div>
+                  <Link
+                    href="/login"
+                    className="mt-2 block rounded-lg border border-zinc-200 px-3 py-2.5 text-center text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 sm:hidden"
+                  >
+                    Login
+                  </Link>
+                </nav>
+              </div>
+            </details>
           </div>
         </div>
-        <nav className="overflow-hidden border-t border-zinc-200/70 px-5 py-2 md:hidden">
-          <div className="flex max-w-full gap-5 overflow-x-auto whitespace-nowrap text-sm font-medium text-zinc-600">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="shrink-0 transition hover:text-zinc-950"
-              >
-                {item.label}
-              </Link>
-            ))}
-            {featureCards.map((feature) => (
-              <Link
-                key={feature.href}
-                href={feature.href}
-                className="shrink-0 transition hover:text-zinc-950"
-              >
-                {feature.title}
-              </Link>
-            ))}
-            {industryNavLinks
-              .filter((link) => link.href !== "/resources/examples")
-              .map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="shrink-0 transition hover:text-zinc-950"
-                >
-                  {link.label}
-                </Link>
-              ))}
-          </div>
-        </nav>
       </header>
       {children}
       <footer className="border-t border-zinc-200 bg-zinc-950 text-white">
