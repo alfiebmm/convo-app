@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { webhookDestinationConfigSchema } from "@/lib/connectors/webhook/settings";
+import { DEFAULT_STARTER_PROMPTS } from "./defaults";
 
 /**
  * forum.config.json Schema (K-01)
@@ -59,6 +60,38 @@ export const qualifyingQuestionsSchema = z.object({
   preset: qualifyingQuestionSchema.optional(),
   additional: z.array(qualifyingQuestionSchema).max(4).default([]),
 });
+
+// ============================================================
+// Starter Prompts Configuration (CON-251 / CON-252)
+//
+// Cosmetic conversation openers rendered on the widget's closed-bubble
+// surface and on the first in-chat state. Each entry is a single-tap
+// pill: an emoji glyph, a short label, and the full prompt string that
+// gets posted to /api/chat when clicked. NOT to be conflated with
+// `qualifying_questions` — starter prompts are pure openers, no
+// persona_field side-effects, no gated behaviour.
+//
+// Cap at 4 mirrors `qualifyingQuestionsSchema.additional.max(4)` for
+// visual consistency in the closed-bubble surface.
+//
+// NOTE (CON-252): the schema pieces below (`starterPromptSchema`,
+// `starterPromptsSchema`, the `starter_prompts` slice on the root, and
+// the exported types) are added here in the CON-252 branch to keep the
+// defaults PR self-contained. CON-251 introduces the same pieces in
+// parallel — whichever PR merges second must rebase to dedupe. This
+// coordination is documented on both Linear tickets.
+// ============================================================
+
+export const starterPromptSchema = z.object({
+  emoji: z.string().min(1),
+  label: z.string().min(1).max(48),
+  prompt: z.string().min(1),
+});
+
+export const starterPromptsSchema = z
+  .array(starterPromptSchema)
+  .max(4)
+  .default([]);
 
 // ============================================================
 // Welcome Message Configuration
@@ -554,6 +587,7 @@ export const forumConfigSchema = z.object({
   ai_persona: aiPersonaSchema.prefault({}),
   cta_rules: ctaRulesSchema,
   qualifying_questions: qualifyingQuestionsSchema.prefault({}),
+  starter_prompts: starterPromptsSchema.prefault(DEFAULT_STARTER_PROMPTS),
   welcome: welcomeSchema.prefault({}),
   lead_capture: leadCaptureSchema.prefault({}),
   allowed_topics: allowedTopicsSchema,
@@ -572,6 +606,7 @@ export type ForumConfig = z.infer<typeof forumConfigSchema>;
 export type AiPersona = z.infer<typeof aiPersonaSchema>;
 export type CtaRule = z.infer<typeof ctaRuleSchema>;
 export type QualifyingQuestion = z.infer<typeof qualifyingQuestionSchema>;
+export type StarterPrompt = z.infer<typeof starterPromptSchema>;
 export type Welcome = z.infer<typeof welcomeSchema>;
 export type SeoDefaults = z.infer<typeof seoDefaultsSchema>;
 export type Connectors = z.infer<typeof connectorsSchema>;

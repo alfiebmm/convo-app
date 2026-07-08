@@ -7,6 +7,7 @@ import { db } from "./db";
 import { tenants, tenantMembers } from "./db/schema";
 import { eq, and } from "drizzle-orm";
 import { indexTenantSite } from "./knowledge/indexer";
+import { DEFAULT_STARTER_PROMPTS } from "./forum-config/defaults";
 
 export async function getTenantBySlug(slug: string) {
   const [tenant] = await db
@@ -44,12 +45,24 @@ export async function createTenant(data: {
   ownerUserId: string;
 }) {
   const tenant = await db.transaction(async (tx) => {
+    // CON-252: seed forum-config starter prompts on creation so the
+    // default pills materialise in the DB row (not just at read time via
+    // the schema `.prefault` cascade). Matches the CON-192 forumConfig
+    // auto-fill precedent. Kept as a partial `forumConfig` object so any
+    // future initial-settings additions merge cleanly without clobbering.
+    const initialSettings = {
+      forumConfig: {
+        starter_prompts: DEFAULT_STARTER_PROMPTS,
+      },
+    } as const;
+
     const [tenant] = await tx
       .insert(tenants)
       .values({
         name: data.name,
         slug: data.slug,
         domain: data.domain,
+        settings: initialSettings,
       })
       .returning();
 
