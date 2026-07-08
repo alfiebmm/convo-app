@@ -4,6 +4,7 @@ import { tenants } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { pickStreamingOverrides } from "@/lib/widget/streaming-config";
 import { getConfiguredQuestions } from "@/lib/qualifying/resolve";
+import { starterPromptsSchema } from "@/lib/forum-config/schema";
 import {
   hasStoredQualifyingQuestions,
   resolvePublicWelcomeConfig,
@@ -98,6 +99,17 @@ export async function GET(req: NextRequest) {
     // them as quick-reply buttons. The model never sees this menu — answers
     // come back via POST /api/conversations/qualifying, server-validated.
     const qualifyingQuestions = getConfiguredQuestions(settings);
+
+    // CON-251: surface closed-widget starter-prompt pills. Public-safe by
+    // definition — pill labels + prompt strings are already visitor-visible
+    // (rendered before the panel is even open). We parse defensively through
+    // the same Zod schema the editor uses so any bad shape on the row
+    // silently degrades to an empty array rather than crashing the widget.
+    const forumConfig = (settings.forumConfig as Record<string, unknown> | undefined) ?? {};
+    const starterPrompts = (() => {
+      const parsed = starterPromptsSchema.safeParse(forumConfig.starter_prompts);
+      return parsed.success ? parsed.data : [];
+    })();
     const qualifyingQuestionsPopulated = hasStoredQualifyingQuestions(settings);
     const welcomeConfig = resolvePublicWelcomeConfig(settings, widget);
     const welcomeEnabled = shouldShowWelcomeOnOpen(
@@ -115,6 +127,8 @@ export async function GET(req: NextRequest) {
         size,
         streaming: streamingPayload,
         qualifyingQuestions,
+        // CON-251: closed-bubble quick-action pills.
+        starterPrompts,
       },
       { headers: CORS_HEADERS }
     );
