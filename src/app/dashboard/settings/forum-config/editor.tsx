@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { PersonaPanel } from "./panels/persona-panel";
 import { WelcomePanel } from "./panels/welcome-panel";
 import { QualifyingPanel } from "./panels/qualifying-panel";
+import { StarterPromptsPanel } from "./panels/starter-prompts-panel";
 import { AllowedTopicsPanel } from "./panels/allowed-topics-panel";
 import { FollowUpPanel } from "./panels/follow-up-panel";
 import { TopicBoundariesPanel } from "./panels/topic-boundaries-panel";
@@ -75,6 +76,13 @@ const TABS: { key: EditorTabKey; label: string; description: string }[] = [
     key: "qualifying_questions",
     label: "Qualifying",
     description: "Multiple-choice questions the bot asks every new visitor.",
+  },
+  {
+    // CON-251: closed-widget starter-prompt pills.
+    key: "starter_prompts",
+    label: "Starter prompts",
+    description:
+      "Tap-to-send quick-action pills on the closed chat bubble (desktop).",
   },
   {
     key: "conversation_limits",
@@ -171,6 +179,7 @@ export function ForumConfigEditor({
     welcome: !!dirty.welcome,
     topic_scope: !!dirty.allowed_topics || !!dirty.topic_boundaries,
     qualifying_questions: !!dirty.qualifying_questions,
+    starter_prompts: !!dirty.starter_prompts,
     conversation_limits: !!dirty.conversation_limits,
     follow_up: !!dirty.follow_up,
   };
@@ -278,6 +287,19 @@ export function ForumConfigEditor({
               initialValue={forumConfig.qualifying_questions}
               onSaved={(v) => handleSliceSaved("qualifying_questions", v)}
               onDirtyChange={(d) => setSliceDirty("qualifying_questions", d)}
+            />
+          </div>
+        )}
+        {activeTab === "starter_prompts" && (
+          <div
+            role="tabpanel"
+            id="panel-starter_prompts"
+            aria-labelledby="tab-starter_prompts"
+          >
+            <StarterPromptsPanel
+              initialValue={forumConfig.starter_prompts}
+              onSaved={(v) => handleSliceSaved("starter_prompts", v)}
+              onDirtyChange={(d) => setSliceDirty("starter_prompts", d)}
             />
           </div>
         )}

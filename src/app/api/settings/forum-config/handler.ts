@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   aiPersonaSchema,
   qualifyingQuestionsSchema,
+  starterPromptsSchema,
   welcomeSchema,
   allowedTopicsSchema,
   followUpSchema,
@@ -30,6 +31,7 @@ export type ForumConfigDeps = {
 export const AUTHORING_SLICES = [
   "ai_persona",
   "qualifying_questions",
+  "starter_prompts",
   "welcome",
   "allowed_topics",
   "follow_up",
@@ -47,6 +49,9 @@ export type AuthoringSlice = (typeof AUTHORING_SLICES)[number];
 const SLICE_SCHEMAS: Record<AuthoringSlice, z.ZodTypeAny> = {
   ai_persona: aiPersonaSchema,
   qualifying_questions: qualifyingQuestionsSchema,
+  // CON-251: closed-widget quick-action pills. Same PATCH pathway as the
+  // other authoring slices; validation runs against `starterPromptsSchema`.
+  starter_prompts: starterPromptsSchema,
   welcome: welcomeSchema,
   allowed_topics: allowedTopicsSchema,
   follow_up: followUpSchema,

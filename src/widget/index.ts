@@ -103,6 +103,16 @@ interface QualifyingPrompt {
   options: QualifyingOption[];
 }
 
+// CON-251: starter-prompt pills surfaced from /api/widget/config.
+// Rendered on the closed-bubble surface (desktop only). Tapping a pill
+// opens the panel AND auto-sends the pill's `prompt` as if the visitor
+// had typed it. No persona side-effects — pure conversation openers.
+interface StarterPrompt {
+  emoji: string;
+  label: string;
+  prompt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Config from script tag
 // ---------------------------------------------------------------------------
@@ -218,6 +228,59 @@ function getStyles(config: ConvoConfig): string {
     .convo-bubble.open svg {
       transform: rotate(90deg);
     }
+
+    /* CON-251 — Closed-widget starter-prompt pills.
+       Rendered as a vertical stack aligned to the same side as the bubble,
+       floating just above the bubble. Hidden on mobile and while the chat
+       panel is open. */
+    .convo-starter-pills {
+      position: fixed;
+      /* Sit above the bubble with the same edge inset. */
+      bottom: ${dims.offset + dims.bubble + 12}px;
+      ${pos}
+      display: flex;
+      flex-direction: column;
+      align-items: ${side === "left" ? "flex-start" : "flex-end"};
+      gap: 8px;
+      z-index: 2147483646;
+      pointer-events: none;
+    }
+    .convo-starter-pills.hidden {
+      display: none;
+    }
+    .convo-starter-pill {
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: min(280px,calc(100vw - ${dims.offset * 2 + 8}px));
+      padding: 8px 14px;
+      font: 500 13px/1.3 inherit;
+      color: #1e293b;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .convo-starter-pill:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
+      border-color: var(--convo-color);
+    }
+    .convo-starter-pill:focus-visible {
+      outline: 2px solid var(--convo-color);
+    }
+    .convo-starter-pill-emoji {
+      font-size: 16px;
+    }
+    .convo-starter-pill-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @media(max-width:640px){.convo-starter-pills{display:none!important}}
 
     /* Panel */
     .convo-panel {
@@ -800,6 +863,9 @@ class ConvoWidget {
   private qualifyingComplete = false;
   private qualifyingPending = false;
 
+  // CON-251: starter-prompt pills on the closed bubble surface.
+  private starterPrompts: StarterPrompt[] = [];
+
   // DOM refs (inside Shadow DOM)
   private shadow!: ShadowRoot;
   private bubble!: HTMLButtonElement;
@@ -808,6 +874,9 @@ class ConvoWidget {
   private inputEl!: HTMLInputElement;
   private sendBtn!: HTMLButtonElement;
   private closeBtn!: HTMLButtonElement;
+  // CON-251: container for the closed-bubble starter-prompt pills. Present
+  // in the shadow tree only when at least one pill is configured.
+  private starterPillsEl: HTMLDivElement | null = null;
 
   constructor() {
     this.config = getConfig();
@@ -904,6 +973,7 @@ class ConvoWidget {
           tokensPerSecond?: number;
         } | null;
         qualifyingQuestions?: QualifyingPrompt[];
+        starterPrompts?: StarterPrompt[];
       };
       if (typeof data.name === "string" && data.name.trim()) {
         this.config.name = data.name;
@@ -952,6 +1022,22 @@ class ConvoWidget {
             typeof q.question === "string" &&
             Array.isArray(q.options) &&
             q.options.length > 0
+        );
+      }
+
+      // CON-251: starter-prompt pills. Defensive filter for shape — the
+      // server side is already Zod-validated, but the widget must survive
+      // any bad row on tenants.settings.
+      if (Array.isArray(data.starterPrompts)) {
+        this.starterPrompts = data.starterPrompts.filter(
+          (p): p is StarterPrompt =>
+            !!p &&
+            typeof p.emoji === "string" &&
+            p.emoji.length > 0 &&
+            typeof p.label === "string" &&
+            p.label.length > 0 &&
+            typeof p.prompt === "string" &&
+            p.prompt.length > 0,
         );
       }
     } catch {
@@ -1225,6 +1311,11 @@ class ConvoWidget {
     this.shadow.appendChild(this.panel);
     this.shadow.appendChild(this.bubble);
 
+    // CON-251: closed-bubble starter-prompt pills. Renders nothing when
+    // the tenant has zero pills configured — no placeholder, no wrapper
+    // (per CON-251 §4 spec).
+    this.renderStarterPills();
+
     // CON-40: if we rehydrated a session, replay it. Otherwise show welcome.
     if (this.messages.length > 0) {
       for (const m of this.messages) {
@@ -1342,6 +1433,8 @@ class ConvoWidget {
       "aria-label",
       this.isOpen ? "Close chat" : "Open chat"
     );
+    // CON-251: hide pills while the panel is open, restore on close.
+    this.updateStarterPillsVisibility();
 
     if (this.isOpen) {
       setTimeout(() => this.inputEl.focus(), 300);
@@ -1358,8 +1451,82 @@ class ConvoWidget {
     this.bubble.classList.remove("open");
     this.bubble.innerHTML = CHAT_ICON;
     this.bubble.setAttribute("aria-label", "Open chat");
+    // CON-251: restore pills after close.
+    this.updateStarterPillsVisibility();
     // Widget closed — trigger pipeline if conversation happened
     this.triggerPipeline();
+  }
+
+  /**
+   * CON-251: render the closed-bubble starter-prompt pills.
+   *
+   * A vertical stack floats above the launcher bubble on desktop. Clicking
+   * a pill opens the panel and immediately sends the pill's `prompt` as
+   * if the visitor had typed it — the assistant turn starts before the
+   * open animation completes so the visitor sees typing indicators
+   * immediately.
+   *
+   * Rendered only when at least one prompt is configured (no placeholder).
+   * Hidden via CSS on mobile (< 640px). Hidden while the panel is open.
+   */
+  private renderStarterPills(): void {
+    if (this.starterPrompts.length === 0) {
+      // Nothing to render — do not create a wrapper element.
+      return;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "convo-starter-pills";
+
+    for (const p of this.starterPrompts) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "convo-starter-pill";
+      btn.setAttribute("aria-label", p.label);
+      btn.innerHTML = `
+        <span class="convo-starter-pill-emoji" aria-hidden="true">${this.escapeHtml(p.emoji)}</span>
+        <span class="convo-starter-pill-label">${this.escapeHtml(p.label)}</span>
+      `;
+      btn.addEventListener("click", () => this.handleStarterPillClick(p));
+      wrapper.appendChild(btn);
+    }
+
+    this.starterPillsEl = wrapper;
+    this.shadow.appendChild(wrapper);
+    this.updateStarterPillsVisibility();
+  }
+
+  /**
+   * CON-251: click handler. Opens the panel if closed and posts the pill's
+   * prompt through the standard send pipeline so history, streaming,
+   * persistence, and pipeline triggers all behave identically to a typed
+   * message.
+   */
+  private handleStarterPillClick(pill: StarterPrompt): void {
+    // Guard against double-tap while a stream is already in flight.
+    if (this.isStreaming) return;
+
+    // Open the panel if it isn't already open. Same code path as the
+    // bubble click so mobile viewport handling, focus, and pipeline
+    // triggers behave the same.
+    if (!this.isOpen) {
+      this.toggle();
+    }
+
+    // Fire the message through the standard send() pipeline by staging
+    // the prompt on the input element first — keeps a single code path
+    // for streaming state, persistence, and pipeline triggers.
+    this.inputEl.value = pill.prompt;
+    void this.send();
+  }
+
+  /**
+   * CON-251: hide the pill stack while the panel is open, restore when
+   * it closes. Class toggle drives display:none (size-budget trim).
+   */
+  private updateStarterPillsVisibility(): void {
+    if (!this.starterPillsEl) return;
+    this.starterPillsEl.classList.toggle("hidden", this.isOpen);
   }
 
   private async send() {
