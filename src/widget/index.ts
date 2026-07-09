@@ -244,73 +244,43 @@ function getStyles(config: ConvoConfig): string {
       gap: 8px;
       z-index: 2147483646;
       pointer-events: none;
-      opacity: 1;
-      transition: opacity 0.2s ease;
     }
     .convo-starter-pills.hidden {
-      opacity: 0;
-      pointer-events: none;
+      display: none;
     }
     .convo-starter-pill {
       pointer-events: auto;
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      max-width: min(280px, calc(100vw - ${dims.offset * 2 + 8}px));
+      max-width: min(280px,calc(100vw - ${dims.offset * 2 + 8}px));
       padding: 8px 14px;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 500;
-      line-height: 1.3;
+      font: 500 13px/1.3 inherit;
       color: #1e293b;
       background: #fff;
       border: 1px solid #e2e8f0;
       border-radius: 999px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease,
-        border-color 0.15s ease;
-      /* Animate in when first rendered. */
-      animation: convo-pill-in 0.25s ease both;
+      transition: all .15s ease;
     }
     .convo-starter-pill:hover {
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
       border-color: var(--convo-color);
     }
     .convo-starter-pill:focus-visible {
       outline: 2px solid var(--convo-color);
-      outline-offset: 2px;
-    }
-    .convo-starter-pill:active {
-      transform: translateY(0);
     }
     .convo-starter-pill-emoji {
       font-size: 16px;
-      line-height: 1;
-      flex-shrink: 0;
     }
     .convo-starter-pill-label {
-      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    @keyframes convo-pill-in {
-      from {
-        opacity: 0;
-        transform: translateY(6px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    /* Desktop-only — pills hidden on mobile per CON-251 spec. */
-    @media (max-width: 640px) {
-      .convo-starter-pills {
-        display: none !important;
-      }
-    }
+    @media(max-width:640px){.convo-starter-pills{display:none!important}}
 
     /* Panel */
     .convo-panel {
@@ -1507,8 +1477,6 @@ class ConvoWidget {
 
     const wrapper = document.createElement("div");
     wrapper.className = "convo-starter-pills";
-    wrapper.setAttribute("role", "group");
-    wrapper.setAttribute("aria-label", "Quick actions");
 
     for (const p of this.starterPrompts) {
       const btn = document.createElement("button");
@@ -1554,7 +1522,7 @@ class ConvoWidget {
 
   /**
    * CON-251: hide the pill stack while the panel is open, restore when
-   * it closes. Kept as a class toggle so the CSS transition applies.
+   * it closes. Class toggle drives display:none (size-budget trim).
    */
   private updateStarterPillsVisibility(): void {
     if (!this.starterPillsEl) return;
