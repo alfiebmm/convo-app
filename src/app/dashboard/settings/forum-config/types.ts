@@ -4,6 +4,8 @@
 export type AuthoringSliceKey =
   | "ai_persona"
   | "qualifying_questions"
+  // CON-251: closed-bubble starter-prompt pills.
+  | "starter_prompts"
   | "welcome"
   | "allowed_topics"
   | "follow_up";
@@ -18,6 +20,8 @@ export type EditorTabKey =
   | "welcome"
   | "topic_scope"
   | "qualifying_questions"
+  // CON-251: closed-bubble starter-prompt pills.
+  | "starter_prompts"
   | "conversation_limits"
   | "follow_up";
 
