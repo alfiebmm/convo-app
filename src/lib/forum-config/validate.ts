@@ -3,6 +3,7 @@ import {
   aiPersonaSchema,
   ctaRulesSchema,
   qualifyingQuestionsSchema,
+  starterPromptsSchema,
   welcomeSchema,
   leadCaptureSchema,
   allowedTopicsSchema,
@@ -16,6 +17,7 @@ import type {
   ForumConfig,
   AiPersona,
   CtaRule,
+  StarterPrompt,
   Welcome,
   SeoDefaults,
   Connectors,
@@ -197,6 +199,13 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     has("qualifying_questions"),
   );
 
+  const starter_prompts = parseSlice<StarterPrompt[]>(
+    starterPromptsSchema,
+    raw.starter_prompts,
+    DEFAULT_FORUM_CONFIG.starter_prompts,
+    has("starter_prompts"),
+  );
+
   const welcome = parseSlice<Welcome>(
     welcomeSchema,
     raw.welcome,
@@ -258,6 +267,7 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     ai_persona,
     cta_rules,
     qualifying_questions,
+    starter_prompts,
     welcome,
     lead_capture,
     allowed_topics,
@@ -305,6 +315,13 @@ export function parseSliceSafe<K extends SliceKey>(
         qualifyingQuestionsSchema,
         input,
         fallback as ForumConfig["qualifying_questions"],
+        true,
+      ) as ForumConfig[K];
+    case "starter_prompts":
+      return parseSlice(
+        starterPromptsSchema,
+        input,
+        fallback as StarterPrompt[],
         true,
       ) as ForumConfig[K];
     case "welcome":

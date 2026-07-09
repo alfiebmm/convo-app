@@ -1,4 +1,23 @@
-import type { ForumConfig } from "./schema";
+import type { ForumConfig, StarterPrompt } from "./schema";
+
+/**
+ * Default Starter Prompts (CON-252)
+ *
+ * Rendered on the widget's closed-bubble surface as single-tap pills.
+ * Clicking a pill posts its `prompt` to /api/chat as if the visitor typed
+ * it. Sensible openers for a green-field tenant that hasn't customised
+ * the slice yet.
+ *
+ * Cap at 4 per `starterPromptsSchema` (see ./schema.ts). These defaults
+ * cascade via `starter_prompts: starterPromptsSchema.prefault(DEFAULT_STARTER_PROMPTS)`
+ * on the root schema, and are also materialised into the DB row at tenant
+ * creation time by `createTenant` in `src/lib/tenant.ts`.
+ */
+export const DEFAULT_STARTER_PROMPTS: StarterPrompt[] = [
+  { emoji: "💬", label: "Ask a question", prompt: "I have a question." },
+  { emoji: "🛟", label: "Get help", prompt: "I need help with something." },
+  { emoji: "✉️", label: "Get in touch", prompt: "How do I get in touch?" },
+];
 
 /**
  * Default Forum Configuration (K-01)
@@ -40,6 +59,12 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
     },
     additional: [],
   },
+
+  starter_prompts: [
+    { emoji: "💬", label: "Ask a question", prompt: "I have a question." },
+    { emoji: "🛟", label: "Get help", prompt: "I need help with something." },
+    { emoji: "✉️", label: "Get in touch", prompt: "How do I get in touch?" },
+  ],
 
   welcome: {
     copy: "Hi there, how can I help you today?",
