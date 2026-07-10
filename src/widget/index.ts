@@ -242,7 +242,7 @@ function getStyles(config: ConvoConfig): string {
       flex-direction: column;
       align-items: ${side === "left" ? "flex-start" : "flex-end"};
       gap: 8px;
-      z-index: 2147483646;
+      z-index: 2147483645;
       pointer-events: none;
     }
     .convo-starter-pills.hidden {
@@ -1308,13 +1308,16 @@ class ConvoWidget {
     this.closeBtn = this.panel.querySelector(".convo-close")!;
 
     this.shadow.appendChild(style);
+
+    // CON-251: closed-bubble starter-prompt pills. Keep this as a sibling
+    // before the panel in the shadow tree so it never paints over the open
+    // chat surface while still floating above the closed launcher bubble.
+    // Renders nothing when the tenant has zero pills configured — no
+    // placeholder, no wrapper (per CON-251 §4 spec).
+    this.renderStarterPills();
+
     this.shadow.appendChild(this.panel);
     this.shadow.appendChild(this.bubble);
-
-    // CON-251: closed-bubble starter-prompt pills. Renders nothing when
-    // the tenant has zero pills configured — no placeholder, no wrapper
-    // (per CON-251 §4 spec).
-    this.renderStarterPills();
 
     // CON-40: if we rehydrated a session, replay it. Otherwise show welcome.
     if (this.messages.length > 0) {
