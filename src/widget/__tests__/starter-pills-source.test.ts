@@ -45,42 +45,35 @@ test("starter pills stack below the panel and hide while open", () => {
   );
 });
 
-test("starter pill clicks buffer behind qualifying questions", () => {
+test("starter pill clicks buffer the prompt and defer/flush via qualifying gate", () => {
   const handler = sourceBetween(
     "private handleStarterPillClick(pill: StarterPrompt): void {",
-    "private p(): boolean {",
+    "private flushPill(): boolean {",
   );
 
+  // The buffer field exists on the class.
   assert.match(
     widgetSource,
     /private pendingPillPrompt: string \| null = null;/,
   );
+
+  // Handler opens the panel, buffers the prompt, then either flushes
+  // immediately (no qualifying pending) or defers by leaving the buffer
+  // set. Same code path for both branches keeps size + reasoning simple.
   assert.match(
     handler,
-    /if \(!this\.isOpen\) \{\s*this\.toggle\(\);\s*\}[\s\S]*?if \(this\.nextQualifyingPrompt\(\)\) \{\s*this\.pendingPillPrompt = pill\.prompt;\s*return;\s*\}/,
-  );
-});
-
-test("starter pill clicks still send immediately with no qualifying prompt", () => {
-  const handler = sourceBetween(
-    "private handleStarterPillClick(pill: StarterPrompt): void {",
-    "private p(): boolean {",
-  );
-
-  assert.match(
-    handler,
-    /if \(this\.nextQualifyingPrompt\(\)\) \{[\s\S]*?return;[\s\S]*?\}\s*\/\/ Fire the message through the standard send\(\) pipeline[\s\S]*?this\.inputEl\.value = pill\.prompt;\s*void this\.send\(\);/,
+    /if \(!this\.isOpen\) this\.toggle\(\);[\s\S]*?this\.pendingPillPrompt = pill\.prompt;\s*if \(!this\.nextQualifyingPrompt\(\)\) this\.flushPill\(\);/,
   );
 });
 
 test("qualifying completion flushes a buffered pill prompt instead of greeting", () => {
   const flushCount = widgetSource.match(
-    /this\.setInputLocked\(false\);\s*if \(this\.p\(\)\) \{\s*return;\s*\}/g,
+    /this\.setInputLocked\(false\);\s*if \(this\.flushPill\(\)\) \{\s*return;\s*\}/g,
   )?.length;
 
   assert.equal(flushCount, 2);
   assert.match(
     widgetSource,
-    /private p\(\): boolean \{\s*const prompt = this\.pendingPillPrompt;\s*if \(!prompt\) return false;\s*this\.pendingPillPrompt = null;\s*this\.inputEl\.value = prompt;\s*void this\.send\(\);\s*return true;\s*\}/,
+    /private flushPill\(\): boolean \{\s*const prompt = this\.pendingPillPrompt;\s*if \(!prompt\) return false;\s*this\.pendingPillPrompt = null;\s*this\.inputEl\.value = prompt;\s*void this\.send\(\);\s*return true;\s*\}/,
   );
 });

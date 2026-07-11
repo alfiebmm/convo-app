@@ -1209,7 +1209,7 @@ class ConvoWidget {
       } else {
         this.qualifyingComplete = true;
         this.setInputLocked(false);
-        if (this.p()) {
+        if (this.flushPill()) {
           return;
         }
         // Hidden assistant turn so the bot acknowledges the visitor
@@ -1271,7 +1271,7 @@ class ConvoWidget {
       this.qualifyingComplete = true;
       cardEl.remove();
       this.setInputLocked(false);
-      if (this.p()) {
+      if (this.flushPill()) {
         return;
       }
       setTimeout(() => this.inputEl.focus(), 100);
@@ -1518,30 +1518,20 @@ class ConvoWidget {
   private handleStarterPillClick(pill: StarterPrompt): void {
     // Guard against double-tap while a stream is already in flight.
     if (this.isStreaming) return;
-
-    // Open the panel if it isn't already open. Same code path as the
-    // bubble click so mobile viewport handling, focus, and pipeline
-    // triggers behave the same.
-    if (!this.isOpen) {
-      this.toggle();
-    }
-
-    if (this.nextQualifyingPrompt()) {
-      this.pendingPillPrompt = pill.prompt;
-      return;
-    }
-
-    // Fire the message through the standard send() pipeline by staging
-    // the prompt on the input element first — keeps a single code path
-    // for streaming state, persistence, and pipeline triggers.
-    this.inputEl.value = pill.prompt;
-    void this.send();
+    // Open the panel; keeps a single code path with the bubble click so
+    // mobile viewport, focus, and pipeline triggers stay consistent.
+    if (!this.isOpen) this.toggle();
+    // Buffer, then either flush now or defer until qualifying completes.
+    this.pendingPillPrompt = pill.prompt;
+    if (!this.nextQualifyingPrompt()) this.flushPill();
   }
 
-  private p(): boolean {
+  // CON-254: post a starter-pill prompt buffered during qualifying. Returns
+  // true when a prompt was flushed so callers can skip their default post-
+  // qualifying behaviour (e.g. hidden greeting).
+  private flushPill(): boolean {
     const prompt = this.pendingPillPrompt;
     if (!prompt) return false;
-
     this.pendingPillPrompt = null;
     this.inputEl.value = prompt;
     void this.send();
