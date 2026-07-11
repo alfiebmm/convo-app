@@ -25,10 +25,19 @@ const OUTFILE = resolve(ROOT, "public/widget.js");
 //     (shared `.convo-card` base + button surface). ~10 KiB raw / ~2.5 KiB
 //     gzip net add. Held off SVG-attribute teardown / more aggressive CSS
 //     dedup — keep them in reserve for the next feature push (CON-177+).
+//   - 42 KiB raw / 12 KiB gzip — CON-254 pill+qualifying gate + upcoming
+//     CON-255/256 pill actions + single-screen capture (approved by Cam
+//     11 Jul). CON-254 adds `pendingPillPrompt` buffer + `flushPill`; the
+//     CON-255/256 workers will add `action` block dispatch + single-form
+//     capture on top. SVG-attribute teardown reserve already spent by
+//     CON-254. Held reserve remaining: CSS dedup pass for capture form vs
+//     offer card (~500 B gzip if we need it back). Also note: macOS vs
+//     Linux gzip differ by ~15 B on identical input — the size gate runs
+//     on Linux (CI), so budget these thresholds against Linux output.
 // ---------------------------------------------------------------------------
 export const SIZE_BUDGET = {
-  rawBytes: 40 * 1024, // 40 KiB raw minified
-  gzipBytes: 11 * 1024, // 11 KiB gzipped
+  rawBytes: 42 * 1024, // 42 KiB raw minified
+  gzipBytes: 12 * 1024, // 12 KiB gzipped
 };
 
 // ---------------------------------------------------------------------------
