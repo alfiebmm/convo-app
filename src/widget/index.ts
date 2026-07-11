@@ -831,10 +831,13 @@ function getStyles(config: ConvoConfig): string {
 // ---------------------------------------------------------------------------
 // SVG icons
 // ---------------------------------------------------------------------------
-const CHAT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-const CLOSE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-const SEND_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
-const CLOSE_ICON_SM = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+const icon = (body: string, width = "2") =>
+  `<svg xmlns=http://www.w3.org/2000/svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=${width} stroke-linecap=round stroke-linejoin=round>${body}</svg>`;
+const CLOSE_LINES = `<line x1=18 y1=6 x2=6 y2=18/><line x1=6 y1=6 x2=18 y2=18/>`;
+const CHAT_ICON = icon(`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`);
+const CLOSE_ICON = icon(CLOSE_LINES);
+const SEND_ICON = icon(`<line x1=22 y1=2 x2=11 y2=13/><polygon points="22 2 15 22 11 13 2 9 22 2"/>`);
+const CLOSE_ICON_SM = icon(CLOSE_LINES, "2.5");
 
 // ---------------------------------------------------------------------------
 // Widget class
@@ -865,6 +868,7 @@ class ConvoWidget {
 
   // CON-251: starter-prompt pills on the closed bubble surface.
   private starterPrompts: StarterPrompt[] = [];
+  private pendingPillPrompt: string | null = null;
 
   // DOM refs (inside Shadow DOM)
   private shadow!: ShadowRoot;
@@ -1205,6 +1209,9 @@ class ConvoWidget {
       } else {
         this.qualifyingComplete = true;
         this.setInputLocked(false);
+        if (this.flushPill()) {
+          return;
+        }
         // Hidden assistant turn so the bot acknowledges the visitor
         // instead of leaving them staring at a silent input.
         // Fire-and-forget: focus the input first, kick off the greeting
@@ -1264,6 +1271,9 @@ class ConvoWidget {
       this.qualifyingComplete = true;
       cardEl.remove();
       this.setInputLocked(false);
+      if (this.flushPill()) {
+        return;
+      }
       setTimeout(() => this.inputEl.focus(), 100);
       // Hidden assistant turn so the bot acknowledges the visitor.
       // The server uses `skipped: true` to soften the greeting
@@ -1508,19 +1518,24 @@ class ConvoWidget {
   private handleStarterPillClick(pill: StarterPrompt): void {
     // Guard against double-tap while a stream is already in flight.
     if (this.isStreaming) return;
+    // Open the panel; keeps a single code path with the bubble click so
+    // mobile viewport, focus, and pipeline triggers stay consistent.
+    if (!this.isOpen) this.toggle();
+    // Buffer, then either flush now or defer until qualifying completes.
+    this.pendingPillPrompt = pill.prompt;
+    if (!this.nextQualifyingPrompt()) this.flushPill();
+  }
 
-    // Open the panel if it isn't already open. Same code path as the
-    // bubble click so mobile viewport handling, focus, and pipeline
-    // triggers behave the same.
-    if (!this.isOpen) {
-      this.toggle();
-    }
-
-    // Fire the message through the standard send() pipeline by staging
-    // the prompt on the input element first — keeps a single code path
-    // for streaming state, persistence, and pipeline triggers.
-    this.inputEl.value = pill.prompt;
+  // CON-254: post a starter-pill prompt buffered during qualifying. Returns
+  // true when a prompt was flushed so callers can skip their default post-
+  // qualifying behaviour (e.g. hidden greeting).
+  private flushPill(): boolean {
+    const prompt = this.pendingPillPrompt;
+    if (!prompt) return false;
+    this.pendingPillPrompt = null;
+    this.inputEl.value = prompt;
     void this.send();
+    return true;
   }
 
   /**

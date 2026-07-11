@@ -19,6 +19,14 @@ const widgetSource = readFileSync(
   "utf8",
 );
 
+function sourceBetween(start: string, end: string): string {
+  const startIndex = widgetSource.indexOf(start);
+  const endIndex = widgetSource.indexOf(end, startIndex + start.length);
+  assert.notEqual(startIndex, -1, `missing source marker: ${start}`);
+  assert.notEqual(endIndex, -1, `missing source marker: ${end}`);
+  return widgetSource.slice(startIndex, endIndex);
+}
+
 test("starter pills are mounted before the panel and bubble", () => {
   assert.match(
     widgetSource,
@@ -34,5 +42,38 @@ test("starter pills stack below the panel and hide while open", () => {
   assert.match(
     widgetSource,
     /this\.starterPillsEl\.classList\.toggle\("hidden", this\.isOpen\);/,
+  );
+});
+
+test("starter pill clicks buffer the prompt and defer/flush via qualifying gate", () => {
+  const handler = sourceBetween(
+    "private handleStarterPillClick(pill: StarterPrompt): void {",
+    "private flushPill(): boolean {",
+  );
+
+  // The buffer field exists on the class.
+  assert.match(
+    widgetSource,
+    /private pendingPillPrompt: string \| null = null;/,
+  );
+
+  // Handler opens the panel, buffers the prompt, then either flushes
+  // immediately (no qualifying pending) or defers by leaving the buffer
+  // set. Same code path for both branches keeps size + reasoning simple.
+  assert.match(
+    handler,
+    /if \(!this\.isOpen\) this\.toggle\(\);[\s\S]*?this\.pendingPillPrompt = pill\.prompt;\s*if \(!this\.nextQualifyingPrompt\(\)\) this\.flushPill\(\);/,
+  );
+});
+
+test("qualifying completion flushes a buffered pill prompt instead of greeting", () => {
+  const flushCount = widgetSource.match(
+    /this\.setInputLocked\(false\);\s*if \(this\.flushPill\(\)\) \{\s*return;\s*\}/g,
+  )?.length;
+
+  assert.equal(flushCount, 2);
+  assert.match(
+    widgetSource,
+    /private flushPill\(\): boolean \{\s*const prompt = this\.pendingPillPrompt;\s*if \(!prompt\) return false;\s*this\.pendingPillPrompt = null;\s*this\.inputEl\.value = prompt;\s*void this\.send\(\);\s*return true;\s*\}/,
   );
 });
