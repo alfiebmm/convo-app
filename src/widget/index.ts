@@ -25,6 +25,7 @@ import {
   shouldRenderContactMethodForAction,
   resolveContactMethodHref,
   type CaptureCaseInfo,
+  type CapturePolicySpec,
   type CaptureFlowOutcome,
 } from "./capture";
 
@@ -111,7 +112,22 @@ interface StarterPrompt {
   emoji: string;
   label: string;
   prompt: string;
+  action?: StarterPillAction;
 }
+
+type StarterPillAction =
+  | { type: "chat" }
+  | {
+      type: "lead_capture";
+      capture_policy: CapturePolicySpec;
+      field_label_overrides?: Record<string, string>;
+    }
+  | { type: "booking_form" };
+
+type PillLeadCaptureAction = Extract<
+  StarterPillAction,
+  { type: "lead_capture" }
+>;
 
 // ---------------------------------------------------------------------------
 // Config from script tag
@@ -869,6 +885,7 @@ class ConvoWidget {
   // CON-251: starter-prompt pills on the closed bubble surface.
   private starterPrompts: StarterPrompt[] = [];
   private pendingPillPrompt: string | null = null;
+  private pendingPillLeadCapture: PillLeadCaptureAction | null = null;
 
   // DOM refs (inside Shadow DOM)
   private shadow!: ShadowRoot;
@@ -1209,7 +1226,7 @@ class ConvoWidget {
       } else {
         this.qualifyingComplete = true;
         this.setInputLocked(false);
-        if (this.flushPill()) {
+        if (this.flushPill() || this.flushPendingLeadCapture()) {
           return;
         }
         // Hidden assistant turn so the bot acknowledges the visitor
@@ -1271,7 +1288,7 @@ class ConvoWidget {
       this.qualifyingComplete = true;
       cardEl.remove();
       this.setInputLocked(false);
-      if (this.flushPill()) {
+      if (this.flushPill() || this.flushPendingLeadCapture()) {
         return;
       }
       setTimeout(() => this.inputEl.focus(), 100);
@@ -1521,9 +1538,24 @@ class ConvoWidget {
     // Open the panel; keeps a single code path with the bubble click so
     // mobile viewport, focus, and pipeline triggers stay consistent.
     if (!this.isOpen) this.toggle();
-    // Buffer, then either flush now or defer until qualifying completes.
-    this.pendingPillPrompt = pill.prompt;
-    if (!this.nextQualifyingPrompt()) this.flushPill();
+
+    const action = pill.action;
+    if (!action || action.type === "chat") {
+      // Buffer, then either flush now or defer until qualifying completes.
+      this.pendingPillPrompt = pill.prompt;
+      if (!this.nextQualifyingPrompt()) this.flushPill();
+      return;
+    }
+
+    if (action.type === "lead_capture") {
+      this.pendingPillLeadCapture = action;
+      if (!this.nextQualifyingPrompt()) this.flushPendingLeadCapture();
+      return;
+    }
+
+    this.addAssistantTranscriptMessage(
+      "Booking form coming soon — please use Get in touch or free-text below.",
+    );
   }
 
   // CON-254: post a starter-pill prompt buffered during qualifying. Returns
@@ -1536,6 +1568,72 @@ class ConvoWidget {
     this.inputEl.value = prompt;
     void this.send();
     return true;
+  }
+
+  private flushPendingLeadCapture(): boolean {
+    const action = this.pendingPillLeadCapture;
+    if (!action) return false;
+    this.pendingPillLeadCapture = null;
+    void this.startPillLeadCapture(action);
+    return true;
+  }
+
+  private async startPillLeadCapture(
+    action: PillLeadCaptureAction,
+  ): Promise<void> {
+    if (!this.conversationId) {
+      this.addAssistantTranscriptMessage(
+        "Please send a quick message first so we can start your enquiry.",
+      );
+      return;
+    }
+
+    this.isStreaming = true;
+    this.sendBtn.disabled = true;
+    this.inputEl.disabled = true;
+    try {
+      const res = await fetch(`${this.config.apiBase}/api/cases/pill-init`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: this.config.tenantId,
+          visitorId: this.visitorId,
+          conversationId: this.conversationId,
+          capture_policy_id: action.capture_policy.id,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { case_id?: string };
+      if (!data.case_id) throw new Error("Missing case_id");
+
+      this.addAssistantTranscriptMessage(
+        "Great — please share a few details so we can follow up.",
+      );
+      this.mountCaptureFlow(
+        {
+          case_id: data.case_id,
+          action: "capture_details_then_flag",
+          capture_policy_id: action.capture_policy.id,
+          capture_policy: action.capture_policy,
+        },
+        action.field_label_overrides,
+      );
+    } catch (err) {
+      console.warn("[Convo] Starter-pill lead capture failed:", err);
+      this.addAssistantTranscriptMessage(
+        "We couldn't start that form just now. Please type your enquiry below.",
+      );
+    } finally {
+      this.isStreaming = false;
+      this.sendBtn.disabled = false;
+      this.inputEl.disabled = false;
+    }
+  }
+
+  private addAssistantTranscriptMessage(content: string): void {
+    this.addMessageToUI("assistant", content);
+    this.messages.push({ role: "assistant", content });
+    this.persistSession();
   }
 
   /**
@@ -2164,7 +2262,10 @@ class ConvoWidget {
    * only render one capture surface per session, and the server's
    * append-only audit will swallow duplicates if a visitor rapid-fires.
    */
-  private mountCaptureFlow(caseInfo: CaptureCaseInfo): void {
+  private mountCaptureFlow(
+    caseInfo: CaptureCaseInfo,
+    fieldLabelOverrides?: Record<string, string>,
+  ): void {
     if (!this.conversationId) return; // shouldn't happen post-stream
     startCaptureFlow({
       mount: this.messagesEl,
@@ -2176,7 +2277,7 @@ class ConvoWidget {
         conversationId: this.conversationId,
         primaryColor: this.config.color,
       },
-      fieldLabelOverrides: undefined,
+      fieldLabelOverrides,
       onDone: (outcome: CaptureFlowOutcome) => {
         // The capture block stays in place as a transcript trail.
         // Future enhancement (CON-176 detail view) will surface the

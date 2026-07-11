@@ -82,17 +82,6 @@ export const qualifyingQuestionsSchema = z.object({
 // coordination is documented on both Linear tickets.
 // ============================================================
 
-export const starterPromptSchema = z.object({
-  emoji: z.string().min(1),
-  label: z.string().min(1).max(48),
-  prompt: z.string().min(1),
-});
-
-export const starterPromptsSchema = z
-  .array(starterPromptSchema)
-  .max(4)
-  .default([]);
-
 // ============================================================
 // Welcome Message Configuration
 // ============================================================
@@ -368,6 +357,44 @@ export const capturePolicySchema = z.object({
   privacy_notice: z.string().min(1),
   privacy_policy_url: z.string().url(),
 });
+
+// ---- Starter prompt actions ----
+
+export const capturePolicySpecSchema = capturePolicySchema;
+
+export const pillActionChatSchema = z.object({
+  type: z.literal("chat"),
+});
+
+export const pillActionLeadCaptureSchema = z.object({
+  type: z.literal("lead_capture"),
+  capture_policy: capturePolicySpecSchema,
+  field_label_overrides: z.record(z.string(), z.string()).optional(),
+});
+
+export const pillActionBookingFormSchema = z.object({
+  type: z.literal("booking_form"),
+});
+
+export const pillActionSchema = z
+  .discriminatedUnion("type", [
+    pillActionChatSchema,
+    pillActionLeadCaptureSchema,
+    pillActionBookingFormSchema,
+  ])
+  .optional();
+
+export const starterPromptSchema = z.object({
+  emoji: z.string().min(1),
+  label: z.string().min(1).max(48),
+  prompt: z.string().min(1),
+  action: pillActionSchema,
+});
+
+export const starterPromptsSchema = z
+  .array(starterPromptSchema)
+  .max(4)
+  .default([]);
 
 // ---- Rule conditions ----
 

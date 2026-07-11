@@ -15,6 +15,7 @@
  *   - /api/billing/webhook (Stripe webhook — raw body needed, no auth)
  *   - /api/conversations/case-events (widget follow-up Yes/No POSTs — CON-169)
  *   - /api/cases/:caseId/capture (widget progressive contact-capture POSTs — CON-170)
+ *   - /api/cases/pill-init (widget starter-pill lead-capture init — CON-255)
  *
  * The cases capture allowlist is INTENTIONALLY narrow: every other
  * route under /api/cases (list, detail, assign, resolve, PII reveal)
@@ -157,6 +158,6 @@ export const config = {
   matcher: [
     "/platform-admin/:path*",
     "/dashboard/:path*",
-    "/api/((?!auth|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook|cases/[^/]+/capture).*)",
+    "/api/((?!auth|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook|cases/pill-init|cases/[^/]+/capture).*)",
   ],
 };
