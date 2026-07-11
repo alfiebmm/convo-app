@@ -2176,6 +2176,7 @@ class ConvoWidget {
         conversationId: this.conversationId,
         primaryColor: this.config.color,
       },
+      fieldLabelOverrides: undefined,
       onDone: (outcome: CaptureFlowOutcome) => {
         // The capture block stays in place as a transcript trail.
         // Future enhancement (CON-176 detail view) will surface the

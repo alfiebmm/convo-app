@@ -3,14 +3,14 @@
  *
  * Drives the post-offer (or direct, for `capture_details_then_flag`)
  * contact-capture flow inside the widget's Shadow DOM. The visitor sees
- * one field at a time, can submit / skip / decline at any point, and
+ * all configured fields at once, can submit / decline at any point, and
  * each interaction round-trips to `POST /api/cases/:caseId/capture`.
  *
  * Locked invariants (PRD §10):
  *   1. Decline is first-class — visitor can always end the flow without
  *      handing over identifiers.
- *   2. Skip is per-field — visitor can decline a single optional field
- *      without abandoning the whole flow.
+ *   2. Optional fields are blank-is-skip — the visitor can leave them
+ *      empty without abandoning the whole flow.
  *   3. Server is source of truth — client-side validation is light + fast
  *      for UX; the route re-validates and rejects bad values with 400.
  *   4. No PII echoed back into the transcript by default — visitor input
@@ -74,6 +74,7 @@ export interface CaptureFlowConfig {
  * supplies what it already has.
  */
 export type CapturePrefill = Partial<Record<string, string>>;
+export type CaptureFieldLabelOverrides = Record<string, string>;
 
 /**
  * Outcome callback. Fires once the flow leaves the screen (declined or
@@ -162,13 +163,21 @@ const FIELD_META: Record<
   },
 };
 
-function metaForField(field: string): (typeof FIELD_META)[string] {
-  if (FIELD_META[field]) return FIELD_META[field];
+function metaForField(
+  field: string,
+  labelOverrides?: CaptureFieldLabelOverrides,
+): (typeof FIELD_META)[string] {
+  const override = labelOverrides?.[field]?.trim();
+  if (FIELD_META[field]) {
+    return override
+      ? { ...FIELD_META[field], label: override }
+      : FIELD_META[field];
+  }
   // Custom tenant field — friendly default. The forum-config schema
   // requires the key to be a non-empty string, so we humanise it.
   const label = humanise(field);
   return {
-    label: `${label}?`,
+    label: override || `${label}?`,
     inputType: "text",
     autocomplete: "off",
     placeholder: label,
@@ -254,14 +263,20 @@ interface FieldSpec {
   required: boolean;
 }
 
+interface RenderedField {
+  spec: FieldSpec;
+  input: HTMLInputElement;
+  error: HTMLDivElement;
+}
+
 /**
  * Drives the capture state machine for a single case. Owns ONE block
  * element appended to the messages container; replaces its contents
  * step-by-step as fields are processed.
  *
  * Lifecycle:
- *   start() → render privacy notice + first field
- *   advance() → next field, or finish() if done
+ *   start() → render privacy notice + all fields
+ *   submit() → validate required fields, submit populated fields, skip blanks
  *   finish() → render a short ack and fire the `done` callback
  *
  * The block element is left in place after finish() so the transcript
@@ -274,13 +289,13 @@ export class CaptureFlow {
   private readonly policy: CapturePolicySpec;
   private readonly cfg: CaptureFlowConfig;
   private readonly prefill: CapturePrefill;
+  private readonly fieldLabelOverrides: CaptureFieldLabelOverrides;
   private readonly onDone: CaptureFlowDone;
   private readonly fields: FieldSpec[];
   private readonly submittedFields: string[] = [];
   private readonly skippedFields: string[] = [];
 
   private block: HTMLDivElement | null = null;
-  private currentIndex = 0;
   /** Lock to debounce double-clicks (network in flight). */
   private busy = false;
   /** Set when the visitor declines — disables future advances. */
@@ -292,6 +307,7 @@ export class CaptureFlow {
     policy: CapturePolicySpec;
     config: CaptureFlowConfig;
     prefill?: CapturePrefill;
+    fieldLabelOverrides?: CaptureFieldLabelOverrides;
     onDone: CaptureFlowDone;
   }) {
     this.mount = args.mount;
@@ -299,6 +315,7 @@ export class CaptureFlow {
     this.policy = args.policy;
     this.cfg = args.config;
     this.prefill = args.prefill ?? {};
+    this.fieldLabelOverrides = args.fieldLabelOverrides ?? {};
     this.onDone = args.onDone;
 
     // Required fields first, in policy order, then optional fields. We
@@ -345,7 +362,7 @@ export class CaptureFlow {
     this.mount.appendChild(block);
 
     this.renderPrivacyHeader();
-    this.renderCurrentField();
+    this.renderFormOnce();
   }
 
   // -------------------------------------------------------------------------
@@ -375,109 +392,97 @@ export class CaptureFlow {
     void this.postCapture({ action: "privacy_notice_shown" });
   }
 
-  private renderCurrentField(): void {
+  private renderFormOnce(): void {
     if (!this.block || this.terminated) return;
-    const spec = this.fields[this.currentIndex];
-    if (!spec) {
-      this.finishCompleted();
-      return;
+
+    const form = document.createElement("form");
+    form.className = "convo-cap-step";
+    form.setAttribute("novalidate", "novalidate");
+    const renderedFields: RenderedField[] = [];
+
+    for (const [index, spec] of this.fields.entries()) {
+      const fieldWrap = document.createElement("div");
+      fieldWrap.className = "convo-cap-step";
+      const meta = metaForField(spec.key, this.fieldLabelOverrides);
+
+      const label = document.createElement("label");
+      label.className = "convo-cap-label";
+      label.textContent = meta.label;
+      if (spec.required) {
+        const req = document.createElement("span");
+        req.className = "convo-cap-required";
+        req.textContent = " (required)";
+        label.appendChild(req);
+      }
+
+      const inputRow = document.createElement("div");
+      inputRow.className = "convo-cap-input-row";
+      const input = document.createElement("input");
+      input.className = "convo-cap-input";
+      input.type = meta.inputType;
+      // `autocomplete` is a typed enum on HTMLInputElement; the field meta
+      // intentionally uses a plain string for ergonomics, so assign via
+      // setAttribute to keep tsc happy across versions.
+      input.setAttribute("autocomplete", meta.autocomplete);
+      input.placeholder = meta.placeholder;
+      input.setAttribute("aria-label", meta.label);
+      const prefilled = this.prefill[spec.key];
+      if (typeof prefilled === "string" && prefilled.trim().length > 0) {
+        input.value = prefilled;
+      }
+      label.htmlFor = `convo-cap-input-${index}`;
+      input.id = `convo-cap-input-${index}`;
+
+      const error = document.createElement("div");
+      error.className = "convo-cap-error";
+      error.id = `convo-cap-error-${index}`;
+      error.setAttribute("role", "alert");
+      error.hidden = true;
+      input.setAttribute("aria-describedby", error.id);
+
+      inputRow.appendChild(input);
+      fieldWrap.appendChild(label);
+      fieldWrap.appendChild(inputRow);
+      fieldWrap.appendChild(error);
+      form.appendChild(fieldWrap);
+      renderedFields.push({ spec, input, error });
     }
-
-    // Step container — replaces the previous step's container if any.
-    // We keep prior step labels visible as a breadcrumb-style log so the
-    // visitor can see what they've already provided.
-    const step = document.createElement("div");
-    step.className = "convo-cap-step";
-
-    const meta = metaForField(spec.key);
-
-    const label = document.createElement("label");
-    label.className = "convo-cap-label";
-    label.textContent = meta.label;
-    if (spec.required) {
-      const req = document.createElement("span");
-      req.className = "convo-cap-required";
-      req.textContent = " (required)";
-      label.appendChild(req);
-    }
-
-    const inputRow = document.createElement("div");
-    inputRow.className = "convo-cap-input-row";
-
-    const input = document.createElement("input");
-    input.className = "convo-cap-input";
-    input.type = meta.inputType;
-    // `autocomplete` is a typed enum on HTMLInputElement; the field meta
-    // intentionally uses a plain string for ergonomics, so assign via
-    // setAttribute to keep tsc happy across versions.
-    input.setAttribute("autocomplete", meta.autocomplete);
-    input.placeholder = meta.placeholder;
-    input.setAttribute("aria-label", meta.label);
-    const prefilled = this.prefill[spec.key];
-    if (typeof prefilled === "string" && prefilled.trim().length > 0) {
-      input.value = prefilled;
-    }
-    label.htmlFor = `convo-cap-input-${this.currentIndex}`;
-    input.id = `convo-cap-input-${this.currentIndex}`;
 
     const submitBtn = document.createElement("button");
-    submitBtn.type = "button";
+    submitBtn.type = "submit";
     submitBtn.className = "convo-cap-btn convo-cap-btn-primary";
     submitBtn.textContent = "Send";
 
-    inputRow.appendChild(input);
-    inputRow.appendChild(submitBtn);
-
-    const error = document.createElement("div");
-    error.className = "convo-cap-error";
-    error.setAttribute("role", "alert");
-    error.hidden = true;
-
     const actions = document.createElement("div");
     actions.className = "convo-cap-actions";
-
-    // Optional fields show "Skip"; required fields don't — but we still
-    // expose "Decline" so the visitor is never trapped. Decline ends
-    // the whole flow.
-    if (!spec.required) {
-      const skipBtn = document.createElement("button");
-      skipBtn.type = "button";
-      skipBtn.className = "convo-cap-btn convo-cap-btn-text";
-      skipBtn.textContent = "Skip";
-      skipBtn.addEventListener("click", () => {
-        void this.skipField(spec, step);
-      });
-      actions.appendChild(skipBtn);
-    }
+    actions.appendChild(submitBtn);
 
     const declineBtn = document.createElement("button");
     declineBtn.type = "button";
     declineBtn.className = "convo-cap-btn convo-cap-btn-text";
     declineBtn.textContent = "No thanks";
     declineBtn.addEventListener("click", () => {
-      void this.decline(step);
+      void this.decline(form);
     });
     actions.appendChild(declineBtn);
 
-    step.appendChild(label);
-    step.appendChild(inputRow);
-    step.appendChild(error);
-    step.appendChild(actions);
-    this.block.appendChild(step);
+    form.appendChild(actions);
+    this.block.appendChild(form);
 
-    // Auto-focus the input so the visitor can start typing immediately.
+    // Auto-focus the first input so the visitor can start typing immediately.
     // Defer so the element is in the DOM and the panel has scrolled.
-    setTimeout(() => input.focus(), 30);
+    setTimeout(() => renderedFields[0]?.input.focus(), 30);
 
     const trySubmit = () => {
-      void this.submitField(spec, step, input, error, submitBtn);
+      void this.submitForm(renderedFields, form, submitBtn);
     };
-    submitBtn.addEventListener("click", trySubmit);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        trySubmit();
-      }
+    submitBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      trySubmit();
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      trySubmit();
     });
   }
 
@@ -485,94 +490,106 @@ export class CaptureFlow {
   // Actions
   // -------------------------------------------------------------------------
 
-  private async submitField(
-    spec: FieldSpec,
-    step: HTMLDivElement,
-    input: HTMLInputElement,
-    error: HTMLDivElement,
+  private async submitForm(
+    renderedFields: RenderedField[],
+    form: HTMLElement,
     submitBtn: HTMLButtonElement,
   ): Promise<void> {
     if (this.busy || this.terminated) return;
 
-    const validation = validateClientField(spec.key, input.value);
-    if (!validation.ok) {
-      error.textContent = validation.reason;
-      error.hidden = false;
-      input.focus();
-      input.select();
+    const toSubmit: Array<{
+      field: string;
+      value: string;
+      input: HTMLInputElement;
+      error: HTMLDivElement;
+    }> = [];
+    const toSkip: string[] = [];
+    let firstInvalid: HTMLInputElement | null = null;
+
+    for (const { spec, input, error } of renderedFields) {
+      const rawValue = input.value;
+      if (!spec.required && rawValue.trim().length === 0) {
+        error.hidden = true;
+        error.textContent = "";
+        toSkip.push(spec.key);
+        continue;
+      }
+
+      const validation = validateClientField(spec.key, rawValue);
+      if (!validation.ok) {
+        error.textContent = validation.reason;
+        error.hidden = false;
+        firstInvalid ??= input;
+        continue;
+      }
+
+      error.hidden = true;
+      error.textContent = "";
+      toSubmit.push({
+        field: spec.key,
+        value: validation.value,
+        input,
+        error,
+      });
+    }
+
+    if (firstInvalid) {
+      firstInvalid.focus();
+      firstInvalid.select();
       return;
     }
 
-    error.hidden = true;
-    error.textContent = "";
-
     this.busy = true;
     submitBtn.disabled = true;
-    input.disabled = true;
 
     try {
-      const res = await this.postCapture({
-        action: "submit",
-        field: spec.key,
-        value: validation.value,
-      });
+      for (const item of toSubmit) {
+        if (this.submittedFields.includes(item.field)) continue;
 
-      if (!res || !res.ok) {
-        // Server rejected — surface a polite message and let the
-        // visitor retry. Don't expose internal error details.
-        error.textContent =
-          "We couldn't save that just now, please try again.";
-        error.hidden = false;
-        input.disabled = false;
-        submitBtn.disabled = false;
-        input.focus();
-        return;
+        const res = await this.postCapture({
+          action: "submit",
+          field: item.field,
+          value: item.value,
+        });
+
+        if (!res || !res.ok) {
+          // Server rejected — surface a polite message and let the
+          // visitor retry. Don't expose internal error details.
+          item.error.textContent =
+            "We couldn't save that just now, please try again.";
+          item.error.hidden = false;
+          submitBtn.disabled = false;
+          item.input.focus();
+          return;
+        }
+
+        this.submittedFields.push(item.field);
       }
 
-      // Replace the step with a one-line confirmation row. We do NOT
-      // print the raw value back into the transcript (PII discipline);
-      // for identifier fields we show "Thanks, we have your <field>."
-      // For free-text we show the masked first 24 chars.
-      this.replaceStepWithConfirmation(step, spec.key, validation.value);
-      this.submittedFields.push(spec.key);
-      this.advance();
+      for (const field of toSkip) {
+        if (this.skippedFields.includes(field)) continue;
+
+        await this.postCapture({ action: "skip", field });
+        this.skippedFields.push(field);
+      }
+
+      this.replaceStepWithBreadcrumb(form, "Details received");
+      this.finishCompleted();
     } catch {
-      error.textContent =
-        "We couldn't save that just now, please try again.";
-      error.hidden = false;
-      input.disabled = false;
+      const firstField = renderedFields[0];
+      if (firstField) {
+        firstField.error.textContent =
+          "We couldn't save that just now, please try again.";
+        firstField.error.hidden = false;
+        firstField.input.focus();
+      }
       submitBtn.disabled = false;
-      input.focus();
     } finally {
       this.busy = false;
     }
   }
 
-  private async skipField(
-    spec: FieldSpec,
-    step: HTMLDivElement,
-  ): Promise<void> {
-    if (this.busy || this.terminated) return;
-    this.busy = true;
-    this.disableStep(step);
-
-    try {
-      // Fire-and-forget on the server side — even if the call fails the
-      // visitor expects the flow to advance. We still await so the audit
-      // event has a chance to write before we move on.
-      await this.postCapture({ action: "skip", field: spec.key });
-    } catch {
-      // Audit miss — non-blocking. The visitor moves on.
-    } finally {
-      this.busy = false;
-    }
-
-    this.skippedFields.push(spec.key);
-    this.replaceStepWithBreadcrumb(step, `Skipped: ${humanise(spec.key)}`);
-    this.advance();
-  }
-
-  private async decline(step: HTMLDivElement): Promise<void> {
+  private async decline(step: HTMLElement): Promise<void> {
     if (this.busy || this.terminated) return;
     this.terminated = true;
     this.busy = true;
@@ -597,20 +614,6 @@ export class CaptureFlow {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // Flow control
-  // -------------------------------------------------------------------------
-
-  private advance(): void {
-    if (this.terminated) return;
-    this.currentIndex += 1;
-    if (this.currentIndex >= this.fields.length) {
-      this.finishCompleted();
-      return;
-    }
-    this.renderCurrentField();
-  }
-
   private finishCompleted(): void {
     if (this.block) {
       const ack = document.createElement("div");
@@ -630,37 +633,14 @@ export class CaptureFlow {
   // DOM helpers
   // -------------------------------------------------------------------------
 
-  private disableStep(step: HTMLDivElement): void {
+  private disableStep(step: HTMLElement): void {
     step
       .querySelectorAll("button, input")
       .forEach((el) => ((el as HTMLButtonElement).disabled = true));
   }
 
-  private replaceStepWithConfirmation(
-    step: HTMLDivElement,
-    field: string,
-    rawValue: string,
-  ): void {
-    const label = humanise(field);
-    let summary: string;
-    if (field === "email" || field === "mobile") {
-      summary = `${label} received`;
-    } else if (field === "name") {
-      // Names are user-supplied display; safe to echo back, but
-      // truncate hard to 48 chars to bound the transcript surface.
-      const safe = rawValue.slice(0, 48);
-      summary = `${label}: ${safe}`;
-    } else {
-      // Free-text + custom fields: show only the field label,
-      // never the raw value (PII discipline — host pages may log
-      // shadow-DOM contents).
-      summary = `${label} received`;
-    }
-    this.replaceStepWithBreadcrumb(step, summary);
-  }
-
   private replaceStepWithBreadcrumb(
-    step: HTMLDivElement,
+    step: HTMLElement,
     text: string,
   ): void {
     step.replaceChildren();
@@ -762,6 +742,7 @@ export function startCaptureFlow(args: {
   caseInfo: CaptureCaseInfo;
   config: CaptureFlowConfig;
   prefill?: CapturePrefill;
+  fieldLabelOverrides?: CaptureFieldLabelOverrides;
   onDone: CaptureFlowDone;
 }): CaptureFlow | null {
   const policy = args.caseInfo.capture_policy;
@@ -783,6 +764,7 @@ export function startCaptureFlow(args: {
     policy,
     config: args.config,
     prefill: args.prefill,
+    fieldLabelOverrides: args.fieldLabelOverrides,
     onDone: args.onDone,
   });
   flow.start();
