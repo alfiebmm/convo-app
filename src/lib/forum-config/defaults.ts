@@ -16,7 +16,25 @@ import type { ForumConfig, StarterPrompt } from "./schema";
 export const DEFAULT_STARTER_PROMPTS: StarterPrompt[] = [
   { emoji: "💬", label: "Ask a question", prompt: "I have a question." },
   { emoji: "🛟", label: "Get help", prompt: "I need help with something." },
-  { emoji: "✉️", label: "Get in touch", prompt: "How do I get in touch?" },
+  {
+    emoji: "✉️",
+    label: "Get in touch",
+    prompt: "How do I get in touch?",
+    action: {
+      type: "lead_capture",
+      capture_policy: {
+        id: "starter_pill_get_in_touch",
+        case_type: "lead",
+        required_fields: ["free_text_note", "name", "email"],
+        optional_fields: ["mobile"],
+        privacy_notice: "We use your details only to follow up on your enquiry.",
+        privacy_policy_url: "https://convoapp.com.au/privacy",
+      },
+      field_label_overrides: {
+        free_text_note: "What can we help with?",
+      },
+    },
+  },
 ];
 
 /**
@@ -63,7 +81,25 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
   starter_prompts: [
     { emoji: "💬", label: "Ask a question", prompt: "I have a question." },
     { emoji: "🛟", label: "Get help", prompt: "I need help with something." },
-    { emoji: "✉️", label: "Get in touch", prompt: "How do I get in touch?" },
+    {
+      emoji: "✉️",
+      label: "Get in touch",
+      prompt: "How do I get in touch?",
+      action: {
+        type: "lead_capture",
+        capture_policy: {
+          id: "starter_pill_get_in_touch",
+          case_type: "lead",
+          required_fields: ["free_text_note", "name", "email"],
+          optional_fields: ["mobile"],
+          privacy_notice: "We use your details only to follow up on your enquiry.",
+          privacy_policy_url: "https://convoapp.com.au/privacy",
+        },
+        field_label_overrides: {
+          free_text_note: "What can we help with?",
+        },
+      },
+    },
   ],
 
   welcome: {

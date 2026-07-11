@@ -62,3 +62,22 @@ test("DEFAULT_STARTER_PROMPTS is stable and non-empty (sanity)", () => {
     "DEFAULT_STARTER_PROMPTS must respect the max-4 cap",
   );
 });
+
+test("DEFAULT_STARTER_PROMPTS get-in-touch pill seeds lead capture intent first", () => {
+  const pill = DEFAULT_STARTER_PROMPTS.find((p) => p.label === "Get in touch");
+  assert.ok(pill, "Get in touch starter pill must exist");
+  assert.equal(pill.prompt, "How do I get in touch?");
+  assert.equal(pill.action?.type, "lead_capture");
+  if (pill.action?.type !== "lead_capture") {
+    throw new Error("Get in touch action must be lead_capture");
+  }
+  assert.deepEqual(pill.action.capture_policy.required_fields, [
+    "free_text_note",
+    "name",
+    "email",
+  ]);
+  assert.equal(
+    pill.action.field_label_overrides?.free_text_note,
+    "What can we help with?",
+  );
+});
