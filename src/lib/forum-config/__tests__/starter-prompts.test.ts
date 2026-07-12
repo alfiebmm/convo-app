@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 
 import {
   forumConfigSchema,
+  pillActionCustomEmbedSchema,
   starterPromptsSchema,
   starterPromptSchema,
 } from "../schema";
@@ -126,6 +127,62 @@ test("starterPromptsSchema rejects entries with empty fields", () => {
   const bad = [{ emoji: "", label: "x", prompt: "y" }];
   const result = starterPromptsSchema.safeParse(bad);
   assert.equal(result.success, false);
+});
+
+test("pillActionCustomEmbedSchema defaults height and validates bounds", () => {
+  const parsed = pillActionCustomEmbedSchema.safeParse({
+    type: "custom_embed",
+    kind: "iframe",
+    url: "https://example.com/form",
+  });
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+  assert.equal(parsed.data.height, 520);
+
+  assert.equal(
+    pillActionCustomEmbedSchema.safeParse({
+      type: "custom_embed",
+      kind: "iframe",
+      url: "https://example.com/form",
+      height: 239,
+    }).success,
+    false,
+  );
+  assert.equal(
+    pillActionCustomEmbedSchema.safeParse({
+      type: "custom_embed",
+      kind: "iframe",
+      url: "https://example.com/form",
+      height: 901,
+    }).success,
+    false,
+  );
+});
+
+test("pillActionCustomEmbedSchema rejects non-https URLs except localhost dev", () => {
+  for (const url of [
+    "javascript:alert(1)",
+    "data:text/html,hello",
+    "http://example.com/form",
+  ]) {
+    assert.equal(
+      pillActionCustomEmbedSchema.safeParse({
+        type: "custom_embed",
+        kind: "iframe",
+        url,
+      }).success,
+      false,
+    );
+  }
+
+  assert.equal(
+    pillActionCustomEmbedSchema.safeParse({
+      type: "custom_embed",
+      kind: "iframe",
+      url: "http://127.0.0.1:3000/form",
+    }).success,
+    true,
+  );
 });
 
 // ─── DEFAULT_FORUM_CONFIG parity ────────────────────────────────

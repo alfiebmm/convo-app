@@ -48,13 +48,13 @@ test("starter pills stack below the panel and hide while open", () => {
 test("starter pill clicks buffer the prompt and defer/flush via qualifying gate", () => {
   const handler = sourceBetween(
     "private handleStarterPillClick(pill: StarterPrompt): void {",
-    "private flushPill(): boolean {",
+    "private flushPendingPillAction(): boolean {",
   );
 
   // The buffer field exists on the class.
   assert.match(
     widgetSource,
-    /private pendingPillPrompt: string \| null = null;/,
+    /private pendingPillAction: PillAction \| null = null;/,
   );
 
   // Handler opens the panel, buffers the prompt, then either flushes
@@ -62,23 +62,19 @@ test("starter pill clicks buffer the prompt and defer/flush via qualifying gate"
   // set. Same code path for both branches keeps size + reasoning simple.
   assert.match(
     handler,
-    /if \(!this\.isOpen\) this\.toggle\(\);[\s\S]*?if \(!action \|\| action\.type === "chat"\) \{[\s\S]*?this\.pendingPillPrompt = pill\.prompt;\s*if \(!this\.nextQualifyingPrompt\(\)\) this\.flushPill\(\);/,
+    /if \(!this\.isOpen\) this\.toggle\(\);[\s\S]*?if \(!action \|\| action\.type === "chat"\) \{[\s\S]*?this\.pendingPillAction = \{ type: "chat", prompt: pill\.prompt \};\s*if \(!this\.nextQualifyingPrompt\(\)\) this\.flushPendingPillAction\(\);/,
   );
 });
 
 test("starter pill lead_capture buffers and flushes through pill-init", () => {
   const handler = sourceBetween(
     "private handleStarterPillClick(pill: StarterPrompt): void {",
-    "private flushPill(): boolean {",
+    "private flushPendingPillAction(): boolean {",
   );
 
   assert.match(
-    widgetSource,
-    /private pendingPillLeadCapture: PillLeadCaptureAction \| null = null;/,
-  );
-  assert.match(
     handler,
-    /if \(action\.type === "lead_capture"\) \{[\s\S]*?this\.pendingPillLeadCapture = action;\s*if \(!this\.nextQualifyingPrompt\(\)\) this\.flushPendingLeadCapture\(\);/,
+    /this\.pendingPillAction = action;\s*if \(!this\.nextQualifyingPrompt\(\)\) this\.flushPendingPillAction\(\);/,
   );
   assert.match(
     widgetSource,
@@ -86,30 +82,48 @@ test("starter pill lead_capture buffers and flushes through pill-init", () => {
   );
 });
 
-test("starter pill booking_form renders a placeholder message", () => {
-  const handler = sourceBetween(
-    "private handleStarterPillClick(pill: StarterPrompt): void {",
-    "private flushPill(): boolean {",
-  );
-
+test("starter pill booking_form remains a deprecated no-op", () => {
   assert.match(
-    handler,
-    /Booking form coming soon — please use Get in touch or free-text below\./,
+    widgetSource,
+    /\/\/ Deprecated no-op placeholder\. Configs still parse, but no UI\/action runs\.\s*return true;/,
   );
 });
 
-test("qualifying completion flushes buffered pill actions instead of greeting", () => {
+test("starter pill custom_embed renders sandboxed iframe locally", () => {
+  const renderCustomEmbed = sourceBetween(
+    "private renderCustomEmbed(action: PillCustomEmbedAction): void {",
+    "private async startPillLeadCapture",
+  );
+
+  assert.match(renderCustomEmbed, /frame\.src = action\.url;/);
+  assert.match(renderCustomEmbed, /frame\.height = String\(action\.height \?\? 520\);/);
+  assert.match(
+    renderCustomEmbed,
+    /frame\.style\.cssText = "width:100%;border:0;border-radius:10px;background:#f8fafc";/,
+  );
+  assert.match(
+    renderCustomEmbed,
+    /frame\.setAttribute\(\s*"sandbox",\s*"allow-scripts allow-forms allow-same-origin allow-popups",\s*\);/,
+  );
+  assert.match(
+    renderCustomEmbed,
+    /frame\.referrerPolicy = "strict-origin-when-cross-origin";/,
+  );
+  assert.match(renderCustomEmbed, /frame\.loading = "lazy";/);
+  assert.match(renderCustomEmbed, /if \(action\.allow\) frame\.allow = action\.allow;/);
+  assert.doesNotMatch(renderCustomEmbed, /allow-top-navigation/);
+  assert.doesNotMatch(renderCustomEmbed, /\/api\/cases\/pill-init|\/api\/chat/);
+  assert.match(renderCustomEmbed, /close\.addEventListener\("click", \(\) => \{[\s\S]*?block\.remove\(\);/);
+});
+
+test("qualifying completion flushes buffered pill action instead of greeting", () => {
   const flushCount = widgetSource.match(
-    /this\.setInputLocked\(false\);\s*if \(this\.flushPill\(\) \|\| this\.flushPendingLeadCapture\(\)\) \{\s*return;\s*\}/g,
+    /this\.setInputLocked\(false\);\s*if \(this\.flushPendingPillAction\(\)\) \{\s*return;\s*\}/g,
   )?.length;
 
   assert.equal(flushCount, 2);
   assert.match(
     widgetSource,
-    /private flushPill\(\): boolean \{\s*const prompt = this\.pendingPillPrompt;\s*if \(!prompt\) return false;\s*this\.pendingPillPrompt = null;\s*this\.inputEl\.value = prompt;\s*void this\.send\(\);\s*return true;\s*\}/,
-  );
-  assert.match(
-    widgetSource,
-    /private flushPendingLeadCapture\(\): boolean \{\s*const action = this\.pendingPillLeadCapture;\s*if \(!action\) return false;\s*this\.pendingPillLeadCapture = null;\s*void this\.startPillLeadCapture\(action\);\s*return true;\s*\}/,
+    /private flushPendingPillAction\(\): boolean \{\s*const action = this\.pendingPillAction;\s*if \(!action\) return false;\s*this\.pendingPillAction = null;[\s\S]*?if \(action\.type === "chat"\) \{[\s\S]*?this\.inputEl\.value = action\.prompt;\s*void this\.send\(\);[\s\S]*?if \(action\.type === "lead_capture"\) \{[\s\S]*?void this\.startPillLeadCapture\(action\);[\s\S]*?if \(action\.type === "custom_embed"\) \{[\s\S]*?this\.renderCustomEmbed\(action\);/,
   );
 });

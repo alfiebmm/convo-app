@@ -372,6 +372,29 @@ export const pillActionLeadCaptureSchema = z.object({
   field_label_overrides: z.record(z.string(), z.string()).optional(),
 });
 
+export const pillActionCustomEmbedSchema = z.object({
+  type: z.literal("custom_embed"),
+  kind: z.literal("iframe"),
+  url: z
+    .string()
+    .url()
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        if (url.protocol === "https:") return true;
+        return (
+          url.protocol === "http:" &&
+          (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+        );
+      } catch {
+        return false;
+      }
+    }, "Custom embed URL must use https"),
+  height: z.number().int().min(240).max(900).default(520),
+  allow: z.string().max(500).optional(),
+});
+
+// Deprecated placeholder retained so existing tenant configs continue parsing.
 export const pillActionBookingFormSchema = z.object({
   type: z.literal("booking_form"),
 });
@@ -380,6 +403,7 @@ export const pillActionSchema = z
   .discriminatedUnion("type", [
     pillActionChatSchema,
     pillActionLeadCaptureSchema,
+    pillActionCustomEmbedSchema,
     pillActionBookingFormSchema,
   ])
   .optional();
