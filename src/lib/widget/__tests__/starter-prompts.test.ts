@@ -68,9 +68,20 @@ test("starter prompt schema accepts legacy chat pills without action", () => {
   assert.equal(parsed.data[0].action, undefined);
 });
 
-test("starter prompt schema round-trips lead_capture and booking_form actions", () => {
+test("starter prompt schema round-trips lead_capture, custom_embed, and booking_form actions", () => {
   const prompts = [
     DEFAULT_STARTER_PROMPTS.find((p) => p.label === "Get in touch"),
+    {
+      emoji: "🧾",
+      label: "Quote",
+      prompt: "I want a quote.",
+      action: {
+        type: "custom_embed" as const,
+        kind: "iframe" as const,
+        url: "https://example.com/embed",
+        allow: "payment",
+      },
+    },
     {
       emoji: "📅",
       label: "Book",
@@ -83,5 +94,41 @@ test("starter prompt schema round-trips lead_capture and booking_form actions", 
   assert.equal(parsed.success, true);
   if (!parsed.success) return;
   assert.equal(parsed.data[0].action?.type, "lead_capture");
-  assert.equal(parsed.data[1].action?.type, "booking_form");
+  assert.equal(parsed.data[1].action?.type, "custom_embed");
+  assert.equal(parsed.data[1].action?.height, 520);
+  assert.equal(parsed.data[2].action?.type, "booking_form");
+});
+
+test("starter prompt schema rejects unsafe custom_embed URLs", () => {
+  const base = {
+    emoji: "🧾",
+    label: "Quote",
+    prompt: "I want a quote.",
+  };
+
+  for (const url of [
+    "javascript:alert(1)",
+    "data:text/html,hello",
+    "http://example.com/embed",
+  ]) {
+    const parsed = starterPromptsSchema.safeParse([
+      {
+        ...base,
+        action: { type: "custom_embed", kind: "iframe", url },
+      },
+    ]);
+    assert.equal(parsed.success, false);
+  }
+
+  const local = starterPromptsSchema.safeParse([
+    {
+      ...base,
+      action: {
+        type: "custom_embed",
+        kind: "iframe",
+        url: "http://localhost:3000/embed",
+      },
+    },
+  ]);
+  assert.equal(local.success, true);
 });

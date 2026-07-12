@@ -122,11 +122,29 @@ type StarterPillAction =
       capture_policy: CapturePolicySpec;
       field_label_overrides?: Record<string, string>;
     }
+  | {
+      type: "custom_embed";
+      kind: "iframe";
+      url: string;
+      height?: number;
+      allow?: string;
+    }
   | { type: "booking_form" };
 
 type PillLeadCaptureAction = Extract<
   StarterPillAction,
   { type: "lead_capture" }
+>;
+
+type PillAction =
+  | { type: "chat"; prompt: string }
+  | Extract<
+      StarterPillAction,
+      { type: "lead_capture" | "custom_embed" | "booking_form" }
+    >;
+type PillCustomEmbedAction = Extract<
+  StarterPillAction,
+  { type: "custom_embed" }
 >;
 
 // ---------------------------------------------------------------------------
@@ -884,8 +902,7 @@ class ConvoWidget {
 
   // CON-251: starter-prompt pills on the closed bubble surface.
   private starterPrompts: StarterPrompt[] = [];
-  private pendingPillPrompt: string | null = null;
-  private pendingPillLeadCapture: PillLeadCaptureAction | null = null;
+  private pendingPillAction: PillAction | null = null;
 
   // DOM refs (inside Shadow DOM)
   private shadow!: ShadowRoot;
@@ -1226,7 +1243,7 @@ class ConvoWidget {
       } else {
         this.qualifyingComplete = true;
         this.setInputLocked(false);
-        if (this.flushPill() || this.flushPendingLeadCapture()) {
+        if (this.flushPendingPillAction()) {
           return;
         }
         // Hidden assistant turn so the bot acknowledges the visitor
@@ -1288,7 +1305,7 @@ class ConvoWidget {
       this.qualifyingComplete = true;
       cardEl.remove();
       this.setInputLocked(false);
-      if (this.flushPill() || this.flushPendingLeadCapture()) {
+      if (this.flushPendingPillAction()) {
         return;
       }
       setTimeout(() => this.inputEl.focus(), 100);
@@ -1542,40 +1559,71 @@ class ConvoWidget {
     const action = pill.action;
     if (!action || action.type === "chat") {
       // Buffer, then either flush now or defer until qualifying completes.
-      this.pendingPillPrompt = pill.prompt;
-      if (!this.nextQualifyingPrompt()) this.flushPill();
+      this.pendingPillAction = { type: "chat", prompt: pill.prompt };
+      if (!this.nextQualifyingPrompt()) this.flushPendingPillAction();
       return;
+    }
+
+    this.pendingPillAction = action;
+    if (!this.nextQualifyingPrompt()) this.flushPendingPillAction();
+  }
+
+  // CON-254/259: dispatch starter-pill actions buffered during qualifying.
+  private flushPendingPillAction(): boolean {
+    const action = this.pendingPillAction;
+    if (!action) return false;
+    this.pendingPillAction = null;
+
+    if (action.type === "chat") {
+      this.inputEl.value = action.prompt;
+      void this.send();
+      return true;
     }
 
     if (action.type === "lead_capture") {
-      this.pendingPillLeadCapture = action;
-      if (!this.nextQualifyingPrompt()) this.flushPendingLeadCapture();
-      return;
+      void this.startPillLeadCapture(action);
+      return true;
     }
 
-    this.addAssistantTranscriptMessage(
-      "Booking form coming soon — please use Get in touch or free-text below.",
+    if (action.type === "custom_embed") {
+      this.renderCustomEmbed(action);
+      return true;
+    }
+
+    // Deprecated no-op placeholder. Configs still parse, but no UI/action runs.
+    return true;
+  }
+
+  private renderCustomEmbed(action: PillCustomEmbedAction): void {
+    const block = document.createElement("div");
+    block.className = "convo-card";
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "convo-cap-btn convo-cap-btn-text";
+    close.setAttribute("aria-label", "Close embedded form");
+    close.textContent = "Close";
+    close.addEventListener("click", () => {
+      block.remove();
+      this.inputEl.focus();
+    });
+
+    const frame = document.createElement("iframe");
+    frame.src = action.url;
+    frame.height = String(action.height ?? 520);
+    frame.style.cssText = "width:100%;border:0;border-radius:10px;background:#f8fafc";
+    frame.setAttribute(
+      "sandbox",
+      "allow-scripts allow-forms allow-same-origin allow-popups",
     );
-  }
+    frame.referrerPolicy = "strict-origin-when-cross-origin";
+    frame.loading = "lazy";
+    if (action.allow) frame.allow = action.allow;
 
-  // CON-254: post a starter-pill prompt buffered during qualifying. Returns
-  // true when a prompt was flushed so callers can skip their default post-
-  // qualifying behaviour (e.g. hidden greeting).
-  private flushPill(): boolean {
-    const prompt = this.pendingPillPrompt;
-    if (!prompt) return false;
-    this.pendingPillPrompt = null;
-    this.inputEl.value = prompt;
-    void this.send();
-    return true;
-  }
-
-  private flushPendingLeadCapture(): boolean {
-    const action = this.pendingPillLeadCapture;
-    if (!action) return false;
-    this.pendingPillLeadCapture = null;
-    void this.startPillLeadCapture(action);
-    return true;
+    block.appendChild(close);
+    block.appendChild(frame);
+    this.messagesEl.appendChild(block);
+    this.scrollToBottom();
   }
 
   private async startPillLeadCapture(
