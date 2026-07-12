@@ -865,12 +865,15 @@ function getStyles(config: ConvoConfig): string {
 // ---------------------------------------------------------------------------
 // SVG icons
 // ---------------------------------------------------------------------------
+// CON-262: SVG attributes MUST be quoted. Unquoted xmlns breaks the SVG namespace
+// and browsers render the paths as broken glyphs (visible on both close and send
+// icons in production). CON-254 stripped these quotes for size budget — reverted.
 const icon = (body: string, width = "2") =>
-  `<svg xmlns=http://www.w3.org/2000/svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=${width} stroke-linecap=round stroke-linejoin=round>${body}</svg>`;
-const CLOSE_LINES = `<line x1=18 y1=6 x2=6 y2=18/><line x1=6 y1=6 x2=18 y2=18/>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+const CLOSE_LINES = `<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`;
 const CHAT_ICON = icon(`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`);
 const CLOSE_ICON = icon(CLOSE_LINES);
-const SEND_ICON = icon(`<line x1=22 y1=2 x2=11 y2=13/><polygon points="22 2 15 22 11 13 2 9 22 2"/>`);
+const SEND_ICON = icon(`<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>`);
 const CLOSE_ICON_SM = icon(CLOSE_LINES, "2.5");
 
 // ---------------------------------------------------------------------------
