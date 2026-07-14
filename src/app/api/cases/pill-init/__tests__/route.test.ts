@@ -113,6 +113,16 @@ function makeDeps(
       id === CONVO_A && tenantId === TENANT_A && visitorId === VISITOR_A
         ? { id, tenantId }
         : null,
+    createConversation: async (tenantId, visitorId) => ({
+      id: CONVO_A,
+      tenantId,
+      visitorId,
+      metadata: {},
+      status: "active",
+      messageCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
     getCaseByConversation: async (tenantId, conversationId) =>
       world.cases.find(
         (c) => c.tenantId === tenantId && c.conversationId === conversationId,
@@ -198,6 +208,22 @@ async function runAll() {
     const body = (await readJson(res)) as { case_id?: string };
     assertEq(body.case_id, existing.id, "case_id");
     assertEq(world.cases.length, 1, "no duplicate case");
+  });
+
+  await test("missing conversationId creates a scoped conversation for direct pill capture", async () => {
+    const world: FakeWorld = { cases: [], attributes: [] };
+    const res = await handlePillInit(
+      mockReq(validBody({ conversationId: null })),
+      makeDeps(world),
+    );
+    assertEq(res.status, 200, "status");
+    const body = (await readJson(res)) as {
+      case_id?: string;
+      conversation_id?: string;
+    };
+    assertEq(body.case_id, CASE_A, "case_id");
+    assertEq(body.conversation_id, CONVO_A, "conversation_id");
+    assertEq(world.cases[0].conversationId, CONVO_A, "case conversation");
   });
 
   await test("missing capture_policy_id returns 400", async () => {

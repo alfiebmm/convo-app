@@ -12,7 +12,10 @@ import { withApiErrorLogging } from "@/lib/errors/wrap";
 
 import { createCase, getCaseByConversation, type CaseRow } from "@/lib/cases";
 import { setCaseAttribute } from "@/lib/cases/attributes";
-import { getConversationForVisitor } from "@/lib/conversations";
+import {
+  createConversation,
+  getConversationForVisitor,
+} from "@/lib/conversations";
 import { DEFAULT_STARTER_PROMPTS } from "@/lib/forum-config/defaults";
 import {
   capturePolicySpecSchema,
@@ -32,6 +35,7 @@ export type PillInitDeps = {
     tenantId: string,
     visitorId: string,
   ) => Promise<ConversationLookupRow>;
+  createConversation: typeof createConversation;
   getCaseByConversation: (
     tenantId: string,
     conversationId: string,
@@ -43,6 +47,7 @@ export type PillInitDeps = {
 const defaultDeps: PillInitDeps = {
   getTenantById,
   getConversationForVisitor,
+  createConversation,
   getCaseByConversation,
   createCase,
   setCaseAttribute,
@@ -51,7 +56,7 @@ const defaultDeps: PillInitDeps = {
 const requestBodySchema = z.object({
   tenantId: z.string().uuid(),
   visitorId: z.string().min(1),
-  conversationId: z.string().uuid(),
+  conversationId: z.string().uuid().nullable().optional(),
   capture_policy_id: z.string().min(1),
 });
 
@@ -130,11 +135,13 @@ export async function handlePillInit(
   const tenant = await deps.getTenantById(body.tenantId);
   if (!tenant) return notFound();
 
-  const conversation = await deps.getConversationForVisitor(
-    body.conversationId,
-    body.tenantId,
-    body.visitorId,
-  );
+  const conversation = body.conversationId
+    ? await deps.getConversationForVisitor(
+        body.conversationId,
+        body.tenantId,
+        body.visitorId,
+      )
+    : await deps.createConversation(body.tenantId, body.visitorId, {});
   if (!conversation) return notFound();
 
   const capturePolicy = resolvePillCapturePolicy(
@@ -146,12 +153,12 @@ export async function handlePillInit(
   const validatedPolicy = capturePolicySpecSchema.parse(capturePolicy);
   const existing = await deps.getCaseByConversation(
     body.tenantId,
-    body.conversationId,
+    conversation.id,
   );
   const kase =
     existing ??
     (await deps.createCase(body.tenantId, {
-      conversationId: body.conversationId,
+      conversationId: conversation.id,
       caseType: validatedPolicy.case_type,
       source: "starter_pill",
       reason: "capture_details_then_flag",
@@ -168,6 +175,7 @@ export async function handlePillInit(
   return jsonResponse(
     {
       case_id: kase.id,
+      conversation_id: conversation.id,
       capture_policy: validatedPolicy,
     },
     200,
