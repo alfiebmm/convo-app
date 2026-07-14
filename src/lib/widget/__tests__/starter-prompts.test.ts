@@ -54,6 +54,50 @@ test("resolveWidgetStarterPrompts preserves a non-empty custom slice", () => {
   );
 });
 
+test("resolveWidgetStarterPrompts preserves lead_capture and custom_embed action blocks", () => {
+  const custom = [
+    {
+      emoji: "✉️",
+      label: "Get in touch",
+      prompt: "How do I get in touch?",
+      action: {
+        type: "lead_capture" as const,
+        capture_policy: {
+          id: "starter_pill_get_in_touch",
+          case_type: "lead" as const,
+          required_fields: ["name", "email"],
+          optional_fields: ["mobile"],
+          privacy_notice:
+            "We use your details only to follow up on your enquiry.",
+          privacy_policy_url: "https://example.com/privacy",
+        },
+        field_label_overrides: {
+          email: "Work email",
+        },
+      },
+    },
+    {
+      emoji: "📅",
+      label: "Book",
+      prompt: "I want to book.",
+      action: {
+        type: "custom_embed" as const,
+        kind: "iframe" as const,
+        url: "https://example.com/book",
+        height: 640,
+        allow: "camera",
+      },
+    },
+  ];
+
+  const resolved = resolveWidgetStarterPrompts({
+    forumConfig: {
+      starter_prompts: custom,
+    },
+  });
+  assert.deepEqual(resolved, custom);
+});
+
 test("starter prompt schema accepts legacy chat pills without action", () => {
   const parsed = starterPromptsSchema.safeParse([
     {

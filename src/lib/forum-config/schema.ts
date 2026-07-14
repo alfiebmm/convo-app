@@ -360,7 +360,23 @@ export const capturePolicySchema = z.object({
 
 // ---- Starter prompt actions ----
 
-export const capturePolicySpecSchema = capturePolicySchema;
+export const capturePolicySpecSchema = z.object({
+  id: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim() : v),
+    z.string().min(1),
+  ),
+  case_type: caseTypeEnum,
+  required_fields: z.array(fieldKeySchema).default([]),
+  optional_fields: z.array(fieldKeySchema).default([]),
+  privacy_notice: z.string().min(1),
+  privacy_policy_url: z.string().url().refine((value) => {
+    try {
+      return new URL(value).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Privacy policy URL must use https"),
+});
 
 export const pillActionChatSchema = z.object({
   type: z.literal("chat"),
@@ -370,6 +386,31 @@ export const pillActionLeadCaptureSchema = z.object({
   type: z.literal("lead_capture"),
   capture_policy: capturePolicySpecSchema,
   field_label_overrides: z.record(z.string(), z.string()).optional(),
+}).superRefine((action, ctx) => {
+  const required = new Set(action.capture_policy.required_fields);
+  action.capture_policy.optional_fields.forEach((field, index) => {
+    if (required.has(field)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["capture_policy", "optional_fields", index],
+        message: "Field can be required or optional, not both",
+      });
+    }
+  });
+
+  const allowed = new Set([
+    ...action.capture_policy.required_fields,
+    ...action.capture_policy.optional_fields,
+  ]);
+  for (const key of Object.keys(action.field_label_overrides ?? {})) {
+    if (!allowed.has(key)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["field_label_overrides", key],
+        message: "Field label override key must be selected first",
+      });
+    }
+  }
 });
 
 export const pillActionCustomEmbedSchema = z.object({

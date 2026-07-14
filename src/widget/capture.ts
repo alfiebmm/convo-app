@@ -30,6 +30,10 @@
  * `src/app/api/cases/[caseId]/capture/route.ts`. Keep the two in sync;
  * the server is authoritative.
  */
+import {
+  FIELD_META,
+  type CaptureFieldMeta,
+} from "../lib/capture-field-meta";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -95,78 +99,10 @@ export interface CaptureFlowOutcome {
 // Field metadata
 // ---------------------------------------------------------------------------
 
-/**
- * Visitor-facing prompt + input hints for each canonical field key.
- * Australian English, no exclamation marks, brand-system voice
- * ("confident-but-specific, outcomes-first").
- *
- * Custom tenant field keys fall through to a generic text prompt — the
- * server accepts them as opaque attributes.
- */
-const FIELD_META: Record<
-  string,
-  { label: string; inputType: string; autocomplete: string; placeholder: string }
-> = {
-  name: {
-    label: "What's your name?",
-    inputType: "text",
-    autocomplete: "name",
-    placeholder: "Your name",
-  },
-  email: {
-    label: "What's the best email to reach you on?",
-    inputType: "email",
-    autocomplete: "email",
-    placeholder: "you@example.com",
-  },
-  mobile: {
-    label: "What's the best phone number to reach you on?",
-    inputType: "tel",
-    autocomplete: "tel",
-    placeholder: "0400 000 000",
-  },
-  postcode: {
-    label: "What's your postcode?",
-    inputType: "text",
-    autocomplete: "postal-code",
-    placeholder: "2000",
-  },
-  free_text_note: {
-    label: "Anything else our team should know?",
-    inputType: "text",
-    autocomplete: "off",
-    placeholder: "Optional note",
-  },
-  suburb: {
-    label: "What suburb are you in?",
-    inputType: "text",
-    autocomplete: "address-level2",
-    placeholder: "Suburb",
-  },
-  state: {
-    label: "Which state are you in?",
-    inputType: "text",
-    autocomplete: "address-level1",
-    placeholder: "NSW",
-  },
-  company: {
-    label: "What's your company name?",
-    inputType: "text",
-    autocomplete: "organization",
-    placeholder: "Company",
-  },
-  preferred_contact_method: {
-    label: "How would you prefer we contact you?",
-    inputType: "text",
-    autocomplete: "off",
-    placeholder: "Email or phone",
-  },
-};
-
 function metaForField(
   field: string,
   labelOverrides?: CaptureFieldLabelOverrides,
-): (typeof FIELD_META)[string] {
+): CaptureFieldMeta {
   const override = labelOverrides?.[field]?.trim();
   if (FIELD_META[field]) {
     return override

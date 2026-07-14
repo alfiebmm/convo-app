@@ -129,6 +129,71 @@ test("starterPromptsSchema rejects entries with empty fields", () => {
   assert.equal(result.success, false);
 });
 
+test("starterPromptsSchema rejects lead capture duplicates, bad overrides, and non-https privacy URLs", () => {
+  const lead = {
+    emoji: "✉️",
+    label: "Get in touch",
+    prompt: "How do I get in touch?",
+    action: {
+      type: "lead_capture" as const,
+      capture_policy: {
+        id: "starter_pill_get_in_touch",
+        case_type: "lead" as const,
+        required_fields: ["email"],
+        optional_fields: ["mobile"],
+        privacy_notice: "We use your details to follow up.",
+        privacy_policy_url: "https://example.com/privacy",
+      },
+    },
+  };
+
+  assert.equal(starterPromptsSchema.safeParse([lead]).success, true);
+  assert.equal(
+    starterPromptsSchema.safeParse([
+      {
+        ...lead,
+        action: {
+          ...lead.action,
+          capture_policy: {
+            ...lead.action.capture_policy,
+            optional_fields: ["email"],
+          },
+        },
+      },
+    ]).success,
+    false,
+  );
+  assert.equal(
+    starterPromptsSchema.safeParse([
+      {
+        ...lead,
+        action: {
+          ...lead.action,
+          field_label_overrides: {
+            postcode: "Postcode",
+          },
+        },
+      },
+    ]).success,
+    false,
+  );
+  assert.equal(
+    starterPromptsSchema.safeParse([
+      {
+        ...lead,
+        action: {
+          ...lead.action,
+          capture_policy: {
+            ...lead.action.capture_policy,
+            privacy_policy_url: "http://example.com/privacy",
+          },
+        },
+      },
+    ]).success,
+    false,
+  );
+});
+
 test("pillActionCustomEmbedSchema defaults height and validates bounds", () => {
   const parsed = pillActionCustomEmbedSchema.safeParse({
     type: "custom_embed",
