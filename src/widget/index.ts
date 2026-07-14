@@ -105,7 +105,7 @@ interface QualifyingPrompt {
 }
 
 // CON-251: starter-prompt pills surfaced from /api/widget/config.
-// Rendered on the closed-bubble surface (desktop only). Tapping a pill
+// Rendered on the closed-bubble surface. Tapping a pill
 // opens the panel AND auto-sends the pill's `prompt` as if the visitor
 // had typed it. No persona side-effects — pure conversation openers.
 interface StarterPrompt {
@@ -136,16 +136,13 @@ type PillLeadCaptureAction = Extract<
   { type: "lead_capture" }
 >;
 
-type PillAction =
-  | { type: "chat"; prompt: string }
-  | Extract<
-      StarterPillAction,
-      { type: "lead_capture" | "custom_embed" | "booking_form" }
-    >;
 type PillCustomEmbedAction = Extract<
   StarterPillAction,
   { type: "custom_embed" }
 >;
+
+const pillQualifyingDirective = (questions: string[]) =>
+  `Qualifying unanswered: ${questions.join(";")}`;
 
 // ---------------------------------------------------------------------------
 // Config from script tag
@@ -202,6 +199,7 @@ function getStyles(config: ConvoConfig): string {
   const dims = SIZE_DIMENSIONS[config.size];
   const side = config.position === "bottom-left" ? "left" : "right";
   const pos = `${side}: ${dims.offset}px;`;
+  const mobilePos = `${side}: calc(12px + env(safe-area-inset-${side}));`;
   // Panel keeps a consistent inset regardless of bubble size for visual stability.
   const panelPos = `${side}: 20px;`;
   // Stack the panel above the bubble with a small gap.
@@ -263,14 +261,9 @@ function getStyles(config: ConvoConfig): string {
       transform: rotate(90deg);
     }
 
-    /* CON-251 — Closed-widget starter-prompt pills.
-       Rendered as a vertical stack aligned to the same side as the bubble,
-       floating just above the bubble. Hidden on mobile and while the chat
-       panel is open. */
     .convo-starter-pills {
       position: fixed;
-      /* Sit above the bubble with the same edge inset. */
-      bottom: ${dims.offset + dims.bubble + 12}px;
+      bottom: calc(${dims.offset + dims.bubble + 12}px + env(safe-area-inset-bottom));
       ${pos}
       display: flex;
       flex-direction: column;
@@ -287,7 +280,7 @@ function getStyles(config: ConvoConfig): string {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      max-width: min(280px,calc(100vw - ${dims.offset * 2 + 8}px));
+      max-width: min(280px,100%);
       padding: 8px 14px;
       font: 500 13px/1.3 inherit;
       color: #1e293b;
@@ -314,7 +307,7 @@ function getStyles(config: ConvoConfig): string {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    @media(max-width:640px){.convo-starter-pills{display:none!important}}
+    @media(max-width:640px){.convo-starter-pills{${mobilePos}}}
 
     /* Panel */
     .convo-panel {
@@ -905,7 +898,6 @@ class ConvoWidget {
 
   // CON-251: starter-prompt pills on the closed bubble surface.
   private starterPrompts: StarterPrompt[] = [];
-  private pendingPillAction: PillAction | null = null;
 
   // DOM refs (inside Shadow DOM)
   private shadow!: ShadowRoot;
@@ -1246,9 +1238,6 @@ class ConvoWidget {
       } else {
         this.qualifyingComplete = true;
         this.setInputLocked(false);
-        if (this.flushPendingPillAction()) {
-          return;
-        }
         // Hidden assistant turn so the bot acknowledges the visitor
         // instead of leaving them staring at a silent input.
         // Fire-and-forget: focus the input first, kick off the greeting
@@ -1308,9 +1297,6 @@ class ConvoWidget {
       this.qualifyingComplete = true;
       cardEl.remove();
       this.setInputLocked(false);
-      if (this.flushPendingPillAction()) {
-        return;
-      }
       setTimeout(() => this.inputEl.focus(), 100);
       // Hidden assistant turn so the bot acknowledges the visitor.
       // The server uses `skipped: true` to soften the greeting
@@ -1517,7 +1503,7 @@ class ConvoWidget {
    * immediately.
    *
    * Rendered only when at least one prompt is configured (no placeholder).
-   * Hidden via CSS on mobile (< 640px). Hidden while the panel is open.
+   * Hidden while the panel is open.
    */
   private renderStarterPills(): void {
     if (this.starterPrompts.length === 0) {
@@ -1561,40 +1547,39 @@ class ConvoWidget {
 
     const action = pill.action;
     if (!action || action.type === "chat") {
-      // Buffer, then either flush now or defer until qualifying completes.
-      this.pendingPillAction = { type: "chat", prompt: pill.prompt };
-      if (!this.nextQualifyingPrompt()) this.flushPendingPillAction();
+      this.inputEl.value = pill.prompt;
+      void this.send(this.buildPillQualifyingDirective());
       return;
     }
 
-    this.pendingPillAction = action;
-    if (!this.nextQualifyingPrompt()) this.flushPendingPillAction();
-  }
-
-  // CON-254/259: dispatch starter-pill actions buffered during qualifying.
-  private flushPendingPillAction(): boolean {
-    const action = this.pendingPillAction;
-    if (!action) return false;
-    this.pendingPillAction = null;
-
-    if (action.type === "chat") {
-      this.inputEl.value = action.prompt;
-      void this.send();
-      return true;
-    }
-
     if (action.type === "lead_capture") {
+      this.clearQ();
       void this.startPillLeadCapture(action);
-      return true;
+      return;
     }
 
     if (action.type === "custom_embed") {
+      this.clearQ();
       this.renderCustomEmbed(action);
-      return true;
+      return;
     }
 
     // Deprecated no-op placeholder. Configs still parse, but no UI/action runs.
-    return true;
+  }
+
+  private buildPillQualifyingDirective(): string | null {
+    if (this.qualifyingComplete) return null;
+    const questions = this.qualifyingQuestions
+      .filter((q) => !this.qualifyingAnsweredFields.has(q.field))
+      .map((q) => q.question.trim())
+      .filter(Boolean);
+    if (questions.length === 0) return null;
+    return pillQualifyingDirective(questions);
+  }
+
+  private clearQ(): void {
+    this.messagesEl.querySelector(".convo-qualifying")?.remove();
+    this.setInputLocked(false);
   }
 
   private renderCustomEmbed(action: PillCustomEmbedAction): void {
@@ -1632,13 +1617,6 @@ class ConvoWidget {
   private async startPillLeadCapture(
     action: PillLeadCaptureAction,
   ): Promise<void> {
-    if (!this.conversationId) {
-      this.addAssistantTranscriptMessage(
-        "Please send a quick message first so we can start your enquiry.",
-      );
-      return;
-    }
-
     this.isStreaming = true;
     this.sendBtn.disabled = true;
     this.inputEl.disabled = true;
@@ -1654,7 +1632,8 @@ class ConvoWidget {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { case_id?: string };
+      const data = (await res.json()) as { case_id?: string; conversation_id?: string };
+      if (data.conversation_id) this.conversationId = data.conversation_id;
       if (!data.case_id) throw new Error("Missing case_id");
 
       this.addAssistantTranscriptMessage(
@@ -1696,7 +1675,7 @@ class ConvoWidget {
     this.starterPillsEl.classList.toggle("hidden", this.isOpen);
   }
 
-  private async send() {
+  private async send(qd?: string | null) {
     const text = this.inputEl.value.trim();
     if (!text || this.isStreaming) return;
 
@@ -1714,6 +1693,7 @@ class ConvoWidget {
         pageUrl: window.location.href,
         referrer: document.referrer || null,
       },
+      ...(qd ? { qd } : {}),
     });
   }
 

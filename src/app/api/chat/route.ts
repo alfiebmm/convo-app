@@ -31,7 +31,10 @@ import {
   validateOutputLinks,
 } from "@/lib/guardrails/link-host";
 import { readQualifying } from "@/lib/qualifying/types";
-import { formatPersonaForPrompt } from "@/lib/qualifying/resolve";
+import {
+  formatPersonaForPrompt,
+  getConfiguredQuestions,
+} from "@/lib/qualifying/resolve";
 import { buildGreetingAddendum } from "@/lib/qualifying/greeting";
 import { maybeCaptureLead } from "@/lib/leads/capture";
 import { fireAndForgetLeadSummary } from "@/lib/leads/summary";
@@ -62,6 +65,11 @@ import { db } from "@/lib/db";
 import { platformInjectionEvents } from "@/lib/db/schema";
 
 const forumConfigIncompleteWarnings = new Set<string>();
+
+const buildPillQualifyingDirective = (questions: string[]) =>
+  questions.length === 0
+    ? ""
+    : `The user has not yet answered the qualifying questions: ${questions.join("; ")}. Before answering their message, ask them these qualifying questions naturally in-conversation, one at a time. Example opener: "Before I answer, quick question so I can help properly: ${questions[0]}". Once they answer, acknowledge briefly and continue with their original request.`;
 
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -146,6 +154,7 @@ export async function POST(req: NextRequest) {
       metadata,
       triggerGreeting,
       skipped,
+      qd,
     } = body;
 
     // `triggerGreeting` is a hidden assistant turn fired by the widget
@@ -256,6 +265,20 @@ export async function POST(req: NextRequest) {
       conversationRow?.metadata as Record<string, unknown> | null
     );
     const personaContext = formatPersonaForPrompt(qualifyingState);
+    const pillQualifyingAddendum =
+      !isGreetingTurn && typeof qd === "string"
+        ? buildPillQualifyingDirective(
+            getConfiguredQuestions(tenant.settings as Record<string, unknown> | null)
+              .filter(
+                (q) =>
+                  !(qualifyingState?.answers ?? []).some(
+                    (a) => a.field === q.field,
+                  ),
+              )
+              .map((q) => q.question.trim())
+              .filter(Boolean),
+          )
+        : "";
 
     // ── CON-95: Lead capture & detection ────────────────────────────
     // Run BEFORE we kick off OpenAI. Pure regex + keyword scan; no
@@ -388,6 +411,7 @@ export async function POST(req: NextRequest) {
     const fullSystemPrompt = [
       systemPrompt,
       personaContext,
+      pillQualifyingAddendum,
       retrievalContext,
       isGreetingTurn ? greetingAddendum : responseEngine.promptAddendum,
     ]
