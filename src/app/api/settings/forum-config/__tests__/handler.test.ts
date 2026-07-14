@@ -382,6 +382,87 @@ async function run() {
     assertEq(welcome.copy, validWelcome.copy, "welcome round-tripped");
   });
 
+  await test("PATCH starter_prompts round-trips lead_capture and custom_embed action blocks", async () => {
+    const deps = makeDeps({ "tenant-a": {} });
+    const starterPrompts = [
+      {
+        emoji: "✉️",
+        label: "Get in touch",
+        prompt: "How do I get in touch?",
+        action: {
+          type: "lead_capture" as const,
+          capture_policy: {
+            id: "starter_pill_get_in_touch",
+            case_type: "lead" as const,
+            required_fields: ["name", "email"],
+            optional_fields: ["mobile"],
+            privacy_notice:
+              "We use your details only to follow up on your enquiry.",
+            privacy_policy_url: "https://example.com/privacy",
+          },
+          field_label_overrides: {
+            email: "Work email",
+          },
+        },
+      },
+      {
+        emoji: "📅",
+        label: "Book",
+        prompt: "I want to book.",
+        action: {
+          type: "custom_embed" as const,
+          kind: "iframe" as const,
+          url: "https://example.com/book",
+          height: 640,
+          allow: "camera",
+        },
+      },
+    ];
+    const res = await handleForumConfigPatch(
+      "tenant-a",
+      { starter_prompts: starterPrompts },
+      deps,
+    );
+    assertEq(res.status, 200, "status");
+
+    const getRes = await handleForumConfigGet("tenant-a", deps);
+    const getBody = await readJson(getRes);
+    const cfg = getBody.forumConfigRaw as Record<string, unknown>;
+    const saved = cfg.starter_prompts as Array<Record<string, unknown>>;
+    assertEq(saved.length, 2, "starter prompt count");
+    const leadAction = saved[0].action as Record<string, unknown>;
+    assertEq(leadAction.type, "lead_capture", "lead action");
+    const embedAction = saved[1].action as Record<string, unknown>;
+    assertEq(embedAction.type, "custom_embed", "embed action");
+    assertEq(embedAction.height, 640, "embed height");
+  });
+
+  await test("PATCH rejects invalid starter_prompts action blocks", async () => {
+    const deps = makeDeps({ "tenant-a": {} });
+    const res = await handleForumConfigPatch("tenant-a", {
+      starter_prompts: [
+        {
+          emoji: "✉️",
+          label: "Get in touch",
+          prompt: "How do I get in touch?",
+          action: {
+            type: "lead_capture",
+            capture_policy: {
+              id: "starter_pill_get_in_touch",
+              case_type: "lead",
+              required_fields: ["email"],
+              optional_fields: ["email"],
+              privacy_notice: "We use your details to follow up.",
+              privacy_policy_url: "https://example.com/privacy",
+            },
+          },
+        },
+      ],
+    });
+    assertEq(res.status, 400, "status");
+    assertEq(deps._writes.length, 0, "no writes on invalid starter prompt");
+  });
+
   await test("PATCH ignores unknown top-level keys (forwards-compat)", async () => {
     const deps = makeDeps({ "tenant-a": {} });
     const res = await handleForumConfigPatch(
