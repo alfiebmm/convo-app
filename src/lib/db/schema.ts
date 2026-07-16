@@ -12,6 +12,7 @@ import {
   varchar,
   real,
   primaryKey,
+  customType,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -39,6 +40,12 @@ export const blogPostStatusEnum = pgEnum("blog_post_status", [
   "approved",
   "published",
   "rejected",
+]);
+
+export const blogDecisionActionEnum = pgEnum("blog_decision_action", [
+  "create",
+  "update",
+  "skip",
 ]);
 
 export const conversationStatusEnum = pgEnum("conversation_status", [
@@ -93,6 +100,12 @@ export const connectorOutboxStatusEnum = pgEnum("connector_outbox_status", [
   "failed",
   "abandoned",
 ]);
+
+const vector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "vector(1536)";
+  },
+});
 
 // ============================================================
 // TENANTS (organisations / sites)
@@ -371,6 +384,7 @@ export const blogPosts = pgTable(
     slug: varchar("slug", { length: 255 }).notNull(),
     content: text("content").notNull(),
     metadata: jsonb("metadata").default({}).notNull(),
+    embedding: vector("embedding"),
     status: blogPostStatusEnum("status").default("draft").notNull(),
     persona: text("persona"),
     topic: text("topic"),
@@ -387,6 +401,48 @@ export const blogPosts = pgTable(
     index("blog_posts_tenant_status_idx").on(table.tenantId, table.status),
     index("blog_posts_tenant_thread_idx").on(table.tenantId, table.threadId),
     index("blog_posts_metadata_gin_idx").using("gin", table.metadata),
+    index("blog_posts_embedding_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops"))
+      .where(sql`embedding IS NOT NULL`),
+  ]
+);
+
+export const blogDecisionLogs = pgTable(
+  "blog_decision_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    action: blogDecisionActionEnum("action").notNull(),
+    reason: text("reason").notNull(),
+    similarPosts: jsonb("similar_posts")
+      .$type<Array<{ blog_post_id: string; score: number }>>()
+      .default([])
+      .notNull(),
+    primaryKeyword: text("primary_keyword"),
+    intent: text("intent"),
+    targetBlogPostId: uuid("target_blog_post_id").references(() => blogPosts.id, {
+      onDelete: "set null",
+    }),
+    metadata: jsonb("metadata").default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("blog_decision_logs_tenant_created_idx").on(
+      table.tenantId,
+      table.createdAt
+    ),
+    index("blog_decision_logs_tenant_conversation_idx").on(
+      table.tenantId,
+      table.conversationId
+    ),
+    index("blog_decision_logs_tenant_action_idx").on(table.tenantId, table.action),
   ]
 );
 
