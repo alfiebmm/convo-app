@@ -120,6 +120,14 @@ export const seoDefaultsSchema = z.object({
 });
 
 // ============================================================
+// Blog Trigger Configuration
+// ============================================================
+
+export const blogConfigSchema = z.object({
+  idleMinutes: z.number().int().positive().default(60),
+});
+
+// ============================================================
 // Lead Capture Configuration (CON-95 / C-06)
 // ============================================================
 
@@ -685,6 +693,7 @@ export const forumConfigSchema = z.object({
   allowed_topics: allowedTopicsSchema,
   exclusion_list: exclusionListSchema,
   seo_defaults: seoDefaultsSchema.prefault({}),
+  blog: blogConfigSchema.prefault({}),
   connectors: connectorsSchema.prefault({}),
   limits: limitsSchema.prefault({}),
   follow_up: followUpSchema.prefault({}),
@@ -701,6 +710,7 @@ export type QualifyingQuestion = z.infer<typeof qualifyingQuestionSchema>;
 export type StarterPrompt = z.infer<typeof starterPromptSchema>;
 export type Welcome = z.infer<typeof welcomeSchema>;
 export type SeoDefaults = z.infer<typeof seoDefaultsSchema>;
+export type BlogConfig = z.infer<typeof blogConfigSchema>;
 export type Connectors = z.infer<typeof connectorsSchema>;
 export type Limits = z.infer<typeof limitsSchema>;
 export type LeadCapture = z.infer<typeof leadCaptureSchema>;

@@ -9,6 +9,7 @@ import {
   allowedTopicsSchema,
   exclusionListSchema,
   seoDefaultsSchema,
+  blogConfigSchema,
   connectorsSchema,
   limitsSchema,
   followUpSchema,
@@ -20,6 +21,7 @@ import type {
   StarterPrompt,
   Welcome,
   SeoDefaults,
+  BlogConfig,
   Connectors,
   Limits,
   LeadCapture,
@@ -241,6 +243,13 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     has("seo_defaults"),
   );
 
+  const blog = parseSlice<BlogConfig>(
+    blogConfigSchema,
+    raw.blog,
+    DEFAULT_FORUM_CONFIG.blog,
+    has("blog"),
+  );
+
   const connectors = parseSlice<Connectors>(
     connectorsSchema,
     raw.connectors,
@@ -273,6 +282,7 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     allowed_topics,
     exclusion_list,
     seo_defaults,
+    blog,
     connectors,
     limits,
     follow_up,
@@ -357,6 +367,13 @@ export function parseSliceSafe<K extends SliceKey>(
         seoDefaultsSchema,
         input,
         fallback as SeoDefaults,
+        true,
+      ) as ForumConfig[K];
+    case "blog":
+      return parseSlice(
+        blogConfigSchema,
+        input,
+        fallback as BlogConfig,
         true,
       ) as ForumConfig[K];
     case "connectors":

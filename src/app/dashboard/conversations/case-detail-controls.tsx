@@ -307,6 +307,68 @@ export function CaseActionButtons({ caseId }: { caseId: string }) {
   );
 }
 
+export function ConvertToBlogButton({
+  conversationId,
+  initialState,
+}: {
+  conversationId: string;
+  initialState?: string | null;
+}) {
+  const router = useRouter();
+  const [status, setStatus] = useState<string | null>(
+    initialState === "converted_to_blog" ? "Blog queued" : null
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const isTriggered = initialState === "converted_to_blog";
+
+  function convert() {
+    setStatus(null);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch(
+          `/api/conversations/${conversationId}/convert-to-blog`,
+          { method: "POST" }
+        );
+        const body = (await res.json()) as {
+          status?: string;
+          reason?: string;
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(body.error ?? "Convert failed");
+        }
+        if (body.status === "skipped" && body.reason === "duplicate_thread_id") {
+          setStatus("Blog already exists");
+        } else if (body.status === "skipped") {
+          setStatus("Blog already queued");
+        } else {
+          setStatus("Blog queued");
+        }
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Convert failed");
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={convert}
+        disabled={isPending || isTriggered}
+        className={BUTTON_CLASS}
+      >
+        {isPending ? "Queueing" : isTriggered ? "Blog queued" : "Convert to blog"}
+      </button>
+      {status && <span className="text-xs text-emerald-600">{status}</span>}
+      {error && <span className="text-xs text-rose-600">{error}</span>}
+    </div>
+  );
+}
+
 export function RetrySyncButton({
   outboxId,
   disabled,

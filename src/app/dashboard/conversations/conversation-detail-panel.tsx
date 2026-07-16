@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ConversationDetailRow } from "@/lib/cases";
-import { CasePanelCloseButton } from "./case-detail-controls";
+import { getBlogConversionState } from "@/lib/blog/trigger";
+import { CasePanelCloseButton, ConvertToBlogButton } from "./case-detail-controls";
 import { ConversationTranscript } from "./conversation-transcript";
 
 function formatDateTime(date: Date | null | undefined) {
@@ -42,6 +43,8 @@ export default function ConversationDetailPanel({
 }: {
   detail: ConversationDetailRow;
 }) {
+  const blogState = getBlogConversionState(detail.conversation.metadata);
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35">
       <aside className="flex h-full w-full flex-col bg-white shadow-xl md:max-w-3xl">
@@ -91,6 +94,13 @@ export default function ConversationDetailPanel({
                 </dd>
               </div>
             </dl>
+          </Section>
+
+          <Section title="Blog">
+            <ConvertToBlogButton
+              conversationId={detail.conversation.id}
+              initialState={blogState}
+            />
           </Section>
 
           <Section title="Full transcript">
