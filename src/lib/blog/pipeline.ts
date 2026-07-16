@@ -3,7 +3,26 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { blogPosts } from "@/lib/db/schema";
 
-export async function runBlogPipeline(conversationId: string): Promise<void> {
+import { decide, type DecisionResult } from "./decision";
+
+export interface BlogPipelineResult {
+  conversationId: string;
+  decision: DecisionResult;
+}
+
+/**
+ * Blog generation pipeline entry point.
+ *
+ * - Duplicate-prevention: if a `blog_posts` row already exists for this
+ *   conversation, log and return `null` (CON-103 behaviour).
+ * - Otherwise: run the Decision Phase (CON-104) and return the result.
+ *
+ * Article writing (create/update) and SEO metadata generation land in
+ * CON-105 / CON-106 and will consume `BlogPipelineResult`.
+ */
+export async function runBlogPipeline(
+  conversationId: string
+): Promise<BlogPipelineResult | null> {
   const [existingPost] = await db
     .select({ id: blogPosts.id })
     .from(blogPosts)
@@ -16,8 +35,9 @@ export async function runBlogPipeline(conversationId: string): Promise<void> {
       blogPostId: existingPost.id,
       reason: "duplicate_thread_id",
     });
-    return;
+    return null;
   }
 
-  console.info("[blog] would run blog pipeline", { conversationId });
+  const decision = await decide(conversationId);
+  return { conversationId, decision };
 }
