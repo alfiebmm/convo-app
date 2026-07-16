@@ -141,6 +141,10 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
     schema_org_type: "Article",
   },
 
+  blog: {
+    idleMinutes: 60,
+  },
+
   connectors: {
     gsc: {
       enabled: false,

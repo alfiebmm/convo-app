@@ -20,6 +20,7 @@ export type {
   CtaRule,
   QualifyingQuestion,
   SeoDefaults,
+  BlogConfig,
   Connectors,
   Limits,
   LeadCapture,

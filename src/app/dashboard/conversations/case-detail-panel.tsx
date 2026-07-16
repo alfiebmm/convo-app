@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import type { CaseDetail } from "@/lib/cases";
+import { getBlogConversionState } from "@/lib/blog/trigger";
 import { ConversationTranscript } from "./conversation-transcript";
 import {
   AssignmentControl,
   CaseActionButtons,
   CasePanelCloseButton,
+  ConvertToBlogButton,
   InternalNoteForm,
   PiiRevealField,
   RetrySyncButton,
@@ -207,6 +209,7 @@ export default function CaseDetailPanel({
   const noteEvents = detail.events.filter((event) =>
     event.eventType.toLowerCase().includes("note")
   );
+  const blogState = getBlogConversionState(detail.conversation.metadata);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35">
@@ -383,6 +386,13 @@ export default function CaseDetailPanel({
 
           <Section title="Full transcript">
             <ConversationTranscript messages={detail.messages} />
+          </Section>
+
+          <Section title="Blog">
+            <ConvertToBlogButton
+              conversationId={detail.conversation.id}
+              initialState={blogState}
+            />
           </Section>
 
           <Section title="Internal links offered">
