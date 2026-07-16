@@ -33,6 +33,14 @@ export const contentStatusEnum = pgEnum("content_status", [
   "archived", // soft-deleted
 ]);
 
+export const blogPostStatusEnum = pgEnum("blog_post_status", [
+  "draft",
+  "in_review",
+  "approved",
+  "published",
+  "rejected",
+]);
+
 export const conversationStatusEnum = pgEnum("conversation_status", [
   "active",
   "completed",
@@ -342,6 +350,43 @@ export const content = pgTable(
   (table) => [
     index("content_tenant_idx").on(table.tenantId),
     index("content_status_idx").on(table.tenantId, table.status),
+  ]
+);
+
+// ============================================================
+// BLOG POSTS
+// ============================================================
+
+export const blogPosts = pgTable(
+  "blog_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    threadId: uuid("thread_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull(),
+    slug: varchar("slug", { length: 255 }).notNull(),
+    content: text("content").notNull(),
+    metadata: jsonb("metadata").default({}).notNull(),
+    status: blogPostStatusEnum("status").default("draft").notNull(),
+    persona: text("persona"),
+    topic: text("topic"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    lastModified: timestamp("last_modified", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("blog_posts_tenant_slug_unique").on(table.tenantId, table.slug),
+    index("blog_posts_tenant_status_idx").on(table.tenantId, table.status),
+    index("blog_posts_tenant_thread_idx").on(table.tenantId, table.threadId),
+    index("blog_posts_metadata_gin_idx").using("gin", table.metadata),
   ]
 );
 
