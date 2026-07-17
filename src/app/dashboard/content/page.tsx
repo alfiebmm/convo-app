@@ -1,79 +1,90 @@
-import { db } from "@/lib/db";
-import { content } from "@/lib/db/schema";
-import { eq, and, desc, type SQL } from "drizzle-orm";
-import ContentList from "./content-list";
-import { StatusFilter, TypeFilter } from "./content-filters";
 import { Suspense } from "react";
-import { getCurrentTenant } from "@/lib/auth-context";
 import { redirect } from "next/navigation";
 
-export default async function ContentPage({
+import { getCurrentTenant, getCurrentUser } from "@/lib/auth-context";
+import {
+  listBlogPostsForTenant,
+  parseBlogPostPage,
+  parseBlogPostStatus,
+  type BlogPostsSupabaseClient,
+  type BlogPostListFilters,
+} from "@/lib/blog/queries";
+import { withDashboardErrorLogging } from "@/lib/errors/wrap";
+import { getAuthenticatedSupabaseClient } from "@/lib/supabase-client";
+
+import { ContentFilters } from "./content-filters";
+import ContentList from "./content-list";
+
+function firstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function toBlogPostFilters(
+  params: Record<string, string | string[] | undefined>,
+): BlogPostListFilters {
+  return {
+    status: parseBlogPostStatus(firstSearchParam(params.status)),
+    topic: firstSearchParam(params.topic),
+    persona: firstSearchParam(params.persona),
+    page: parseBlogPostPage(firstSearchParam(params.page)),
+  };
+}
+
+async function ContentPageImpl({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; type?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const tenant = await getCurrentTenant();
+  const [user, tenant] = await Promise.all([getCurrentUser(), getCurrentTenant()]);
+  if (!user) redirect("/login");
   if (!tenant) redirect("/onboarding");
 
   const params = await searchParams;
-  const statusFilter = params.status;
-  const typeFilter = params.type;
-
-  const conditions: SQL[] = [eq(content.tenantId, tenant.id)];
-  if (statusFilter && statusFilter !== "all") {
-    conditions.push(
-      eq(
-        content.status,
-        statusFilter as
-          | "pending"
-          | "generating"
-          | "review"
-          | "approved"
-          | "published"
-          | "rejected"
-          | "archived"
-      )
-    );
-  }
-  if (typeFilter && typeFilter !== "all") {
-    conditions.push(eq(content.type, typeFilter));
-  }
-
-  const items = await db
-    .select()
-    .from(content)
-    .where(and(...conditions))
-    .orderBy(desc(content.createdAt))
-    .limit(100);
+  const filters = toBlogPostFilters(params);
+  const supabase = getAuthenticatedSupabaseClient({
+    userId: user.id,
+    tenantId: tenant.id,
+  });
+  const contentData = await listBlogPostsForTenant({
+    supabase: supabase as unknown as BlogPostsSupabaseClient,
+    tenantId: tenant.id,
+    filters,
+  });
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Content</h1>
           <p className="mt-1 text-sm text-slate-500">
-            AI-generated articles from your conversations. Review, edit, and
-            publish.
+            Generated articles ready for review, approval, and publishing.
           </p>
         </div>
         <Suspense>
-          <div className="flex gap-2">
-            <StatusFilter />
-            <TypeFilter />
-          </div>
+          <ContentFilters />
         </Suspense>
       </div>
 
-      {items.length === 0 ? (
+      {contentData.totalCount === 0 ? (
         <div className="mt-6 rounded-lg border border-slate-200 bg-white">
           <div className="p-12 text-center text-sm text-slate-400">
-            No content yet. As conversations come in, the pipeline will extract
-            topics and generate articles for your review.
+            No articles found. Articles will appear here once the content
+            pipeline creates drafts from conversations.
           </div>
         </div>
       ) : (
-        <ContentList items={items} />
+        <ContentList
+          posts={contentData.rows}
+          totalCount={contentData.totalCount}
+          page={contentData.page}
+          pageSize={contentData.pageSize}
+        />
       )}
     </div>
   );
 }
+
+// CON-error-logging: capture any throw from the content list render path.
+export default withDashboardErrorLogging(ContentPageImpl, {
+  route: "/dashboard/content",
+});
