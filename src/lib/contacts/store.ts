@@ -195,6 +195,12 @@ export interface ContactsStore {
     contactId: string,
   ): Promise<ContactRow | null>;
 
+  updateContactDisplayName(
+    tenantId: string,
+    contactId: string,
+    displayName: string,
+  ): Promise<ContactRow | null>;
+
   listContactsByTenant(
     tenantId: string,
     filters: ListContactsByTenantFilters,
@@ -314,6 +320,20 @@ export function createDrizzleContactsStore(
         .where(and(eq(contacts.tenantId, tenantId), eq(contacts.id, contactId)))
         .limit(1);
       return (row as ContactRow) ?? null;
+    },
+
+    async updateContactDisplayName(tenantId, contactId, displayName) {
+      const now = new Date();
+      const [updated] = await db
+        .update(contacts)
+        .set({
+          displayName,
+          lastSeenAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(contacts.tenantId, tenantId), eq(contacts.id, contactId)))
+        .returning();
+      return (updated as ContactRow) ?? null;
     },
 
     async listContactsByTenant(tenantId, filters) {

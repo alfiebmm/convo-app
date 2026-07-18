@@ -110,6 +110,7 @@ interface EventRecord {
 interface ContactRecord {
   id: string;
   tenantId: string;
+  displayName?: string | null;
   emailNormalised?: string | null;
   phoneNormalised?: string | null;
   // CON-248: track attributes so we can assert persona enrichment
@@ -242,6 +243,15 @@ function makeDeps(
               c.phoneNormalised === input.phoneNormalised)),
       );
       if (existing) {
+        existing.displayName = existing.displayName ?? input.displayName ?? null;
+        existing.emailNormalised =
+          existing.emailNormalised ?? input.emailNormalised ?? null;
+        existing.phoneNormalised =
+          existing.phoneNormalised ?? input.phoneNormalised ?? null;
+        existing.attributes = {
+          ...(existing.attributes ?? {}),
+          ...(input.attributes ?? {}),
+        };
         return {
           contact: makeContactRow(existing),
           created: false,
@@ -250,6 +260,7 @@ function makeDeps(
       const created: ContactRecord = {
         id: randomUUID(),
         tenantId,
+        displayName: input.displayName ?? null,
         emailNormalised: input.emailNormalised ?? null,
         phoneNormalised: input.phoneNormalised ?? null,
         attributes: input.attributes ?? {},
@@ -275,6 +286,14 @@ function makeDeps(
         createdAt: new Date(),
       };
     }) as CaptureRouteDeps["linkContactToConversation"],
+    updateContactDisplayName: (async (tenantId, contactId, displayName) => {
+      const existing = world.contacts.find(
+        (c) => c.tenantId === tenantId && c.id === contactId,
+      );
+      if (!existing) return null;
+      existing.displayName = displayName;
+      return makeContactRow(existing);
+    }) as CaptureRouteDeps["updateContactDisplayName"],
     updateCaseContactId: async (tenantId, caseId, contactId) => {
       world.caseContactPatches.push({ tenantId, caseId, contactId });
       const idx = world.cases.findIndex(
@@ -293,7 +312,7 @@ function makeContactRow(rec: ContactRecord): ContactRow {
   return {
     id: rec.id,
     tenantId: rec.tenantId,
-    displayName: null,
+    displayName: rec.displayName ?? null,
     emailNormalised: rec.emailNormalised ?? null,
     phoneNormalised: rec.phoneNormalised ?? null,
     preferredContactMethod: null,
@@ -648,6 +667,135 @@ async function runAll() {
       assert(
         !json.toLowerCase().includes("blake@example.com"),
         "raw email NOT in audit payload",
+      );
+    },
+  );
+
+  await test(
+    "CON-269: submit email then name → same contact display_name updated",
+    async () => {
+      const world = makeWorld();
+      const deps = makeDeps(world);
+
+      const emailRes = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "email",
+          value: "Blake@Example.com",
+        }),
+        CASE_A,
+        deps,
+      );
+      assertEq(emailRes.status, 200, "email status");
+      assertEq(world.contacts.length, 1, "contact created from email");
+      const contactId = world.contacts[0].id;
+      assertEq(world.cases[0].contactId, contactId, "case linked to contact");
+
+      const nameRes = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "name",
+          value: "  Blake Smith  ",
+        }),
+        CASE_A,
+        deps,
+      );
+      const body = await readJson(nameRes);
+      assertEq(nameRes.status, 200, "name status");
+      assertEq(world.contacts.length, 1, "no second contact");
+      assertEq(world.contacts[0].id, contactId, "same contact");
+      assertEq(world.contacts[0].displayName, "Blake Smith", "display_name set");
+      assertEq(world.attributes.length, 2, "email and name attributes written");
+      assertEq(world.attributes[1].key, "name", "name attribute key");
+      assertEq(
+        (world.attributes[1].value as { value: string }).value,
+        "Blake Smith",
+        "name attribute normalised",
+      );
+      assertEq(body.contact_id, contactId, "response returns updated contact id");
+    },
+  );
+
+  await test(
+    "CON-269: submit name only → no contact created and name attribute remains",
+    async () => {
+      const world = makeWorld();
+      const res = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "name",
+          value: "  Blake  ",
+        }),
+        CASE_A,
+        makeDeps(world),
+      );
+      assertEq(res.status, 200, "status");
+      assertEq(world.contacts.length, 0, "no naked contact");
+      assertEq(world.caseContactPatches.length, 0, "case not linked");
+      assertEq(world.attributes.length, 1, "name attribute written");
+      assertEq(world.attributes[0].key, "name", "name key");
+      assertEq(
+        (world.attributes[0].value as { value: string }).value,
+        "Blake",
+        "name attribute normalised",
+      );
+    },
+  );
+
+  await test(
+    "CON-269 regression: submit email then mobile still upserts and audits identifiers",
+    async () => {
+      const world = makeWorld();
+      const deps = makeDeps(world);
+
+      await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "email",
+          value: "blake@example.com",
+        }),
+        CASE_A,
+        deps,
+      );
+      const emailContactId = world.contacts[0].id;
+
+      const mobileRes = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "mobile",
+          value: "0400 123 456",
+        }),
+        CASE_A,
+        deps,
+      );
+
+      assertEq(mobileRes.status, 200, "mobile status");
+      assertEq(world.contacts.length, 2, "mobile contact upsert still runs");
+      assertEq(world.contacts[1].phoneNormalised, "0400123456", "phone stored");
+      assertEq(
+        world.cases[0].contactId,
+        emailContactId,
+        "existing case contact not overwritten",
+      );
+      assertEq(world.links.length, 2, "both identifier submits link contacts");
+      assert(
+        typeof world.events[3].payload.value_hash === "string",
+        "mobile audit has hash",
       );
     },
   );

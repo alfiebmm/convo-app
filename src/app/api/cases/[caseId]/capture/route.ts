@@ -81,6 +81,7 @@ import { recordCaseEvent } from "@/lib/cases/events";
 import {
   upsertContact,
   linkContactToConversation,
+  updateContactDisplayName,
   normaliseEmail,
   normalisePhone,
   type ContactRow,
@@ -254,6 +255,7 @@ export type CaptureRouteDeps = {
   recordCaseEvent: typeof recordCaseEvent;
   upsertContact: typeof upsertContact;
   linkContactToConversation: typeof linkContactToConversation;
+  updateContactDisplayName: typeof updateContactDisplayName;
   /**
    * Patch a case to bind a contact_id once an identifier is captured.
    * Goes through the cases store directly because the public helpers in
@@ -284,6 +286,7 @@ const defaultDeps: CaptureRouteDeps = {
   recordCaseEvent,
   upsertContact,
   linkContactToConversation,
+  updateContactDisplayName,
   updateCaseContactId: defaultUpdateCaseContactId(getDefaultCasesStore()),
 };
 
@@ -569,6 +572,21 @@ async function handleSubmit(
     //    classifier/staff own that relationship.
     if (!kase.contactId) {
       await deps.updateCaseContactId(body.tenantId, kase.id, contact.id);
+    }
+  }
+
+  // 3b. Name is not identifier-grade, so it must never create a contact.
+  //     If this case is already linked to a contact, promote the captured
+  //     name onto that exact row for the staff-facing contact panel.
+  if (field === "name" && kase.contactId) {
+    const updated = await deps.updateContactDisplayName(
+      body.tenantId,
+      kase.contactId,
+      normalised,
+    );
+    if (updated) {
+      contact = updated;
+      contactCreated = false;
     }
   }
 
