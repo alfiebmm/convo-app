@@ -10,7 +10,11 @@ import { getCaseById } from "@/lib/cases";
 import { setCaseAttribute, getCaseAttributes } from "@/lib/cases/attributes";
 import { recordCaseEvent } from "@/lib/cases/events";
 import { createInMemoryCasesStore } from "@/lib/cases/__tests__/in-memory-store";
-import { upsertContact, linkContactToConversation } from "@/lib/contacts";
+import {
+  upsertContact,
+  linkContactToConversation,
+  updateContactDisplayName,
+} from "@/lib/contacts";
 import { createInMemoryContactsStore } from "@/lib/contacts/__tests__/in-memory-store";
 
 const TENANT_ID = "a1111111-1111-4111-8111-111111111111";
@@ -51,6 +55,10 @@ async function seedHarness() {
       upsertContact(tenantId, input, { store: contactsStore }),
     linkContactToConversation: (tenantId, input) =>
       linkContactToConversation(tenantId, input, { store: contactsStore }),
+    updateContactDisplayName: (tenantId, contactId, displayName) =>
+      updateContactDisplayName(tenantId, contactId, displayName, {
+        store: contactsStore,
+      }),
     updateCaseContactId: async (tenantId, caseId, contactId) => {
       await casesStore.updateCase(tenantId, caseId, { contactId });
     },

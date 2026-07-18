@@ -201,6 +201,27 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
       return row ? { ...row } : null;
     },
 
+    async updateContactDisplayName(
+      tenantId,
+      contactId,
+      displayName,
+    ): Promise<ContactRow | null> {
+      const existing = contacts.find(
+        (c) => c.tenantId === tenantId && c.id === contactId,
+      );
+      if (!existing) return null;
+
+      const updated: ContactRow = {
+        ...existing,
+        displayName,
+        lastSeenAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const idx = contacts.indexOf(existing);
+      contacts[idx] = updated;
+      return { ...updated };
+    },
+
     async listContactsByTenant(
       tenantId,
       filters: ListContactsByTenantFilters,

@@ -208,6 +208,63 @@ export async function getContactById(
 }
 
 // ---------------------------------------------------------------------------
+// updateContactDisplayName
+// ---------------------------------------------------------------------------
+
+/**
+ * Update a contact's display name by id, scoped to the tenant. Returns
+ * `null` when the contact does not exist OR belongs to a different tenant.
+ *
+ * @param tenantId Tenant UUID — REQUIRED.
+ * @param contactId Contact UUID — REQUIRED.
+ * @param displayName Visitor/staff supplied display name.
+ */
+export async function updateContactDisplayName(
+  tenantId: string,
+  contactId: string,
+  displayName: string,
+  opts?: ContactHelperOptions,
+): Promise<ContactRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(contactId, "contactId");
+  const trimmed = displayName.trim();
+  if (!trimmed) {
+    throw new Error("displayName is required");
+  }
+
+  const store = resolveStore(opts);
+  const contact = await store.updateContactDisplayName(
+    tenantId,
+    contactId,
+    trimmed,
+  );
+
+  if (contact && shouldFireWebhookHooks(opts)) {
+    void store
+      .findLatestCaseForContact(tenantId, contact.id)
+      .then((caseRow) => {
+        if (!caseRow) return;
+        fireWebhookEvent({
+          tenantId,
+          caseId: caseRow.id,
+          event: "contact.updated",
+          payload: {
+            event: "contact.updated",
+            contact,
+            case: caseRow,
+          },
+          idempotencyKey: `contact.updated:${contact.id}:${contact.updatedAt.toISOString()}`,
+        });
+      })
+      .catch((error) => {
+        console.error("Contact webhook event hook failed", error);
+      });
+  }
+
+  return contact;
+}
+
+// ---------------------------------------------------------------------------
 // getContactDetailById
 // ---------------------------------------------------------------------------
 
