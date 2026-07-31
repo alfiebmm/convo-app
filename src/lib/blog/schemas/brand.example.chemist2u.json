@@ -1,0 +1,62 @@
+{
+  "id": "chemist2u",
+  "name": "Chemist2U",
+  "colors": {
+    "primary":       "#D92050",
+    "primaryHover":  "#C11441",
+    "secondary":     "#0C344A",
+    "footerBg":      "#183248",
+    "surfaceTint":   "#FFF9F7",
+    "surfaceTint2":  "#FDF0F3",
+    "text":          "#221F20",
+    "textMuted":     "#4A5A66",
+    "textSubtle":    "#6A7884",
+    "textStrong":    "#1A2B36",
+    "bg":            "#FFFFFF",
+    "bgMuted":       "#F5F7F9",
+    "border":        "#E5EAEE",
+    "borderSoft":    "#E8EBF6"
+  },
+  "fonts": {
+    "body":      "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "googleUrl": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+  },
+  "logo": {
+    "url":    "https://chemist2u.com.au/wp-content/uploads/2023/07/chemist2u-logo.svg",
+    "alt":    "Chemist2U",
+    "height": 30
+  },
+  "site": {
+    "baseUrl":    "https://chemist2u.com.au/",
+    "hubUrl":     "https://chemist2u.com.au/health-hub/",
+    "hubLabel":   "Health Hub",
+    "loginUrl":   "https://chemist2u.com.au/my-account/",
+    "orderUrl":   "https://chemist2u.com.au/order/",
+    "orderLabel": "Order now"
+  },
+  "cta": {
+    "heading":   "Need your medicines delivered?",
+    "body":      "Chemist2U delivers prescription and pharmacy medicines to your door, same-day in metro areas.",
+    "linkUrl":   "https://chemist2u.com.au/order/",
+    "linkLabel": "Explore Chemist2U"
+  },
+  "footer": {
+    "wordmark": "Chemist2U",
+    "tagline":  "Prescription and pharmacy medicines delivered to your door.",
+    "columns": [
+      { "heading": "Company", "links": [
+        { "label": "About",   "url": "https://chemist2u.com.au/about/" },
+        { "label": "Contact", "url": "https://chemist2u.com.au/contact/" }
+      ]},
+      { "heading": "Support", "links": [
+        { "label": "FAQ",     "url": "https://chemist2u.com.au/faq/" },
+        { "label": "Delivery","url": "https://chemist2u.com.au/delivery/" }
+      ]}
+    ],
+    "copyright":  "© 2026 Chemist2U",
+    "legalLinks": [
+      { "label": "Privacy", "url": "https://chemist2u.com.au/privacy/" },
+      { "label": "Terms",   "url": "https://chemist2u.com.au/terms/" }
+    ]
+  }
+}

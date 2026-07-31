@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GH Blog Brand Tokens",
+  "type": "object",
+  "required": ["id", "name", "colors", "fonts", "logo", "site"],
+  "properties": {
+    "id":   { "type": "string", "description": "Short brand slug (e.g. chemist2u)." },
+    "name": { "type": "string", "description": "Human brand name (e.g. Chemist2U)." },
+    "colors": {
+      "type": "object",
+      "required": ["primary", "primaryHover", "secondary", "footerBg", "surfaceTint", "surfaceTint2", "text", "textMuted", "textSubtle", "textStrong", "bg", "bgMuted", "border", "borderSoft"],
+      "properties": {
+        "primary":        { "type": "string", "description": "Main accent (headings eyebrow, buttons, links). Hex." },
+        "primaryHover":   { "type": "string", "description": "Darker shade of primary for hover state. Hex." },
+        "secondary":      { "type": "string", "description": "Deep supporting colour (headings, dark UI). Hex." },
+        "footerBg":       { "type": "string", "description": "Site footer background. Hex." },
+        "surfaceTint":    { "type": "string", "description": "Very soft brand tint used for card backgrounds, hero backdrop. Hex." },
+        "surfaceTint2":   { "type": "string", "description": "Second tint, slightly warmer, used in gradients. Hex." },
+        "text":           { "type": "string", "description": "Body text. Hex." },
+        "textMuted":      { "type": "string", "description": "Secondary text (meta, captions). Hex." },
+        "textSubtle":     { "type": "string", "description": "Tertiary text (small labels, icons). Hex." },
+        "textStrong":     { "type": "string", "description": "Strong dark text used in emphasis blocks. Hex." },
+        "bg":             { "type": "string", "description": "Page background. Usually white. Hex." },
+        "bgMuted":        { "type": "string", "description": "Muted panel background (compliance strip etc). Hex." },
+        "border":         { "type": "string", "description": "Standard border colour. Hex." },
+        "borderSoft":     { "type": "string", "description": "Softer border (dividers). Hex." }
+      }
+    },
+    "fonts": {
+      "type": "object",
+      "required": ["body"],
+      "properties": {
+        "body":       { "type": "string", "description": "CSS font-family stack for body copy." },
+        "headings":   { "type": "string", "description": "Optional heading stack; defaults to body." },
+        "googleUrl":  { "type": "string", "description": "Optional Google Fonts CSS URL to inject." }
+      }
+    },
+    "logo": {
+      "type": "object",
+      "required": ["url", "alt"],
+      "properties": {
+        "url":    { "type": "string", "description": "Absolute URL to logo image." },
+        "alt":    { "type": "string", "description": "Alt text." },
+        "height": { "type": "integer", "description": "Rendered height in px. Default 30." }
+      }
+    },
+    "site": {
+      "type": "object",
+      "required": ["baseUrl", "hubUrl"],
+      "properties": {
+        "baseUrl":   { "type": "string", "description": "Homepage URL." },
+        "hubUrl":    { "type": "string", "description": "Blog/hub index URL for the 'More from the Hub' link." },
+        "hubLabel":  { "type": "string", "description": "Label for the hub (e.g. Health Hub, Growth Hub). Default: Hub." },
+        "loginUrl":  { "type": "string", "description": "Optional login URL for the header." },
+        "orderUrl":  { "type": "string", "description": "Optional primary CTA URL for the header (e.g. Order now)." },
+        "orderLabel":{ "type": "string", "description": "Primary CTA label. Default: Order now." }
+      }
+    },
+    "cta": {
+      "type": "object",
+      "description": "Default late-article CTA card content, can be overridden per-post.",
+      "properties": {
+        "heading": { "type": "string" },
+        "body":    { "type": "string" },
+        "linkUrl": { "type": "string" },
+        "linkLabel": { "type": "string" }
+      }
+    },
+    "footer": {
+      "type": "object",
+      "description": "Footer content and links.",
+      "properties": {
+        "wordmark": { "type": "string" },
+        "tagline":  { "type": "string" },
+        "columns":  {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["heading", "links"],
+            "properties": {
+              "heading": { "type": "string" },
+              "links":   {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "url"],
+                  "properties": {
+                    "label": { "type": "string" },
+                    "url":   { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "copyright": { "type": "string" },
+        "legalLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "url"],
+            "properties": {
+              "label": { "type": "string" },
+              "url":   { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
