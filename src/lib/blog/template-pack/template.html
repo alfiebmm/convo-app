@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>{{post.title}} — {{brand.name}}</title>
+<meta name="description" content="{{default post.seo.metaDescription post.dek}}" />
+{{#if post.seo.canonicalUrl}}<link rel="canonical" href="{{post.seo.canonicalUrl}}" />{{/if}}
+{{#if post.seo.keywords}}<meta name="keywords" content="{{join post.seo.keywords ', '}}" />{{/if}}
+
+<!-- Open Graph -->
+<meta property="og:type" content="article" />
+<meta property="og:title" content="{{post.title}}" />
+<meta property="og:description" content="{{default post.seo.metaDescription post.dek}}" />
+<meta property="og:image" content="{{default post.seo.ogImage post.hero.url}}" />
+{{#if post.seo.canonicalUrl}}<meta property="og:url" content="{{post.seo.canonicalUrl}}" />{{/if}}
+<meta property="og:site_name" content="{{brand.name}}" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{post.title}}" />
+<meta name="twitter:description" content="{{default post.seo.metaDescription post.dek}}" />
+<meta name="twitter:image" content="{{default post.seo.ogImage post.hero.url}}" />
+
+<!-- JSON-LD: Article -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": {{json post.title}},
+  "description": {{json (default post.seo.metaDescription post.dek)}},
+  "image": [{{json (default post.seo.ogImage post.hero.url)}}],
+  {{#if post.seo.canonicalUrl}}"mainEntityOfPage": {"@type": "WebPage", "@id": {{json post.seo.canonicalUrl}} },{{/if}}
+  {{#if post.seo.authoredAt}}"datePublished": {{json post.seo.authoredAt}},{{/if}}
+  {{#if post.seo.modifiedAt}}"dateModified": {{json post.seo.modifiedAt}},{{/if}}
+  "author": {
+    "@type": "Organization",
+    "name": {{json (default post.seo.authorName brand.name)}}
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": {{json brand.name}},
+    "logo": {"@type": "ImageObject", "url": {{json brand.logo.url}} }
+  }
+}
+</script>
+
+<!-- JSON-LD: FAQPage -->
+{{#if post.faqs}}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {{#each post.faqs}}
+    {"@type": "Question", "name": {{json q}}, "acceptedAnswer": {"@type": "Answer", "text": {{json a}} }}{{#unless @last}},{{/unless}}
+    {{/each}}
+  ]
+}
+</script>
+{{/if}}
+
+{{#if brand.fonts.googleUrl}}
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="{{brand.fonts.googleUrl}}" />
+{{/if}}
+<style>
+  :root {
+    --brand-primary:         {{brand.colors.primary}};
+    --brand-primary-hover:   {{brand.colors.primaryHover}};
+    --brand-secondary:       {{brand.colors.secondary}};
+    --brand-footer-bg:       {{brand.colors.footerBg}};
+    --brand-surface-tint:    {{brand.colors.surfaceTint}};
+    --brand-surface-tint-2:  {{brand.colors.surfaceTint2}};
+    --brand-text:            {{brand.colors.text}};
+    --brand-text-muted:      {{brand.colors.textMuted}};
+    --brand-text-subtle:     {{brand.colors.textSubtle}};
+    --brand-text-strong:     {{brand.colors.textStrong}};
+    --brand-bg:              {{brand.colors.bg}};
+    --brand-bg-muted:        {{brand.colors.bgMuted}};
+    --brand-border:          {{brand.colors.border}};
+    --brand-border-soft:     {{brand.colors.borderSoft}};
+
+    --brand-primary-a12:  {{rgba brand.colors.primary 0.12}};
+    --brand-primary-a18:  {{rgba brand.colors.primary 0.18}};
+    --brand-primary-a25:  {{rgba brand.colors.primary 0.25}};
+    --brand-primary-a30:  {{rgba brand.colors.primary 0.30}};
+    --brand-primary-a40:  {{rgba brand.colors.primary 0.40}};
+    --brand-primary-a50:  {{rgba brand.colors.primary 0.50}};
+    --brand-secondary-a08:{{rgba brand.colors.secondary 0.08}};
+    --brand-secondary-a15:{{rgba brand.colors.secondary 0.15}};
+    --brand-secondary-a18:{{rgba brand.colors.secondary 0.18}};
+    --brand-text-a60:     {{rgba brand.colors.text 0.60}};
+    --brand-text-a70:     {{rgba brand.colors.text 0.70}};
+    --brand-text-a75:     {{rgba brand.colors.text 0.75}};
+    --brand-text-a85:     {{rgba brand.colors.text 0.85}};
+    --brand-border-a25:   rgba(144,160,184,0.25);
+    --brand-border-a30:   rgba(144,160,184,0.30);
+    --brand-border-a40:   rgba(144,160,184,0.40);
+
+    --brand-font-body:    {{{brand.fonts.body}}};
+  }
+
+  {{{styles}}}
+</style>
+</head>
+<body class="gh-blog-article-educational">
+
+<!-- Header -->
+<header class="gh-blog-site-header">
+  <div class="gh-blog-site-header__inner">
+    <a class="gh-blog-site-header__logo" href="{{brand.site.baseUrl}}">
+      <img src="{{brand.logo.url}}" alt="{{brand.logo.alt}}" height="{{default brand.logo.height 30}}" />
+    </a>
+    <nav class="gh-blog-site-header__nav">
+      {{#if brand.site.hubUrl}}<a href="{{brand.site.hubUrl}}">{{default brand.site.hubLabel "Hub"}}</a>{{/if}}
+    </nav>
+    <div class="gh-blog-site-header__cta">
+      {{#if brand.site.loginUrl}}<a class="gh-blog-site-header__login" href="{{brand.site.loginUrl}}">Log in</a>{{/if}}
+      {{#if brand.site.orderUrl}}<a class="gh-blog-site-header__order" href="{{brand.site.orderUrl}}">{{default brand.site.orderLabel "Order now"}}</a>{{/if}}
+    </div>
+  </div>
+</header>
+
+<!-- Hero -->
+<header class="gh-blog-article-hero">
+  <div class="gh-blog-article-hero__layout">
+    <div class="gh-blog-article-hero__inner">
+      <p class="gh-blog-article-eyebrow">{{post.category}}</p>
+      <h1 class="gh-blog-article-title">{{post.title}}</h1>
+      <p class="gh-blog-article-dek">{{post.dek}}</p>
+      <p class="gh-blog-article-meta">
+        <span>Updated {{post.meta.updated}}</span>
+        <span aria-hidden="true">·</span>
+        <span>{{post.meta.readMinutes}} min read</span>
+        {{#if post.meta.reviewer}}<span aria-hidden="true">·</span><span class="gh-blog-article-meta__review">{{post.meta.reviewer}}</span>{{/if}}
+      </p>
+    </div>
+    <figure class="gh-blog-article-hero__image">
+      <img src="{{post.hero.url}}" alt="{{post.hero.alt}}" />
+    </figure>
+  </div>
+</header>
+
+<!-- At a glance (optional) -->
+{{#if post.stats.length}}
+<section class="gh-blog-at-a-glance">
+  <div class="gh-blog-at-a-glance__inner">
+    <p class="gh-blog-at-a-glance__eyebrow">At a glance</p>
+    <div class="gh-blog-at-a-glance__grid">
+      {{#each post.stats}}
+      <div class="gh-blog-stat-card">
+        <p class="gh-blog-stat-card__value">{{value}}</p>
+        <p class="gh-blog-stat-card__label">{{label}}</p>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+</section>
+{{/if}}
+
+<!-- Article body -->
+<div class="gh-blog-article-body">
+
+  <!-- In this article -->
+  <nav class="gh-blog-toc" aria-label="In this article">
+    <p class="gh-blog-toc__eyebrow">In this article</p>
+    <ol class="gh-blog-toc__list">
+      {{#each post.toc}}
+      <li class="gh-blog-toc__item"><a class="gh-blog-toc__link" href="#s-{{inc @index}}"><span class="gh-blog-toc__num">0{{inc @index}}</span><span class="gh-blog-toc__label">{{this}}</span></a></li>
+      {{/each}}
+    </ol>
+  </nav>
+
+  <div class="gh-blog-article-content">
+    <p>{{post.intro}}</p>
+
+    {{#each post.sections}}
+    <h2 id="s-{{inc @index}}">{{heading}}</h2>
+    {{#each blocks}}
+      {{#eq type "p"}}<p>{{{text}}}</p>{{/eq}}
+      {{#eq type "h3"}}<h3>{{{text}}}</h3>{{/eq}}
+      {{#eq type "ul"}}<ul>{{#each items}}<li>{{{this}}}</li>{{/each}}</ul>{{/eq}}
+      {{#eq type "ol"}}<ol>{{#each items}}<li>{{{this}}}</li>{{/each}}</ol>{{/eq}}
+      {{#eq type "keyTakeaway"}}<aside class="gh-blog-key-takeaway"><h4>{{label}}</h4><p>{{{body}}}</p></aside>{{/eq}}
+      {{#eq type "readNext"}}<aside class="gh-blog-related-inline"><p class="gh-blog-related-inline__label">{{label}}</p><div class="gh-blog-related-inline__links">{{#each links}}<a class="gh-blog-related-inline-link" href="{{url}}"><span>{{label}}</span><span class="gh-blog-related-inline-link__arrow">→</span></a>{{/each}}</div></aside>{{/eq}}
+      {{#eq type "cta"}}<aside class="gh-blog-key-takeaway" role="complementary"><h4>{{heading}}</h4><p>{{{body}}}</p><p style="margin-top:16px !important;"><a class="gh-blog-site-header__order" href="{{linkUrl}}">{{linkLabel}} →</a></p></aside>{{/eq}}
+    {{/each}}
+    {{/each}}
+  </div>
+
+  <!-- FAQ -->
+  <section class="gh-blog-article-faq" aria-labelledby="faq-heading">
+    <h2 id="faq-heading" class="gh-blog-faq-heading">Frequently asked questions</h2>
+    <div class="gh-blog-faq-list">
+      {{#each post.faqs}}
+      <details class="gh-blog-faq-item">
+        <summary>{{q}}</summary>
+        <div class="gh-blog-faq-answer"><p>{{{a}}}</p></div>
+      </details>
+      {{/each}}
+    </div>
+  </section>
+
+  <!-- Related (optional) -->
+  {{#if post.related.length}}
+  <section class="gh-blog-article-related" aria-labelledby="related-heading">
+    <h2 id="related-heading" class="gh-blog-related-heading">More from the {{default brand.site.hubLabel "Hub"}}</h2>
+    <div class="gh-blog-related-grid">
+      {{#each post.related}}
+      <a class="gh-blog-related-card" href="{{url}}">
+        <div class="gh-blog-related-card__thumb {{#unless thumbUrl}}gh-blog-related-card__thumb--placeholder{{/unless}}">
+          {{#if thumbUrl}}<img src="{{thumbUrl}}" alt="" />{{/if}}
+        </div>
+        <div class="gh-blog-related-card__body">
+          {{#if category}}<p class="gh-blog-related-card__eyebrow">{{category}}</p>{{/if}}
+          <h3 class="gh-blog-related-card__title">{{title}}</h3>
+          <p class="gh-blog-related-card__dek">{{dek}}</p>
+        </div>
+      </a>
+      {{/each}}
+    </div>
+  </section>
+  {{/if}}
+</div>
+
+<!-- Footer -->
+<footer class="gh-blog-main-footer">
+  <div class="gh-blog-footer-container">
+    <div class="gh-blog-footer-grid">
+      <div class="gh-blog-footer-col">
+        <h6>{{default brand.footer.wordmark brand.name}}</h6>
+        {{#if brand.footer.tagline}}<p style="opacity:0.7;font-size:14px;line-height:1.6;">{{brand.footer.tagline}}</p>{{/if}}
+      </div>
+      {{#each brand.footer.columns}}
+      <div class="gh-blog-footer-col">
+        <h6>{{heading}}</h6>
+        <ul>
+          {{#each links}}<li><a href="{{url}}">{{label}}</a></li>{{/each}}
+        </ul>
+      </div>
+      {{/each}}
+    </div>
+    <div class="gh-blog-footer-bottom">
+      <p>{{default brand.footer.copyright brand.name}}</p>
+      <div class="gh-blog-footer-legal">
+        {{#each brand.footer.legalLinks}}
+        <a href="{{url}}">{{label}}</a>
+        {{#unless @last}}<span>·</span>{{/unless}}
+        {{/each}}
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -162,6 +162,13 @@
       "when": 1784176757001,
       "tag": "0022_con104_blog_decision_phase",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784176757002,
+      "tag": "0023_con105_blog_post_create_statuses",
+      "breakpoints": true
     }
   ]
 }

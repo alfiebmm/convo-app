@@ -40,6 +40,8 @@ export const blogPostStatusEnum = pgEnum("blog_post_status", [
   "approved",
   "published",
   "rejected",
+  "generation_failed",
+  "update_pending",
 ]);
 
 export const blogDecisionActionEnum = pgEnum("blog_decision_action", [
