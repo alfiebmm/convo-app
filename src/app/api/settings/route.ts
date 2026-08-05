@@ -70,6 +70,8 @@ async function getImpl() {
       domain: tenant.domain,
       plan: tenant.plan,
       stripeCustomerId: tenant.stripeCustomerId,
+      subscriptionStatus: tenant.subscriptionStatus,
+      subscriptionCurrentPeriodEnd: tenant.subscriptionCurrentPeriodEnd,
     },
   });
 }
@@ -126,6 +128,8 @@ async function patchImpl(req: NextRequest) {
       domain: updated.domain,
       plan: updated.plan,
       stripeCustomerId: updated.stripeCustomerId,
+      subscriptionStatus: updated.subscriptionStatus,
+      subscriptionCurrentPeriodEnd: updated.subscriptionCurrentPeriodEnd,
     },
   });
 }

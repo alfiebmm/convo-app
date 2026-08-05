@@ -1,11 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { startGoogleSignup } from "./actions";
 
+type BillingPlan = "starter" | "growth" | "scale";
+type BillingInterval = "month" | "year";
+
+function parsePlan(value: string | null): BillingPlan {
+  if (value === "growth" || value === "scale") return value;
+  return "starter";
+}
+
+function parseInterval(value: string | null): BillingInterval {
+  return value === "month" ? "month" : "year";
+}
+
 export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="signup-page">
+          <div className="signup-card" />
+        </div>
+      }
+    >
+      <SignupContent />
+    </Suspense>
+  );
+}
+
+function SignupContent() {
+  const searchParams = useSearchParams();
+  const selectedPlan = parsePlan(searchParams.get("plan"));
+  const selectedInterval = parseInterval(searchParams.get("interval"));
+  const onboardingUrl = `/onboarding?plan=${selectedPlan}&interval=${selectedInterval}`;
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -15,7 +46,11 @@ export default function SignupPage() {
     if (!email) return;
     setLoading(true);
     try {
-      await signIn("nodemailer", { email, redirect: false });
+      await signIn("nodemailer", {
+        email,
+        redirect: false,
+        callbackUrl: onboardingUrl,
+      });
       setEmailSent(true);
     } catch {
       setEmailSent(true);
@@ -287,6 +322,8 @@ export default function SignupPage() {
                 <div className="signup-title">Create your Convo account</div>
 
                 <form action={startGoogleSignup}>
+                  <input type="hidden" name="plan" value={selectedPlan} />
+                  <input type="hidden" name="interval" value={selectedInterval} />
                   <button type="submit" className="google-btn">
                     <svg width="20" height="20" viewBox="0 0 24 24">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>

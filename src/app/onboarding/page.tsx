@@ -1,17 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { APP_CONFIG } from "@/config/app";
 import { homePricingTiers } from "@/lib/marketing/content";
 
 const steps = ["Create your site", "Configure chatbot", "Install widget", "Choose plan"];
+type BillingPlan = "starter" | "growth" | "scale";
+type BillingInterval = "month" | "year";
+
+function parsePlan(value: string | null): BillingPlan | null {
+  if (value === "starter" || value === "growth" || value === "scale") {
+    return value;
+  }
+  return null;
+}
+
+function parseInterval(value: string | null): BillingInterval {
+  return value === "month" ? "month" : "year";
+}
 
 export default function OnboardingPage() {
-  const router = useRouter();
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+          <div className="text-sm text-slate-500">Loading...</div>
+        </div>
+      }
+    >
+      <OnboardingContent />
+    </Suspense>
+  );
+}
+
+function OnboardingContent() {
+  const searchParams = useSearchParams();
+  const signupPlan = parsePlan(searchParams.get("plan"));
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<BillingPlan>(
+    signupPlan ?? "starter"
+  );
+  const [selectedInterval, setSelectedInterval] = useState<BillingInterval>(
+    parseInterval(searchParams.get("interval"))
+  );
 
   // Form state
   const [siteName, setSiteName] = useState("");
@@ -61,8 +95,43 @@ export default function OnboardingPage() {
     }
   }
 
-  function handleSkipToComplete() {
-    router.push("/dashboard");
+  async function handleStartCheckout(
+    plan: BillingPlan = selectedPlan,
+    interval: BillingInterval = selectedInterval
+  ) {
+    if (!tenantId) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          plan,
+          interval,
+          trial_period_days: 14,
+          returnPath: "/dashboard",
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      console.error("Checkout failed:", data.error);
+    } catch (err) {
+      console.error("Checkout error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleInstallComplete() {
+    if (signupPlan) {
+      void handleStartCheckout(signupPlan, selectedInterval);
+      return;
+    }
+    setStep(3);
   }
 
   return (
@@ -215,10 +284,11 @@ export default function OnboardingPage() {
                 </pre>
               </div>
               <button
-                onClick={() => setStep(3)}
-                className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
+                onClick={handleInstallComplete}
+                disabled={loading}
+                className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
               >
-                Continue
+                {loading ? "Redirecting..." : "Continue"}
               </button>
             </div>
           )}
@@ -232,23 +302,53 @@ export default function OnboardingPage() {
                 Pick the tier that fits today. You can change it anytime.
               </p>
               <div className="mt-6 space-y-3">
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+                  {(["year", "month"] as const).map((interval) => (
+                    <button
+                      key={interval}
+                      type="button"
+                      onClick={() => setSelectedInterval(interval)}
+                      className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                        selectedInterval === interval
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      {interval === "year" ? "Annual" : "Monthly"}
+                    </button>
+                  ))}
+                </div>
                 {homePricingTiers.map((tier) => (
                   <PlanCard
                     key={tier.name}
                     name={tier.name}
-                    price={`$${tier.annualMonthly}/mo, billed annually`}
-                    monthly={`Or $${tier.monthly}/mo billed monthly`}
+                    price={
+                      selectedInterval === "year"
+                        ? `$${tier.annualMonthly}/mo, billed annually`
+                        : `$${tier.monthly}/mo billed monthly`
+                    }
+                    monthly={
+                      selectedInterval === "year"
+                        ? `Or $${tier.monthly}/mo billed monthly`
+                        : `$${tier.annualMonthly}/mo equivalent on annual billing`
+                    }
                     features={tier.points.slice(0, 3) as readonly string[]}
                     featured={tier.featured}
-                    active={tier.name === "Starter"}
+                    active={selectedPlan === tier.name.toLowerCase()}
+                    onSelect={() =>
+                      setSelectedPlan(tier.name.toLowerCase() as BillingPlan)
+                    }
                   />
                 ))}
               </div>
               <button
-                onClick={handleSkipToComplete}
-                className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
+                onClick={() => void handleStartCheckout()}
+                disabled={loading}
+                className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
               >
-                Continue with Starter
+                {loading
+                  ? "Redirecting..."
+                  : `Start ${selectedPlan} trial`}
               </button>
               <p className="mt-3 text-center text-xs text-slate-400">
                 You can upgrade or change your plan anytime from Settings → Billing.
@@ -277,6 +377,7 @@ function PlanCard({
   features,
   active,
   featured,
+  onSelect,
 }: {
   name: string;
   price: string;
@@ -284,16 +385,19 @@ function PlanCard({
   features: readonly string[];
   active?: boolean;
   featured?: boolean;
+  onSelect: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onSelect}
       className={`rounded-lg border p-4 ${
         active
           ? "border-slate-900 bg-slate-50"
           : featured
           ? "border-[var(--convo-orange)] bg-orange-50/40"
           : "border-slate-200 bg-white"
-      }`}
+      } w-full text-left transition-colors hover:border-slate-400`}
     >
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -323,6 +427,6 @@ function PlanCard({
           </li>
         ))}
       </ul>
-    </div>
+    </button>
   );
 }

@@ -290,7 +290,7 @@ function PricingCard({
       </ul>
       <div className="mt-auto pt-8">
         <Link
-          href="/signup"
+          href={`/signup?plan=${tier.name.toLowerCase()}&interval=year`}
           className={`inline-flex w-full justify-center rounded-lg px-5 py-3 text-sm font-bold transition ${
             tier.featured
               ? "bg-[var(--convo-orange)] text-white hover:bg-[var(--convo-orange-hover)]"

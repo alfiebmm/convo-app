@@ -3,12 +3,31 @@
  *
  * Environment variables:
  *   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
- *   STRIPE_PRICE_STARTER, STRIPE_PRICE_GROWTH, STRIPE_PRICE_SCALE
+ *   STRIPE_PRICE_STARTER, STRIPE_PRICE_GROWTH, STRIPE_PRICE_SCALE,
+ *   STRIPE_PRICE_STARTER_ANNUAL, STRIPE_PRICE_GROWTH_ANNUAL,
+ *   STRIPE_PRICE_SCALE_ANNUAL
  */
 import Stripe from "stripe";
 import { db } from "./db";
 import { tenants } from "./db/schema";
 import { eq } from "drizzle-orm";
+
+export type BillingPlan = "starter" | "growth" | "scale";
+export type BillingInterval = "month" | "year";
+export type SubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "incomplete";
+
+type BillingPriceDetails = {
+  plan: BillingPlan;
+  interval: BillingInterval;
+};
+
+type PriceEnv = Record<string, string | undefined>;
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -16,19 +35,139 @@ function getStripe() {
   return new Stripe(key);
 }
 
-const PLAN_PRICE_MAP: Record<string, string | undefined> = {
-  starter: process.env.STRIPE_PRICE_STARTER,
-  growth: process.env.STRIPE_PRICE_GROWTH,
-  scale: process.env.STRIPE_PRICE_SCALE,
-};
+export function getBillingPriceLookup(
+  env: PriceEnv = process.env
+): Record<string, BillingPriceDetails> {
+  const entries: Array<[string | undefined, BillingPriceDetails]> = [
+    [env.STRIPE_PRICE_STARTER, { plan: "starter", interval: "month" }],
+    [env.STRIPE_PRICE_GROWTH, { plan: "growth", interval: "month" }],
+    [env.STRIPE_PRICE_SCALE, { plan: "scale", interval: "month" }],
+    [env.STRIPE_PRICE_STARTER_ANNUAL, { plan: "starter", interval: "year" }],
+    [env.STRIPE_PRICE_GROWTH_ANNUAL, { plan: "growth", interval: "year" }],
+    [env.STRIPE_PRICE_SCALE_ANNUAL, { plan: "scale", interval: "year" }],
+  ];
+
+  return Object.fromEntries(
+    entries.filter((entry): entry is [string, BillingPriceDetails] =>
+      Boolean(entry[0])
+    )
+  );
+}
+
+export function resolveBillingPrice(
+  priceId: string,
+  env: PriceEnv = process.env
+): BillingPriceDetails | null {
+  return getBillingPriceLookup(env)[priceId] ?? null;
+}
+
+function getCheckoutPriceId(
+  plan: BillingPlan,
+  interval: BillingInterval,
+  env: PriceEnv = process.env
+) {
+  const lookup = getBillingPriceLookup(env);
+  const found = Object.entries(lookup).find(
+    ([, details]) => details.plan === plan && details.interval === interval
+  );
+  return found?.[0];
+}
+
+function normaliseSubscriptionStatus(
+  status: Stripe.Subscription.Status
+): SubscriptionStatus {
+  if (
+    status === "trialing" ||
+    status === "active" ||
+    status === "past_due" ||
+    status === "canceled" ||
+    status === "unpaid" ||
+    status === "incomplete"
+  ) {
+    return status;
+  }
+
+  return "incomplete";
+}
+
+function timestampFromSeconds(value: number | null | undefined) {
+  return typeof value === "number" ? new Date(value * 1000) : null;
+}
+
+function getSubscriptionCurrentPeriodEnd(subscription: Stripe.Subscription) {
+  return (subscription as Stripe.Subscription & {
+    current_period_end?: number | null;
+  }).current_period_end;
+}
+
+function getInvoiceLinePriceId(line: Stripe.InvoiceLineItem | undefined) {
+  const lineWithLegacyPrice = line as
+    | (Stripe.InvoiceLineItem & {
+        price?: { id?: string | null } | null;
+        pricing?: {
+          price_details?: { price?: string | null } | null;
+        } | null;
+      })
+    | undefined;
+
+  return (
+    lineWithLegacyPrice?.price?.id ??
+    lineWithLegacyPrice?.pricing?.price_details?.price ??
+    null
+  );
+}
+
+export function buildSubscriptionTenantUpdate(
+  subscription: Stripe.Subscription,
+  env: PriceEnv = process.env
+) {
+  const priceId = subscription.items.data[0]?.price?.id;
+  const details = priceId ? resolveBillingPrice(priceId, env) : null;
+
+  return {
+    plan: details?.plan,
+    interval: details?.interval,
+    stripeSubscriptionId: subscription.id,
+    subscriptionStatus: normaliseSubscriptionStatus(subscription.status),
+    subscriptionCurrentPeriodEnd: timestampFromSeconds(
+      getSubscriptionCurrentPeriodEnd(subscription)
+    ),
+  };
+}
+
+export function buildInvoiceTenantUpdate(
+  invoice: Stripe.Invoice,
+  status: Extract<SubscriptionStatus, "active" | "past_due">,
+  env: PriceEnv = process.env
+) {
+  const invoiceWithSubscription = invoice as Stripe.Invoice & {
+    subscription?: string | Stripe.Subscription | null;
+  };
+  const subscription = invoiceWithSubscription.subscription;
+  const firstLine = invoice.lines.data[0];
+  const priceId = getInvoiceLinePriceId(firstLine);
+  const details = priceId ? resolveBillingPrice(priceId, env) : null;
+  const periodEnd = firstLine?.period?.end;
+
+  return {
+    plan: details?.plan,
+    interval: details?.interval,
+    stripeSubscriptionId:
+      typeof subscription === "string" ? subscription : subscription?.id,
+    subscriptionStatus: status,
+    subscriptionCurrentPeriodEnd: timestampFromSeconds(periodEnd),
+  };
+}
 
 /**
  * Create a Stripe Checkout session for upgrading to a paid plan.
  */
 export async function createCheckoutSession(
   tenantId: string,
-  plan: "growth" | "scale",
-  returnUrl: string
+  plan: BillingPlan,
+  interval: BillingInterval,
+  returnUrl: string,
+  options: { trialPeriodDays?: number } = {}
 ) {
   const stripe = getStripe();
 
@@ -40,8 +179,10 @@ export async function createCheckoutSession(
 
   if (!tenant) throw new Error("Tenant not found");
 
-  const priceId = PLAN_PRICE_MAP[plan];
-  if (!priceId) throw new Error(`No price configured for plan: ${plan}`);
+  const priceId = getCheckoutPriceId(plan, interval);
+  if (!priceId) {
+    throw new Error(`No price configured for plan: ${plan}/${interval}`);
+  }
 
   // Create or reuse Stripe customer
   let customerId = tenant.stripeCustomerId;
@@ -60,9 +201,12 @@ export async function createCheckoutSession(
     customer: customerId,
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
+    subscription_data: options.trialPeriodDays
+      ? { trial_period_days: options.trialPeriodDays }
+      : undefined,
     success_url: `${returnUrl}?billing=success`,
     cancel_url: `${returnUrl}?billing=cancelled`,
-    metadata: { tenantId, plan },
+    metadata: { tenantId, plan, interval },
   });
 
   return session;
@@ -108,7 +252,7 @@ export async function handleWebhook(event: Stripe.Event) {
         await db
           .update(tenants)
           .set({
-            plan: plan as "starter" | "growth" | "scale",
+            plan: plan as BillingPlan,
             stripeCustomerId: session.customer as string,
             stripeSubscriptionId: session.subscription as string,
             updatedAt: new Date(),
@@ -118,6 +262,7 @@ export async function handleWebhook(event: Stripe.Event) {
       break;
     }
 
+    case "customer.subscription.created":
     case "customer.subscription.updated": {
       const subscription = event.data.object as Stripe.Subscription;
       const customerId =
@@ -132,17 +277,15 @@ export async function handleWebhook(event: Stripe.Event) {
         .limit(1);
 
       if (tenant) {
-        // Determine plan from price
-        const priceId = subscription.items.data[0]?.price?.id;
-        let plan: "starter" | "growth" | "scale" = "starter";
-        if (priceId === process.env.STRIPE_PRICE_SCALE) plan = "scale";
-        else if (priceId === process.env.STRIPE_PRICE_GROWTH) plan = "growth";
+        const update = buildSubscriptionTenantUpdate(subscription);
 
         await db
           .update(tenants)
           .set({
-            plan,
-            stripeSubscriptionId: subscription.id,
+            ...(update.plan ? { plan: update.plan } : {}),
+            stripeSubscriptionId: update.stripeSubscriptionId,
+            subscriptionStatus: update.subscriptionStatus,
+            subscriptionCurrentPeriodEnd: update.subscriptionCurrentPeriodEnd,
             updatedAt: new Date(),
           })
           .where(eq(tenants.id, tenant.id));
@@ -160,8 +303,45 @@ export async function handleWebhook(event: Stripe.Event) {
       await db
         .update(tenants)
         .set({
-          plan: "starter",
           stripeSubscriptionId: null,
+          subscriptionStatus: "canceled",
+          subscriptionCurrentPeriodEnd: timestampFromSeconds(
+            getSubscriptionCurrentPeriodEnd(subscription)
+          ),
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.stripeCustomerId, customerId));
+      break;
+    }
+
+    case "invoice.payment_succeeded":
+    case "invoice.payment_failed": {
+      const invoice = event.data.object as Stripe.Invoice;
+      const customerId =
+        typeof invoice.customer === "string"
+          ? invoice.customer
+          : invoice.customer?.id;
+      if (!customerId) break;
+
+      const update = buildInvoiceTenantUpdate(
+        invoice,
+        event.type === "invoice.payment_succeeded" ? "active" : "past_due"
+      );
+
+      await db
+        .update(tenants)
+        .set({
+          ...(update.plan ? { plan: update.plan } : {}),
+          ...(update.stripeSubscriptionId
+            ? { stripeSubscriptionId: update.stripeSubscriptionId }
+            : {}),
+          subscriptionStatus: update.subscriptionStatus,
+          ...(update.subscriptionCurrentPeriodEnd
+            ? {
+                subscriptionCurrentPeriodEnd:
+                  update.subscriptionCurrentPeriodEnd,
+              }
+            : {}),
           updatedAt: new Date(),
         })
         .where(eq(tenants.stripeCustomerId, customerId));

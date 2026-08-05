@@ -2,7 +2,7 @@
  * POST /api/billing/checkout
  *
  * Creates a Stripe Checkout session for plan upgrade.
- * Accepts: { tenantId, plan: "growth" | "scale" }
+ * Accepts: { tenantId, plan: "starter" | "growth" | "scale", interval: "month" | "year" }
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
@@ -16,10 +16,31 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { tenantId, plan } = body;
+  const {
+    tenantId,
+    plan,
+    interval,
+    trialPeriodDays,
+    trial_period_days: trialPeriodDaysSnake,
+    returnPath,
+  } = body;
+  const requestedTrialPeriodDays = trialPeriodDays ?? trialPeriodDaysSnake;
 
-  if (!tenantId || !plan || !["growth", "scale"].includes(plan)) {
+  if (
+    !tenantId ||
+    !plan ||
+    !["starter", "growth", "scale"].includes(plan) ||
+    !["month", "year"].includes(interval)
+  ) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  if (
+    requestedTrialPeriodDays !== undefined &&
+    (!Number.isInteger(requestedTrialPeriodDays) ||
+      requestedTrialPeriodDays < 0)
+  ) {
+    return NextResponse.json({ error: "Invalid trial period" }, { status: 400 });
   }
 
   // Verify membership
@@ -30,10 +51,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const origin = req.headers.get("origin") || "http://localhost:3000";
+    const safeReturnPath =
+      typeof returnPath === "string" && returnPath.startsWith("/")
+        ? returnPath
+        : "/dashboard/settings";
     const checkoutSession = await createCheckoutSession(
       tenantId,
       plan,
-      `${origin}/dashboard/settings`
+      interval,
+      `${origin}${safeReturnPath}`,
+      { trialPeriodDays: requestedTrialPeriodDays }
     );
     return NextResponse.json({ url: checkoutSession.url });
   } catch (err) {
