@@ -6,6 +6,7 @@ import {
   MigrationConfirmationNote,
   anyForumConfigSlicePopulated,
 } from "./legacy-deprecation-banner";
+import { homePricingTiers } from "@/lib/marketing/content";
 
 interface AudienceConfig {
   id: string;
@@ -1393,13 +1394,23 @@ function AutoPublishSettings({
 
 function BillingSection() {
   const [billingData, setBillingData] = useState<{
-    tenant?: { id: string; name: string; plan: string; stripeCustomerId: string | null };
+    tenant?: {
+      id: string;
+      name: string;
+      plan: string;
+      stripeCustomerId: string | null;
+      subscriptionStatus: string | null;
+      subscriptionCurrentPeriodEnd: string | null;
+    };
   } | null>(null);
   const [usage, setUsage] = useState<{
     conversations: number;
     articles: number;
   } | null>(null);
   const [upgrading, setUpgrading] = useState(false);
+  const [billingInterval, setBillingInterval] = useState<"month" | "year">(
+    "year"
+  );
 
   useEffect(() => {
     fetch("/api/settings")
@@ -1428,7 +1439,12 @@ function BillingSection() {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId, plan: targetPlan }),
+        body: JSON.stringify({
+          tenantId,
+          plan: targetPlan,
+          interval: billingInterval,
+          returnPath: "/dashboard/settings",
+        }),
       });
       const data = await res.json();
       if (data.url) {
@@ -1440,6 +1456,23 @@ function BillingSection() {
       setUpgrading(false);
     }
   }
+
+  const status = billingData?.tenant?.subscriptionStatus;
+  const renewalDate = billingData?.tenant?.subscriptionCurrentPeriodEnd
+    ? new Intl.DateTimeFormat("en-AU", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }).format(new Date(billingData.tenant.subscriptionCurrentPeriodEnd))
+    : null;
+  const growthTier = homePricingTiers.find((tier) => tier.name === "Growth");
+  const scaleTier = homePricingTiers.find((tier) => tier.name === "Scale");
+  const tierPrice = (tier: typeof growthTier) => {
+    if (!tier) return "";
+    return billingInterval === "year"
+      ? `$${tier.annualMonthly}/mo, billed annually`
+      : `$${tier.monthly}/mo, billed monthly`;
+  };
 
   async function handleManageBilling() {
     if (!tenantId) return;
@@ -1472,6 +1505,16 @@ function BillingSection() {
             <p className="text-sm text-slate-500">
               {limits.conversations.toLocaleString()} conversations / {limits.articles} articles per month
             </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-white px-2.5 py-1 capitalize">
+                Status: {status ? status.replaceAll("_", " ") : "Not subscribed"}
+              </span>
+              {renewalDate && (
+                <span className="rounded-full bg-white px-2.5 py-1">
+                  Renews {renewalDate}
+                </span>
+              )}
+            </div>
           </div>
           {billingData?.tenant?.stripeCustomerId && (
             <button
@@ -1527,12 +1570,34 @@ function BillingSection() {
         )}
       </div>
 
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-medium text-slate-700">Upgrade billing</p>
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+          {(["year", "month"] as const).map((interval) => (
+            <button
+              key={interval}
+              type="button"
+              onClick={() => setBillingInterval(interval)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                billingInterval === interval
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {interval === "year" ? "Annual" : "Monthly"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Plan comparison */}
       {plan === "starter" && (
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-lg border border-slate-200 p-4">
             <p className="font-medium text-slate-900">Growth</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">$49<span className="text-sm font-normal text-slate-500">/mo</span></p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">
+              {tierPrice(growthTier)}
+            </p>
             <ul className="mt-3 space-y-1 text-sm text-slate-500">
               <li>✓ 2,000 conversations/mo</li>
               <li>✓ 50 articles/mo</li>
@@ -1548,7 +1613,9 @@ function BillingSection() {
           </div>
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
             <p className="font-medium text-slate-900">Scale</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">$149<span className="text-sm font-normal text-slate-500">/mo</span></p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">
+              {tierPrice(scaleTier)}
+            </p>
             <ul className="mt-3 space-y-1 text-sm text-slate-500">
               <li>✓ 10,000 conversations/mo</li>
               <li>✓ 200 articles/mo</li>
@@ -1572,7 +1639,9 @@ function BillingSection() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-slate-900">Scale</p>
-                <p className="text-sm text-slate-500">$149/mo — 10,000 conversations, 200 articles</p>
+                <p className="text-sm text-slate-500">
+                  {tierPrice(scaleTier)} — 10,000 conversations, 200 articles
+                </p>
               </div>
               <button
                 onClick={() => handleUpgrade("scale")}

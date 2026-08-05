@@ -24,6 +24,15 @@ import type { AdapterAccountType } from "next-auth/adapters";
 
 export const planEnum = pgEnum("plan", ["starter", "growth", "scale"]);
 
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "trialing",
+  "active",
+  "past_due",
+  "canceled",
+  "unpaid",
+  "incomplete",
+]);
+
 export const contentStatusEnum = pgEnum("content_status", [
   "pending", // extracted, waiting for generation
   "generating", // LLM is producing the article
@@ -121,6 +130,10 @@ export const tenants = pgTable("tenants", {
   settings: jsonb("settings").default({}).notNull(), // widget config, persona, guardrails, CMS creds
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: subscriptionStatusEnum("subscription_status"),
+  subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end", {
+    withTimezone: true,
+  }),
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   suspendedBy: uuid("suspended_by").references(() => users.id, {
     onDelete: "set null",
