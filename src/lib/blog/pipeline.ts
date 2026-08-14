@@ -3,11 +3,13 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { blogPosts } from "@/lib/db/schema";
 
+import { createArticle, markUpdatePending } from "./create";
 import { decide, type DecisionResult } from "./decision";
 
 export interface BlogPipelineResult {
   conversationId: string;
   decision: DecisionResult;
+  blogPostId: string | null;
 }
 
 /**
@@ -15,10 +17,9 @@ export interface BlogPipelineResult {
  *
  * - Duplicate-prevention: if a `blog_posts` row already exists for this
  *   conversation, log and return `null` (CON-103 behaviour).
- * - Otherwise: run the Decision Phase (CON-104) and return the result.
- *
- * Article writing (create/update) and SEO metadata generation land in
- * CON-105 / CON-106 and will consume `BlogPipelineResult`.
+ * - Otherwise: run the Decision Phase (CON-104).
+ * - Create decisions generate + render a draft blog post.
+ * - Update decisions are parked for the later update workflow.
  */
 export async function runBlogPipeline(
   conversationId: string
@@ -39,5 +40,15 @@ export async function runBlogPipeline(
   }
 
   const decision = await decide(conversationId);
-  return { conversationId, decision };
+  if (decision.action === "skip") {
+    return { conversationId, decision, blogPostId: null };
+  }
+
+  if (decision.action === "update") {
+    const blogPostId = await markUpdatePending(conversationId, decision);
+    return { conversationId, decision, blogPostId };
+  }
+
+  const blogPostId = await createArticle(conversationId, decision);
+  return { conversationId, decision, blogPostId };
 }
