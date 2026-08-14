@@ -2,7 +2,9 @@
 
 import {
   requestBlogPipeline,
+  triggerIdleBlogPipelines,
   type BlogTriggerDeps,
+  type IdleBlogTriggerDeps,
   type ScheduleBlogTask,
 } from "../trigger";
 import { resolveBlogIdleMinutes } from "../config";
@@ -130,6 +132,44 @@ async function run() {
     assertEq(minutes, 15, "idle minutes");
   });
 
+  await test("idle trigger can scan one tenant by tenantId", async () => {
+    const tenantA = "11111111-1111-4111-8111-111111111111";
+    const tenantB = "22222222-2222-4222-8222-222222222222";
+    const requestedTenantIds: Array<string | undefined> = [];
+    const scannedTenantIds: string[] = [];
+    const triggeredTenantIds: Array<string | undefined> = [];
+    const deps: IdleBlogTriggerDeps = {
+      findTenants: async (tenantId) => {
+        requestedTenantIds.push(tenantId);
+        return [
+          { id: tenantA, settings: {} },
+          { id: tenantB, settings: {} },
+        ].filter((tenant) => !tenantId || tenant.id === tenantId);
+      },
+      findIdleConversationIds: async ({ tenantId }) => {
+        scannedTenantIds.push(tenantId);
+        return [`conversation-${tenantId}`];
+      },
+      requestPipeline: async (_conversationId, options) => {
+        triggeredTenantIds.push(options.tenantId);
+        return { status: "queued", conversationId: _conversationId };
+      },
+    };
+
+    const summary = await triggerIdleBlogPipelines({
+      schedule: immediateSchedule([]),
+      tenantId: tenantB,
+      deps,
+    });
+
+    assertEq(requestedTenantIds[0], tenantB, "tenant filter passed to query");
+    assertEq(summary.scannedTenants, 1, "scanned tenant count");
+    assertEq(summary.queued, 1, "queued count");
+    assertEq(scannedTenantIds.length, 1, "idle tenant scan count");
+    assertEq(scannedTenantIds[0], tenantB, "idle tenant scan id");
+    assertEq(triggeredTenantIds[0], tenantB, "trigger tenant id");
+  });
+
   console.log(`${passed} passed`);
   if (failed > 0) process.exit(1);
 }
@@ -138,4 +178,3 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-

@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run migrate && npm run build"
+  "buildCommand": "npm run migrate && npm run build",
+  "crons": [
+    {
+      "path": "/api/cron/blog-idle-trigger",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }
