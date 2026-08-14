@@ -169,6 +169,13 @@
       "when": 1784178013001,
       "tag": "0024_con272_subscription_status",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786686705000,
+      "tag": "0025_con273_blog_grants",
+      "breakpoints": true
     }
   ]
 }
