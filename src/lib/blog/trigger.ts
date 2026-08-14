@@ -175,19 +175,88 @@ export type IdleBlogTriggerSummary = {
   notFound: number;
 };
 
+type TenantForIdleTrigger = {
+  id: string;
+  settings: unknown;
+};
+
+export type IdleBlogTriggerDeps = {
+  findTenants: (tenantId?: string) => Promise<TenantForIdleTrigger[]>;
+  findIdleConversationIds: (args: {
+    tenantId: string;
+    cutoff: Date;
+    limit: number;
+  }) => Promise<string[]>;
+  requestPipeline: typeof requestBlogPipeline;
+};
+
+const defaultIdleDeps: IdleBlogTriggerDeps = {
+  async findTenants(tenantId) {
+    const where = tenantId
+      ? and(eq(tenants.status, "active"), eq(tenants.id, tenantId))
+      : eq(tenants.status, "active");
+
+    return db
+      .select({ id: tenants.id, settings: tenants.settings })
+      .from(tenants)
+      .where(where);
+  },
+
+  async findIdleConversationIds({ tenantId, cutoff, limit }) {
+    const result = await db.execute(sql`
+      WITH latest_messages AS (
+        SELECT ${conversations.id} AS conversation_id,
+               MAX(${messages.createdAt}) AS latest_message_at
+          FROM ${conversations}
+          LEFT JOIN ${messages} ON ${messages.conversationId} = ${conversations.id}
+         WHERE ${conversations.tenantId} = ${tenantId}
+         GROUP BY ${conversations.id}
+      )
+      SELECT ${conversations.id} AS id
+        FROM ${conversations}
+        INNER JOIN latest_messages
+          ON latest_messages.conversation_id = ${conversations.id}
+        LEFT JOIN ${blogPosts}
+          ON ${blogPosts.threadId} = ${conversations.id}
+       WHERE ${conversations.tenantId} = ${tenantId}
+         AND ${conversations.status} <> 'archived'
+         AND ${blogPosts.id} IS NULL
+         AND COALESCE(
+               latest_messages.latest_message_at,
+               ${conversations.startedAt}
+             ) <= ${cutoff}
+         AND COALESCE(
+               ${conversations.metadata}->'blogConversion'->>'state',
+               ''
+             ) <> 'converted_to_blog'
+       ORDER BY COALESCE(latest_messages.latest_message_at, ${conversations.startedAt}) ASC
+       LIMIT ${limit}
+    `);
+
+    const rows =
+      (result as unknown as { rows?: Array<{ id: string }> }).rows ??
+      (result as unknown as Array<{ id: string }>);
+
+    return rows.map((row) => row.id);
+  },
+
+  requestPipeline: requestBlogPipeline,
+};
+
 export async function triggerIdleBlogPipelines({
   schedule,
   now = new Date(),
   limit = 50,
+  tenantId,
+  deps = defaultIdleDeps,
 }: {
   schedule: ScheduleBlogTask;
   now?: Date;
   limit?: number;
+  tenantId?: string;
+  deps?: IdleBlogTriggerDeps;
 }): Promise<IdleBlogTriggerSummary> {
-  const tenantRows = await db
-    .select({ id: tenants.id, settings: tenants.settings })
-    .from(tenants)
-    .where(eq(tenants.status, "active"));
+  const tenantRows = await deps.findTenants(tenantId);
 
   const summary: IdleBlogTriggerSummary = {
     scannedTenants: tenantRows.length,
@@ -202,42 +271,14 @@ export async function triggerIdleBlogPipelines({
     const remaining = Math.max(0, limit - summary.queued);
     if (remaining === 0) break;
 
-    const result = await db.execute(sql`
-      WITH latest_messages AS (
-        SELECT ${conversations.id} AS conversation_id,
-               MAX(${messages.createdAt}) AS latest_message_at
-          FROM ${conversations}
-          LEFT JOIN ${messages} ON ${messages.conversationId} = ${conversations.id}
-         WHERE ${conversations.tenantId} = ${tenant.id}
-         GROUP BY ${conversations.id}
-      )
-      SELECT ${conversations.id} AS id
-        FROM ${conversations}
-        INNER JOIN latest_messages
-          ON latest_messages.conversation_id = ${conversations.id}
-        LEFT JOIN ${blogPosts}
-          ON ${blogPosts.threadId} = ${conversations.id}
-       WHERE ${conversations.tenantId} = ${tenant.id}
-         AND ${conversations.status} <> 'archived'
-         AND ${blogPosts.id} IS NULL
-         AND COALESCE(
-               latest_messages.latest_message_at,
-               ${conversations.startedAt}
-             ) <= ${cutoff}
-         AND COALESCE(
-               ${conversations.metadata}->'blogConversion'->>'state',
-               ''
-             ) <> 'converted_to_blog'
-       ORDER BY COALESCE(latest_messages.latest_message_at, ${conversations.startedAt}) ASC
-       LIMIT ${remaining}
-    `);
+    const conversationIds = await deps.findIdleConversationIds({
+      tenantId: tenant.id,
+      cutoff,
+      limit: remaining,
+    });
 
-    const rows =
-      (result as unknown as { rows?: Array<{ id: string }> }).rows ??
-      (result as unknown as Array<{ id: string }>);
-
-    for (const row of rows) {
-      const trigger = await requestBlogPipeline(row.id, {
+    for (const conversationId of conversationIds) {
+      const trigger = await deps.requestPipeline(conversationId, {
         source: "idle",
         tenantId: tenant.id,
         markCompleted: true,
