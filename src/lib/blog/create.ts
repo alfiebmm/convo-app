@@ -20,6 +20,7 @@ import {
   stripEmDashes,
   tenantBannedTerms,
   validatePrimaryKeywordPlacement,
+  validatePostStructure,
   type BlogCtaConfig,
   type BlogPostJson,
   type WritingRuleViolation,
@@ -388,6 +389,9 @@ function validateCandidate(
 ): { post: BlogPostJson; emDashReplacements: Array<{ before: string; after: string }> } {
   const schemaErrors = validate({ brand: brief.tenant.brandJson, post: candidate });
   if (schemaErrors.length > 0) throw schemaFailure(schemaErrors);
+
+  const structure = validatePostStructure(candidate);
+  if (structure) throw structure;
 
   const stripped = stripEmDashes(candidate);
   for (const replacement of stripped.replacements) {
