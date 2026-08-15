@@ -286,6 +286,29 @@ export function validatePrimaryKeywordPlacement(
   };
 }
 
+export function validatePostStructure(post: BlogPostJson): WritingRuleViolation | null {
+  const failures = [
+    post.stats && post.stats.length !== 4
+      ? `post.stats must contain exactly 4 items when present`
+      : null,
+    post.toc.length !== 3 ? `post.toc must contain exactly 3 items` : null,
+    post.sections.length < 4 || post.sections.length > 10
+      ? `post.sections must contain between 4 and 10 items`
+      : null,
+    post.faqs.length < 3 ? `post.faqs must contain at least 3 items` : null,
+    post.related && post.related.length !== 4
+      ? `post.related must contain exactly 4 items when present`
+      : null,
+  ].filter((failure): failure is string => Boolean(failure));
+
+  if (failures.length === 0) return null;
+
+  return {
+    code: "schema",
+    message: `post.json failed schema validation: ${failures.join("; ")}`,
+  };
+}
+
 export function slugIsValid(slug: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
 }

@@ -154,8 +154,6 @@
         "null"
       ],
       "description": "OPTIONAL. If present, must be exactly 4 at-a-glance stat cards. Omit or empty to hide the section.",
-      "minItems": 4,
-      "maxItems": 4,
       "items": {
         "type": "object",
         "required": [
@@ -176,8 +174,6 @@
     "toc": {
       "type": "array",
       "description": "Exactly 3 'In this article' promise bullets. Required.",
-      "minItems": 3,
-      "maxItems": 3,
       "items": {
         "type": "string"
       }
@@ -189,8 +185,6 @@
     "sections": {
       "type": "array",
       "description": "4-10 H2 body sections.",
-      "minItems": 4,
-      "maxItems": 10,
       "items": {
         "type": "object",
         "required": [
@@ -204,7 +198,7 @@
           "blocks": {
             "type": "array",
             "items": {
-              "oneOf": [
+              "anyOf": [
                 {
                   "type": "object",
                   "required": [
@@ -369,7 +363,6 @@
     "faqs": {
       "type": "array",
       "description": "3+ FAQ Q&A pairs. Required for FAQPage JSON-LD.",
-      "minItems": 3,
       "items": {
         "type": "object",
         "required": [
@@ -393,8 +386,6 @@
         "null"
       ],
       "description": "OPTIONAL. If present, exactly 4 related-post cards. Omit or empty to hide the 'More from the Hub' section (useful when a brand has no other posts yet).",
-      "minItems": 4,
-      "maxItems": 4,
       "items": {
         "type": "object",
         "required": [
