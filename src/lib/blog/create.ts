@@ -612,17 +612,17 @@ class OpenAiBlogCreateClient implements BlogCreateAi {
     systemPrompt: string;
     userPrompt: string;
   }): Promise<string> {
+    // JSON-mode + Zod validation on the response (parsePostJson in the caller)
+    // is the same pattern used by `decision.ts`. OpenAI strict structured-output
+    // mode enforces a restrictive JSON-Schema subset (no oneOf, no minItems,
+    // limited constraint keywords, every property required, etc.) which is
+    // impractical for this schema. Instead we ask for JSON, embed the schema
+    // in the system prompt for guidance, and enforce the schema strictly on the
+    // client side. See CON-278.
     const response = await this.client().chat.completions.create({
       model: "gpt-4o",
       temperature: 0.7,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "blog_post",
-          schema: postSchema,
-          strict: true,
-        },
-      },
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: params.systemPrompt },
         { role: "user", content: params.userPrompt },
