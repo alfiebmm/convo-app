@@ -62,11 +62,24 @@ function decision(): DecisionResult {
 
 function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   const post = structuredClone(postFixture) as BlogPostJson;
+  const postRecord = post as unknown as Record<string, unknown>;
+
+  post.meta.reviewer = null as unknown as string | undefined;
   post.seo = {
     metaDescription:
       "Learn how pharmacists support ongoing care, medicine reviews, side effect checks and practical health questions in Australia.",
+    canonicalUrl: null as unknown as string,
+    ogImage: null as unknown as string,
+    authoredAt: null as unknown as string,
+    modifiedAt: null as unknown as string,
+    authorName: null as unknown as string,
     keywords: [KEYWORD, "medicine reviews"],
   };
+  post.related = post.related?.map((related) => ({
+    ...related,
+    thumbUrl: related.thumbUrl ?? (null as unknown as string),
+    category: related.category ?? (null as unknown as string),
+  }));
   post.title = "How pharmacists support ongoing care";
   post.intro =
     "Pharmacists help with ongoing care by answering medicine questions, checking interactions, explaining side effects, and helping people understand when a GP should be involved.";
@@ -79,16 +92,58 @@ function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
     linkLabel: "Wrong label",
   });
 
+  postRecord.stats ??= null;
+  postRecord.related ??= null;
+
   return {
     ...post,
     ...overrides,
   };
 }
 
+function validBrand(): Record<string, unknown> {
+  const brand = structuredClone(brandFixture) as Record<string, unknown>;
+  const fonts = brand.fonts as Record<string, unknown>;
+  const logo = brand.logo as Record<string, unknown>;
+  const site = brand.site as Record<string, unknown>;
+  const cta = brand.cta as Record<string, unknown> | undefined;
+  const footer = brand.footer as Record<string, unknown> | undefined;
+
+  fonts.headings ??= null;
+  fonts.googleUrl ??= null;
+  logo.height ??= null;
+  site.hubLabel ??= null;
+  site.loginUrl ??= null;
+  site.orderUrl ??= null;
+  site.orderLabel ??= null;
+
+  if (cta) {
+    cta.heading ??= null;
+    cta.body ??= null;
+    cta.linkUrl ??= null;
+    cta.linkLabel ??= null;
+  } else {
+    brand.cta = null;
+  }
+
+  if (footer) {
+    footer.wordmark ??= null;
+    footer.tagline ??= null;
+    footer.columns ??= null;
+    footer.copyright ??= null;
+    footer.legalLinks ??= null;
+  } else {
+    brand.footer = null;
+  }
+
+  return brand;
+}
+
 function makeService(responses: BlogPostJson[]) {
   const inserts: InsertedPost[] = [];
   const prompts: string[] = [];
   const existingSlugs = new Set<string>();
+  const brandJson = validBrand();
 
   const service = __testing.buildCreateService({
     store: {
@@ -102,7 +157,7 @@ function makeService(responses: BlogPostJson[]) {
             slug: "chemist2u",
             domain: "chemist2u.com.au",
             settings: {
-              brandJson: brandFixture,
+              brandJson,
               blog: { cta: CTA },
             },
           },
