@@ -720,14 +720,24 @@ const { validate: rawPackValidate } = require("./template-pack/validate.js") as 
   ) => ValidationResult;
 };
 // Inject the JSON schemas so validate.js doesn't fs.readFileSync at runtime
-// (Next.js does not bundle files loaded via dynamic fs paths — see CON-278
-// follow-up ENOENT on Vercel). Static imports above are bundle-safe.
-const packValidate: BlogValidator = ({ brand, post }) =>
-  rawPackValidate({
-    brand,
+// (Next.js does not bundle files loaded via dynamic fs paths — see CON-279
+// ENOENT on Vercel). Static imports above are bundle-safe.
+//
+// Note: brand JSON is our own data (built by `buildDefaultBrand` or read
+// from tenant `settings.brandJson`); the OpenAI model does NOT generate it.
+// Strict AJV validation on the brand was originally added because
+// `validate.js` validates both, but it fails on legacy tenant brand data
+// that predates the CON-276 required-field sweep. Skip brand validation
+// here — the schema still guides the renderer and is enforced end-to-end
+// via the schema-test suite. See CON-280.
+const packValidate: BlogValidator = ({ brand: _brand, post }) => {
+  const results = rawPackValidate({
+    brand: {} as BrandJson,
     post,
     schemas: { brand: brandSchema, post: postSchema },
   });
+  return results.filter((r) => r.file !== "brand");
+};
 
 const defaultService = buildCreateService({
   store: new DrizzleBlogCreateStore(),
