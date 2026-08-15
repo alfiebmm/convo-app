@@ -8,7 +8,9 @@
     "colors",
     "fonts",
     "logo",
-    "site"
+    "site",
+    "cta",
+    "footer"
   ],
   "properties": {
     "id": {
@@ -100,7 +102,9 @@
     "fonts": {
       "type": "object",
       "required": [
-        "body"
+        "body",
+        "headings",
+        "googleUrl"
       ],
       "properties": {
         "body": {
@@ -108,11 +112,17 @@
           "description": "CSS font-family stack for body copy."
         },
         "headings": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Optional heading stack; defaults to body."
         },
         "googleUrl": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Optional Google Fonts CSS URL to inject."
         }
       },
@@ -122,7 +132,8 @@
       "type": "object",
       "required": [
         "url",
-        "alt"
+        "alt",
+        "height"
       ],
       "properties": {
         "url": {
@@ -134,7 +145,10 @@
           "description": "Alt text."
         },
         "height": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "description": "Rendered height in px. Default 30."
         }
       },
@@ -144,7 +158,11 @@
       "type": "object",
       "required": [
         "baseUrl",
-        "hubUrl"
+        "hubUrl",
+        "hubLabel",
+        "loginUrl",
+        "orderUrl",
+        "orderLabel"
       ],
       "properties": {
         "baseUrl": {
@@ -156,55 +174,100 @@
           "description": "Blog/hub index URL for the 'More from the Hub' link."
         },
         "hubLabel": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Label for the hub (e.g. Health Hub, Growth Hub). Default: Hub."
         },
         "loginUrl": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Optional login URL for the header."
         },
         "orderUrl": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Optional primary CTA URL for the header (e.g. Order now)."
         },
         "orderLabel": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Primary CTA label. Default: Order now."
         }
       },
       "additionalProperties": false
     },
     "cta": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Default late-article CTA card content, can be overridden per-post.",
       "properties": {
         "heading": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "body": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "linkUrl": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "linkLabel": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": [
+        "heading",
+        "body",
+        "linkUrl",
+        "linkLabel"
+      ]
     },
     "footer": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Footer content and links.",
       "properties": {
         "wordmark": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "tagline": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "columns": {
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "object",
             "required": [
@@ -239,10 +302,16 @@
           }
         },
         "copyright": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "legalLinks": {
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "object",
             "required": [
@@ -261,7 +330,14 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": [
+        "wordmark",
+        "tagline",
+        "columns",
+        "copyright",
+        "legalLinks"
+      ]
     }
   },
   "additionalProperties": false

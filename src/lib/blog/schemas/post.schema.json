@@ -8,11 +8,14 @@
     "title",
     "dek",
     "meta",
+    "seo",
     "hero",
+    "stats",
     "toc",
     "intro",
     "sections",
-    "faqs"
+    "faqs",
+    "related"
   ],
   "properties": {
     "slug": {
@@ -35,7 +38,8 @@
       "type": "object",
       "required": [
         "updated",
-        "readMinutes"
+        "readMinutes",
+        "reviewer"
       ],
       "properties": {
         "updated": {
@@ -47,49 +51,85 @@
           "description": "Estimated read time in minutes."
         },
         "reviewer": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Optional reviewer/attribution line."
         }
       },
       "additionalProperties": false
     },
     "seo": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Optional. Overrides for SEO tags and JSON-LD. Sensible defaults are derived from other fields if omitted.",
       "properties": {
         "metaDescription": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Meta description. Defaults to post.dek."
         },
         "canonicalUrl": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Absolute canonical URL. If omitted, no canonical tag is emitted."
         },
         "ogImage": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Open Graph image URL. Defaults to hero.url."
         },
         "authoredAt": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "ISO-8601 date the article was first published. Used in JSON-LD Article.datePublished."
         },
         "modifiedAt": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "ISO-8601 date the article was last modified. Used in JSON-LD Article.dateModified."
         },
         "authorName": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Author name for JSON-LD Article.author. Defaults to brand.name."
         },
         "keywords": {
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           },
           "description": "Optional keyword tags."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": [
+        "metaDescription",
+        "canonicalUrl",
+        "ogImage",
+        "authoredAt",
+        "modifiedAt",
+        "authorName",
+        "keywords"
+      ]
     },
     "hero": {
       "type": "object",
@@ -109,7 +149,10 @@
       "additionalProperties": false
     },
     "stats": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "OPTIONAL. If present, must be exactly 4 at-a-glance stat cards. Omit or empty to hide the section.",
       "minItems": 4,
       "maxItems": 4,
@@ -345,7 +388,10 @@
       }
     },
     "related": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "OPTIONAL. If present, exactly 4 related-post cards. Omit or empty to hide the 'More from the Hub' section (useful when a brand has no other posts yet).",
       "minItems": 4,
       "maxItems": 4,
@@ -354,7 +400,9 @@
         "required": [
           "title",
           "dek",
-          "url"
+          "url",
+          "thumbUrl",
+          "category"
         ],
         "properties": {
           "title": {
@@ -367,10 +415,16 @@
             "type": "string"
           },
           "thumbUrl": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "category": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
