@@ -21,10 +21,16 @@ function loadJson(p) {
   return JSON.parse(fs.readFileSync(abs, 'utf8'));
 }
 
-function validate({ brand, post }) {
+function validate({ brand, post, schemas } = {}) {
   const ajv = new Ajv({ allErrors: true, strict: false });
-  const brandSchema = loadJson(path.join(__dirname, 'brand.schema.json'));
-  const postSchema  = loadJson(path.join(__dirname, 'post.schema.json'));
+  // Prefer pre-loaded schemas (Next.js bundle-safe: `create.ts` static-imports
+  // the JSONs and passes them in). Fall back to disk reads for the CLI mode.
+  const brandSchema = schemas && schemas.brand
+    ? schemas.brand
+    : loadJson(path.join(__dirname, 'brand.schema.json'));
+  const postSchema = schemas && schemas.post
+    ? schemas.post
+    : loadJson(path.join(__dirname, 'post.schema.json'));
 
   const errors = [];
   const brandValidator = ajv.compile(brandSchema);

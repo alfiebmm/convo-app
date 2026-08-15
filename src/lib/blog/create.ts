@@ -11,6 +11,7 @@ import { getOpenAIClient } from "@/lib/openai";
 import { slugify } from "@/lib/pipeline/dedup";
 
 import type { DecisionResult } from "./decision";
+import brandSchema from "./schemas/brand.schema.json";
 import postSchema from "./schemas/post.schema.json";
 import {
   enforceCtaConfig,
@@ -713,9 +714,20 @@ const { render: packRender } = require("./template-pack/renderer.js") as {
     templatePath: string;
   }) => string;
 };
-const { validate: packValidate } = require("./template-pack/validate.js") as {
-  validate: BlogValidator;
+const { validate: rawPackValidate } = require("./template-pack/validate.js") as {
+  validate: (
+    params: { brand: BrandJson; post: BlogPostJson; schemas?: unknown }
+  ) => ValidationResult;
 };
+// Inject the JSON schemas so validate.js doesn't fs.readFileSync at runtime
+// (Next.js does not bundle files loaded via dynamic fs paths — see CON-278
+// follow-up ENOENT on Vercel). Static imports above are bundle-safe.
+const packValidate: BlogValidator = ({ brand, post }) =>
+  rawPackValidate({
+    brand,
+    post,
+    schemas: { brand: brandSchema, post: postSchema },
+  });
 
 const defaultService = buildCreateService({
   store: new DrizzleBlogCreateStore(),
