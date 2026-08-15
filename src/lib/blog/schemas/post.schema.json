@@ -2,41 +2,111 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "GH Blog Post Content",
   "type": "object",
-  "required": ["slug", "category", "title", "dek", "meta", "hero", "toc", "intro", "sections", "faqs"],
+  "required": [
+    "slug",
+    "category",
+    "title",
+    "dek",
+    "meta",
+    "hero",
+    "toc",
+    "intro",
+    "sections",
+    "faqs"
+  ],
   "properties": {
-    "slug":     { "type": "string", "description": "URL slug (kebab-case)." },
-    "category": { "type": "string", "description": "Eyebrow category label above the H1 (e.g. Education, Guides, Explainers)." },
-    "title":    { "type": "string", "description": "H1 headline in sentence case." },
-    "dek":      { "type": "string", "description": "One-sentence subtitle (~20-30 words). Also used as fallback meta description." },
+    "slug": {
+      "type": "string",
+      "description": "URL slug (kebab-case)."
+    },
+    "category": {
+      "type": "string",
+      "description": "Eyebrow category label above the H1 (e.g. Education, Guides, Explainers)."
+    },
+    "title": {
+      "type": "string",
+      "description": "H1 headline in sentence case."
+    },
+    "dek": {
+      "type": "string",
+      "description": "One-sentence subtitle (~20-30 words). Also used as fallback meta description."
+    },
     "meta": {
       "type": "object",
-      "required": ["updated", "readMinutes"],
+      "required": [
+        "updated",
+        "readMinutes"
+      ],
       "properties": {
-        "updated":     { "type": "string", "description": "e.g. 'May 2026'." },
-        "readMinutes": { "type": "integer", "description": "Estimated read time in minutes." },
-        "reviewer":    { "type": "string", "description": "Optional reviewer/attribution line." }
-      }
+        "updated": {
+          "type": "string",
+          "description": "e.g. 'May 2026'."
+        },
+        "readMinutes": {
+          "type": "integer",
+          "description": "Estimated read time in minutes."
+        },
+        "reviewer": {
+          "type": "string",
+          "description": "Optional reviewer/attribution line."
+        }
+      },
+      "additionalProperties": false
     },
     "seo": {
       "type": "object",
       "description": "Optional. Overrides for SEO tags and JSON-LD. Sensible defaults are derived from other fields if omitted.",
       "properties": {
-        "metaDescription": { "type": "string", "description": "Meta description. Defaults to post.dek." },
-        "canonicalUrl":    { "type": "string", "description": "Absolute canonical URL. If omitted, no canonical tag is emitted." },
-        "ogImage":         { "type": "string", "description": "Open Graph image URL. Defaults to hero.url." },
-        "authoredAt":      { "type": "string", "description": "ISO-8601 date the article was first published. Used in JSON-LD Article.datePublished." },
-        "modifiedAt":      { "type": "string", "description": "ISO-8601 date the article was last modified. Used in JSON-LD Article.dateModified." },
-        "authorName":      { "type": "string", "description": "Author name for JSON-LD Article.author. Defaults to brand.name." },
-        "keywords":        { "type": "array", "items": { "type": "string" }, "description": "Optional keyword tags." }
-      }
+        "metaDescription": {
+          "type": "string",
+          "description": "Meta description. Defaults to post.dek."
+        },
+        "canonicalUrl": {
+          "type": "string",
+          "description": "Absolute canonical URL. If omitted, no canonical tag is emitted."
+        },
+        "ogImage": {
+          "type": "string",
+          "description": "Open Graph image URL. Defaults to hero.url."
+        },
+        "authoredAt": {
+          "type": "string",
+          "description": "ISO-8601 date the article was first published. Used in JSON-LD Article.datePublished."
+        },
+        "modifiedAt": {
+          "type": "string",
+          "description": "ISO-8601 date the article was last modified. Used in JSON-LD Article.dateModified."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Author name for JSON-LD Article.author. Defaults to brand.name."
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional keyword tags."
+        }
+      },
+      "additionalProperties": false
     },
     "hero": {
       "type": "object",
-      "required": ["url", "alt"],
+      "required": [
+        "url",
+        "alt"
+      ],
       "properties": {
-        "url": { "type": "string" },
-        "alt": { "type": "string", "description": "Literal description of the image scene." }
-      }
+        "url": {
+          "type": "string"
+        },
+        "alt": {
+          "type": "string",
+          "description": "Literal description of the image scene."
+        }
+      },
+      "additionalProperties": false
     },
     "stats": {
       "type": "array",
@@ -45,11 +115,19 @@
       "maxItems": 4,
       "items": {
         "type": "object",
-        "required": ["value", "label"],
+        "required": [
+          "value",
+          "label"
+        ],
         "properties": {
-          "value": { "type": "string" },
-          "label": { "type": "string" }
-        }
+          "value": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "toc": {
@@ -57,9 +135,14 @@
       "description": "Exactly 3 'In this article' promise bullets. Required.",
       "minItems": 3,
       "maxItems": 3,
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
-    "intro": { "type": "string", "description": "Intro paragraph (~90-120 words). Plain prose, no headings." },
+    "intro": {
+      "type": "string",
+      "description": "Intro paragraph (~90-120 words). Plain prose, no headings."
+    },
     "sections": {
       "type": "array",
       "description": "4-10 H2 body sections.",
@@ -67,24 +150,177 @@
       "maxItems": 10,
       "items": {
         "type": "object",
-        "required": ["heading", "blocks"],
+        "required": [
+          "heading",
+          "blocks"
+        ],
         "properties": {
-          "heading": { "type": "string" },
+          "heading": {
+            "type": "string"
+          },
           "blocks": {
             "type": "array",
             "items": {
               "oneOf": [
-                { "type": "object", "required": ["type", "text"], "properties": { "type": { "const": "p" },  "text": { "type": "string" } } },
-                { "type": "object", "required": ["type", "text"], "properties": { "type": { "const": "h3" }, "text": { "type": "string" } } },
-                { "type": "object", "required": ["type", "items"], "properties": { "type": { "const": "ul" }, "items": { "type": "array", "items": { "type": "string" } } } },
-                { "type": "object", "required": ["type", "items"], "properties": { "type": { "const": "ol" }, "items": { "type": "array", "items": { "type": "string" } } } },
-                { "type": "object", "required": ["type", "label", "body"], "properties": { "type": { "const": "keyTakeaway" }, "label": { "type": "string" }, "body": { "type": "string" } } },
-                { "type": "object", "required": ["type", "label", "links"], "properties": { "type": { "const": "readNext" }, "label": { "type": "string" }, "links": { "type": "array", "items": { "type": "object", "required": ["label", "url"], "properties": { "label": { "type": "string" }, "url": { "type": "string" } } } } } },
-                { "type": "object", "required": ["type", "heading", "body", "linkUrl", "linkLabel"], "properties": { "type": { "const": "cta" }, "heading": { "type": "string" }, "body": { "type": "string" }, "linkUrl": { "type": "string" }, "linkLabel": { "type": "string" } } }
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "p"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "h3"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "items"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "ul"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "items"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "ol"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "label",
+                    "body"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "keyTakeaway"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "label",
+                    "links"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "readNext"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "label",
+                          "url"
+                        ],
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "heading",
+                    "body",
+                    "linkUrl",
+                    "linkLabel"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "cta"
+                    },
+                    "heading": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "linkUrl": {
+                      "type": "string"
+                    },
+                    "linkLabel": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
               ]
             }
           }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "faqs": {
@@ -93,8 +329,19 @@
       "minItems": 3,
       "items": {
         "type": "object",
-        "required": ["q", "a"],
-        "properties": { "q": { "type": "string" }, "a": { "type": "string" } }
+        "required": [
+          "q",
+          "a"
+        ],
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "a": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "related": {
@@ -104,15 +351,31 @@
       "maxItems": 4,
       "items": {
         "type": "object",
-        "required": ["title", "dek", "url"],
+        "required": [
+          "title",
+          "dek",
+          "url"
+        ],
         "properties": {
-          "title":    { "type": "string" },
-          "dek":      { "type": "string" },
-          "url":      { "type": "string" },
-          "thumbUrl": { "type": "string" },
-          "category": { "type": "string" }
-        }
+          "title": {
+            "type": "string"
+          },
+          "dek": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "thumbUrl": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     }
-  }
+  },
+  "additionalProperties": false
 }
