@@ -14,6 +14,14 @@ export const BLOG_POST_STATUS_DISPLAY: Record<
   approved: { label: "Approved", className: "bg-green-100 text-green-800" },
   published: { label: "Published", className: "bg-blue-100 text-blue-800" },
   rejected: { label: "Rejected", className: "bg-red-100 text-red-800" },
+  generation_failed: {
+    label: "Generation failed",
+    className: "bg-red-100 text-red-800",
+  },
+  update_pending: {
+    label: "Update pending",
+    className: "bg-amber-100 text-amber-800",
+  },
 };
 
 function formatDate(date: Date) {
