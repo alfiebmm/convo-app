@@ -32,6 +32,22 @@ export interface BlogPostListItem {
   createdAt: Date;
 }
 
+export interface BlogPostDetail {
+  id: string;
+  tenantId: string;
+  threadId: string | null;
+  title: string;
+  slug: string;
+  content: string;
+  metadata: Record<string, unknown>;
+  status: BlogPostStatus;
+  persona: string | null;
+  topic: string | null;
+  createdAt: Date;
+  publishedAt: Date | null;
+  lastModified: Date;
+}
+
 export interface BlogPostListResult {
   rows: BlogPostListItem[];
   totalCount: number;
@@ -45,6 +61,17 @@ interface BlogPostSupabaseRow {
   status: BlogPostStatus;
   metadata: Record<string, unknown> | null;
   created_at: string;
+}
+
+interface BlogPostDetailSupabaseRow extends BlogPostSupabaseRow {
+  tenant_id: string;
+  thread_id: string | null;
+  slug: string;
+  content: string | null;
+  persona: string | null;
+  topic: string | null;
+  published_at: string | null;
+  last_modified: string;
 }
 
 type BlogPostQueryBuilder = {
@@ -64,6 +91,10 @@ type BlogPostQueryBuilder = {
     data: BlogPostSupabaseRow[] | null;
     error: { message: string } | null;
     count: number | null;
+  }>;
+  maybeSingle: () => PromiseLike<{
+    data: BlogPostDetailSupabaseRow | null;
+    error: { message: string } | null;
   }>;
 };
 
@@ -122,6 +153,24 @@ function mapBlogPostRow(row: BlogPostSupabaseRow): BlogPostListItem {
   };
 }
 
+function mapBlogPostDetailRow(row: BlogPostDetailSupabaseRow): BlogPostDetail {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    threadId: row.thread_id,
+    title: row.title ?? "Untitled article",
+    slug: row.slug,
+    content: row.content ?? "",
+    metadata: row.metadata ?? {},
+    status: row.status,
+    persona: row.persona,
+    topic: row.topic,
+    createdAt: new Date(row.created_at),
+    publishedAt: row.published_at ? new Date(row.published_at) : null,
+    lastModified: new Date(row.last_modified),
+  };
+}
+
 export async function listBlogPostsForTenant({
   supabase,
   tenantId,
@@ -170,4 +219,45 @@ export async function listBlogPostsForTenant({
     page,
     pageSize: BLOG_POST_PAGE_SIZE,
   };
+}
+
+export async function getBlogPostByIdForTenant({
+  supabase,
+  tenantId,
+  postId,
+}: {
+  supabase: BlogPostsSupabaseClient;
+  tenantId: string;
+  postId: string;
+}): Promise<BlogPostDetail | null> {
+  assertTenantId(tenantId);
+
+  const { data, error } = await supabase
+    .from("blog_posts")
+    .select(
+      [
+        "id",
+        "tenant_id",
+        "thread_id",
+        "title",
+        "slug",
+        "content",
+        "metadata",
+        "status",
+        "persona",
+        "topic",
+        "created_at",
+        "published_at",
+        "last_modified",
+      ].join(","),
+    )
+    .eq("tenant_id", tenantId)
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to get blog post: ${error.message}`);
+  }
+
+  return data ? mapBlogPostDetailRow(data) : null;
 }
