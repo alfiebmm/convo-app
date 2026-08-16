@@ -11,6 +11,8 @@
  *   - /api/cron/* (Vercel cron + CI probe routes; each route enforces its own
  *     `Authorization: Bearer $CRON_SECRET` check, so bypassing middleware auth
  *     here is safe and required — Vercel Cron cannot present a NextAuth cookie)
+ *   - /api/blog/reprocess-failed (manual blog retry route; bearer-authenticated
+ *     with `Authorization: Bearer $CRON_SECRET`)
  *   - /api/chat (widget chat endpoint)
  *   - /api/widget/* (widget tracking etc.)
  *   - /api/conversations/qualifying/* (widget qualifying-question flow, CON-94)
@@ -161,6 +163,6 @@ export const config = {
   matcher: [
     "/platform-admin/:path*",
     "/dashboard/:path*",
-    "/api/((?!auth|cron|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook|cases/pill-init|cases/[^/]+/capture).*)",
+    "/api/((?!auth|cron|blog/reprocess-failed|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook|cases/pill-init|cases/[^/]+/capture).*)",
   ],
 };
