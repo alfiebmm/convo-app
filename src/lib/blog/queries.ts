@@ -9,6 +9,8 @@ export const blogPostStatuses = [
   "approved",
   "published",
   "rejected",
+  "generation_failed",
+  "update_pending",
 ] as const;
 
 export type BlogPostStatus = (typeof blogPostStatuses)[number];
