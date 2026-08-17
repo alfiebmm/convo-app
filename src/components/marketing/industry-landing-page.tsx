@@ -11,7 +11,7 @@ export function IndustryLandingPage({ page }: { page: IndustryPage }) {
     <MarketingLayout>
       <main>
         <section className="bg-zinc-950 text-white">
-          <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:py-20">
+          <div className="mx-auto grid max-w-[88rem] gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:py-24">
             <div>
               <p className="inline-flex rounded-full border border-orange-400/30 bg-orange-400/10 px-3 py-1 text-sm font-semibold text-orange-200">
                 {page.eyebrow}
@@ -39,9 +39,19 @@ export function IndustryLandingPage({ page }: { page: IndustryPage }) {
                   {page.secondaryCta}
                 </Link>
               </div>
+              {page.compatibility ? (
+                <p className="mt-5 max-w-2xl text-sm font-semibold leading-6 text-orange-100">
+                  Works alongside your existing website, booking links, PMS
+                  workflows, contact forms, and phone process.
+                </p>
+              ) : null}
             </div>
 
-            <HeroVisual page={page} />
+            {page.supportHub ? (
+              <VetHeroVisual page={page} />
+            ) : (
+              <HeroVisual page={page} />
+            )}
           </div>
         </section>
 
@@ -58,13 +68,25 @@ export function IndustryLandingPage({ page }: { page: IndustryPage }) {
           </div>
         </section>
 
+        {page.compatibility ? <CompatibilitySection page={page} /> : null}
+
         <Section
           eyebrow="Growth loop"
           title="Answer questions, capture enquiries, and create the pages people search for."
           description="Convo connects the immediate conversion job with the longer-term SEO job. The chat helps today's visitor. The conversation data shows what content should exist next."
         >
-          <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
-            <div className="grid gap-5 md:grid-cols-2">
+          <div
+            className={
+              page.supportHub ? "grid gap-5" : "grid gap-5 lg:grid-cols-[1fr_420px]"
+            }
+          >
+            <div
+              className={
+                page.supportHub
+                  ? "grid gap-5 md:grid-cols-2 xl:grid-cols-4"
+                  : "grid gap-5 md:grid-cols-2"
+              }
+            >
               {page.outcomes.map((outcome) => (
                 <article
                   key={outcome.title}
@@ -79,9 +101,11 @@ export function IndustryLandingPage({ page }: { page: IndustryPage }) {
                 </article>
               ))}
             </div>
-            <GrowthProofCard page={page} />
+            {page.supportHub ? null : <GrowthProofCard page={page} />}
           </div>
         </Section>
+
+        {page.supportHub ? <SupportHubSection page={page} /> : null}
 
         <Section
           eyebrow="Content engine"
@@ -126,6 +150,8 @@ export function IndustryLandingPage({ page }: { page: IndustryPage }) {
             </div>
           </div>
         </Section>
+
+        {page.aiSearch ? <AISearchSection page={page} /> : null}
 
         <Section
           eyebrow="How it works"
@@ -180,6 +206,8 @@ export function IndustryLandingPage({ page }: { page: IndustryPage }) {
           </div>
         </Section>
 
+        {page.roadmapChannels ? <RoadmapChannelsSection page={page} /> : null}
+
         <Section
           eyebrow="Questions"
           title="What teams ask before using Convo."
@@ -205,6 +233,240 @@ export function IndustryLandingPage({ page }: { page: IndustryPage }) {
         <CTASection />
       </main>
     </MarketingLayout>
+  );
+}
+
+function CompatibilitySection({ page }: { page: IndustryPage }) {
+  if (!page.compatibility) return null;
+
+  return (
+    <section className="border-b border-zinc-200 bg-white">
+      <div className="mx-auto grid max-w-[88rem] gap-8 px-5 py-12 sm:px-8 lg:grid-cols-[380px_1fr] lg:items-center">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--convo-orange)]">
+            Existing clinic stack
+          </p>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-normal text-zinc-950">
+            {page.compatibility.title}
+          </h2>
+          <p className="mt-3 text-sm leading-7 text-zinc-600">
+            {page.compatibility.description}
+          </p>
+        </div>
+        <div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {page.compatibility.tools.map((tool) => (
+              <LogoTile
+                key={tool.name}
+                name={tool.name}
+                label={tool.category}
+                logoDomain={tool.logoDomain}
+                prominent
+              />
+            ))}
+          </div>
+          <p className="mt-4 text-xs leading-5 text-zinc-500">
+            {page.compatibility.note}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function VetHeroVisual({ page }: { page: IndustryPage }) {
+  return (
+    <div className="grid gap-4">
+      <div
+        role="img"
+        aria-label={page.heroImage.alt}
+        className="min-h-[420px] overflow-hidden rounded-2xl border border-white/10 bg-cover bg-center shadow-2xl shadow-black/30"
+        style={{
+          backgroundImage: `linear-gradient(180deg, rgba(9,9,11,0.04), rgba(9,9,11,0.68)), url(${page.heroImage.src})`,
+        }}
+      >
+        <div className="flex min-h-[420px] items-end p-5">
+          <article className="max-w-sm rounded-xl bg-white/95 p-4 text-zinc-950 shadow-lg backdrop-blur">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--convo-orange)]">
+              Convo widget
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6">
+              {page.chatExample.visitor}
+            </p>
+            <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-xs font-semibold leading-5 text-zinc-700">
+              {page.chatExample.capture}
+            </div>
+          </article>
+        </div>
+      </div>
+      <article className="grid gap-3 rounded-xl border border-white/10 bg-white/10 p-4 text-white sm:grid-cols-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-orange-200">
+            Answer
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-6">
+            Uses the clinic website and approved content.
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-orange-200">
+            Book
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-6">
+            Ready pet owners can go straight to booking.
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-orange-200">
+            Create
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-6">
+            Repeated questions become reviewed content ideas.
+          </p>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function SupportHubSection({ page }: { page: IndustryPage }) {
+  if (!page.supportHub) return null;
+
+  return (
+    <Section
+      eyebrow={page.supportHub.eyebrow}
+      title={page.supportHub.title}
+      description={page.supportHub.description}
+      tone="soft"
+    >
+      <div className="grid gap-5 lg:grid-cols-3">
+        {page.supportHub.examples.map((example) => (
+          <article
+            key={example.question}
+            className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--convo-orange)]">
+              {example.source}
+            </p>
+            <h2 className="mt-3 text-xl font-bold leading-snug text-zinc-950">
+              {example.question}
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-zinc-600">
+              {example.answer}
+            </p>
+          </article>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function AISearchSection({ page }: { page: IndustryPage }) {
+  if (!page.aiSearch) return null;
+
+  return (
+    <section className="bg-zinc-950 text-white">
+      <div className="mx-auto grid max-w-7xl gap-8 px-5 py-14 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-orange-200">
+            {page.aiSearch.eyebrow}
+          </p>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-normal sm:text-4xl">
+            {page.aiSearch.title}
+          </h2>
+          <p className="mt-4 text-base leading-8 text-zinc-300">
+            {page.aiSearch.description}
+          </p>
+        </div>
+        <div className="grid gap-3">
+          {page.aiSearch.examples.map((example) => (
+            <div
+              key={example}
+              className="rounded-xl border border-white/10 bg-white/10 p-4 backdrop-blur"
+            >
+              <p className="text-sm font-semibold leading-6 text-white">
+                {example}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RoadmapChannelsSection({ page }: { page: IndustryPage }) {
+  if (!page.roadmapChannels) return null;
+
+  return (
+    <Section
+      eyebrow="Social channels"
+      title={page.roadmapChannels.title}
+      description={page.roadmapChannels.description}
+      tone="soft"
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        {page.roadmapChannels.channels.map((channel) => (
+          <LogoTile
+            key={channel.name}
+            name={channel.name}
+            label={channel.status}
+            logoDomain={channel.logoDomain}
+            prominent
+          />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function LogoTile({
+  name,
+  label,
+  logoDomain,
+  prominent = false,
+}: {
+  name: string;
+  label: string;
+  logoDomain: string;
+  prominent?: boolean;
+}) {
+  return (
+    <article
+      className={`flex items-center gap-3 rounded-xl border border-zinc-200 bg-white shadow-sm ${
+        prominent ? "min-h-24 p-5" : "p-4"
+      }`}
+    >
+      <span
+        className={`flex shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 ${
+          prominent ? "h-16 w-16" : "h-11 w-11"
+        }`}
+      >
+        <img
+          src={`https://www.google.com/s2/favicons?domain=${logoDomain}&sz=128`}
+          alt={`${name} logo`}
+          className={
+            prominent
+              ? "max-h-10 max-w-10 object-contain"
+              : "max-h-7 max-w-7 object-contain"
+          }
+        />
+      </span>
+      <span>
+        <span
+          className={
+            prominent
+              ? "block text-base font-bold text-zinc-950"
+              : "block text-sm font-bold text-zinc-950"
+          }
+        >
+          {name}
+        </span>
+        <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+          {label}
+        </span>
+      </span>
+    </article>
   );
 }
 
