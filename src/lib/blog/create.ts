@@ -27,7 +27,7 @@ import {
   type WritingRuleViolation,
 } from "./writing-rules";
 
-type BrandJson = Record<string, unknown>;
+export type BrandJson = Record<string, unknown>;
 
 type BlogBrief = {
   tenant: {
@@ -52,12 +52,12 @@ type BlogBrief = {
   };
 };
 
-type ConversationRecord = {
+export type ConversationRecord = {
   id: string;
   tenantId: string;
 };
 
-type TenantRecord = {
+export type TenantRecord = {
   id: string;
   name: string;
   slug: string;
@@ -65,7 +65,7 @@ type TenantRecord = {
   settings: unknown;
 };
 
-type MessageRecord = {
+export type MessageRecord = {
   role: string;
   content: string;
   createdAt: Date;
@@ -77,9 +77,9 @@ type ValidationError = {
   params?: unknown;
 };
 
-type ValidationResult = Array<{ file: string; errors: ValidationError[] }>;
+export type ValidationResult = Array<{ file: string; errors: ValidationError[] }>;
 
-type BlogCreateStore = {
+export type BlogCreateStore = {
   loadConversation(
     conversationId: string
   ): Promise<{
@@ -101,15 +101,15 @@ type BlogCreateStore = {
   }): Promise<{ id: string }>;
 };
 
-type BlogCreateAi = {
+export type BlogCreateAi = {
   generatePost(params: {
     systemPrompt: string;
     userPrompt: string;
   }): Promise<string>;
 };
 
-type BlogRenderer = (params: { brand: BrandJson; post: BlogPostJson }) => string;
-type BlogValidator = (params: { brand: BrandJson; post: BlogPostJson }) => ValidationResult;
+export type BlogRenderer = (params: { brand: BrandJson; post: BlogPostJson }) => string;
+export type BlogValidator = (params: { brand: BrandJson; post: BlogPostJson }) => ValidationResult;
 
 type BlogCreateDeps = {
   store: BlogCreateStore;
@@ -119,7 +119,7 @@ type BlogCreateDeps = {
   sleep: (ms: number) => Promise<void>;
 };
 
-type RetryClass = "schema" | "banned_term" | "australian_english" | "primary_keyword";
+export type RetryClass = "schema" | "banned_term" | "australian_english" | "primary_keyword";
 
 const MAX_RATE_LIMIT_ATTEMPTS = 2;
 const RATE_LIMIT_RETRY_MS = 5_000;
@@ -143,18 +143,18 @@ Article requirements:
 - ${AU_ENGLISH_RULE}
 - Avoid all banned terms supplied in the brief.`;
 
-function wordCount(input: string): number {
+export function wordCount(input: string): number {
   return input.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function transcript(messagesForConversation: MessageRecord[]): string {
+export function transcript(messagesForConversation: MessageRecord[]): string {
   return messagesForConversation
     .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
     .join("\n\n")
     .trim();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
@@ -242,7 +242,7 @@ function buildDefaultBrand(tenant: TenantRecord, cta: BlogCtaConfig): BrandJson 
   };
 }
 
-function resolveCtaConfig(tenant: TenantRecord): BlogCtaConfig {
+export function resolveCtaConfig(tenant: TenantRecord): BlogCtaConfig {
   const settingsCta =
     settingPath(tenant.settings, ["blog", "cta"]) ??
     settingPath(tenant.settings, ["forumConfig", "blog", "cta"]);
@@ -260,7 +260,7 @@ function resolveCtaConfig(tenant: TenantRecord): BlogCtaConfig {
   };
 }
 
-function resolveBrandJson(tenant: TenantRecord, cta: BlogCtaConfig): BrandJson {
+export function resolveBrandJson(tenant: TenantRecord, cta: BlogCtaConfig): BrandJson {
   const candidate =
     settingPath(tenant.settings, ["brandJson"]) ??
     settingPath(tenant.settings, ["brand_json"]) ??
@@ -338,7 +338,7 @@ function buildUserPrompt(brief: BlogBrief, retryInstructions: string[]): string 
   );
 }
 
-function parsePostJson(raw: string): BlogPostJson {
+export function parsePostJson(raw: string): BlogPostJson {
   return JSON.parse(raw) as BlogPostJson;
 }
 
@@ -358,7 +358,7 @@ function schemaFailure(errors: ValidationResult): WritingRuleViolation {
   };
 }
 
-async function generateWithRateLimitRetry(
+export async function generateWithRateLimitRetry(
   ai: BlogCreateAi,
   params: { systemPrompt: string; userPrompt: string },
   sleep: (ms: number) => Promise<void>
@@ -376,14 +376,14 @@ async function generateWithRateLimitRetry(
   throw new Error("OpenAI rate-limit retry exhausted");
 }
 
-function retryInstruction(violation: WritingRuleViolation): string {
+export function retryInstruction(violation: WritingRuleViolation): string {
   const sentence = violation.sentence
     ? ` Offending sentence: "${violation.sentence}"`
     : "";
   return `${violation.message}.${sentence} Rewrite the full post.json so this issue is fixed while preserving the article structure and source accuracy.`;
 }
 
-function validateCandidate(
+export function validateCandidate(
   candidate: BlogPostJson,
   brief: BlogBrief,
   validate: BlogValidator
@@ -432,11 +432,11 @@ function validateCandidate(
   return { post, emDashReplacements: stripped.replacements };
 }
 
-function stripRenderedEmDashes(html: string): string {
+export function stripRenderedEmDashes(html: string): string {
   return html.replace(/\s*[—–]\s*/g, ". ").replace(/\.\s+([a-z])/g, (_match, letter: string) => `. ${letter.toUpperCase()}`);
 }
 
-async function uniqueSlug(
+export async function uniqueSlug(
   store: BlogCreateStore,
   tenantId: string,
   slug: string
@@ -601,7 +601,7 @@ function buildCreateService(deps: BlogCreateDeps) {
   };
 }
 
-class OpenAiBlogCreateClient implements BlogCreateAi {
+export class OpenAiBlogCreateClient implements BlogCreateAi {
   constructor(private openai?: OpenAI) {}
 
   private client(): OpenAI {
@@ -636,7 +636,7 @@ class OpenAiBlogCreateClient implements BlogCreateAi {
   }
 }
 
-class DrizzleBlogCreateStore implements BlogCreateStore {
+export class DrizzleBlogCreateStore implements BlogCreateStore {
   async loadConversation(conversationId: string) {
     const [conversation] = await db
       .select({ id: conversations.id, tenantId: conversations.tenantId })
@@ -730,7 +730,7 @@ const { validate: rawPackValidate } = require("./template-pack/validate.js") as 
 // that predates the CON-276 required-field sweep. Skip brand validation
 // here — the schema still guides the renderer and is enforced end-to-end
 // via the schema-test suite. See CON-280.
-const packValidate: BlogValidator = ({ brand: _brand, post }) => {
+export const packValidate: BlogValidator = ({ brand: _brand, post }) => {
   const results = rawPackValidate({
     brand: {} as BrandJson,
     post,
@@ -739,17 +739,19 @@ const packValidate: BlogValidator = ({ brand: _brand, post }) => {
   return results.filter((r) => r.file !== "brand");
 };
 
+export const defaultBlogRender: BlogRenderer = ({ brand, post }) =>
+  packRender({
+    brand,
+    post,
+    stylesPath: path.join(templatePackDir, "_tokenised.css"),
+    templatePath: path.join(templatePackDir, "template.html"),
+  });
+
 const defaultService = buildCreateService({
   store: new DrizzleBlogCreateStore(),
   ai: new OpenAiBlogCreateClient(),
   validate: packValidate,
-  render: ({ brand, post }) =>
-    packRender({
-      brand,
-      post,
-      stylesPath: path.join(templatePackDir, "_tokenised.css"),
-      templatePath: path.join(templatePackDir, "template.html"),
-    }),
+  render: defaultBlogRender,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 });
 
