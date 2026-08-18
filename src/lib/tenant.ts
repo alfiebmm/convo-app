@@ -7,6 +7,7 @@ import { db } from "./db";
 import { tenants, tenantMembers } from "./db/schema";
 import { eq, and } from "drizzle-orm";
 import { indexTenantSite } from "./knowledge/indexer";
+import { fetchTenantBrand } from "./knowledge/brand-fetcher";
 import { DEFAULT_STARTER_PROMPTS } from "./forum-config/defaults";
 
 export async function getTenantBySlug(slug: string) {
@@ -81,18 +82,89 @@ export async function createTenant(data: {
   if (data.domain) {
     const domain = data.domain;
     after(async () => {
-      try {
-        await indexTenantSite(tenant.id, domain);
-      } catch (error) {
-        console.error(
-          `[Tenant] Failed to index site for tenant ${tenant.id}:`,
-          error
-        );
-      }
+      await Promise.all([
+        indexTenantSite(tenant.id, domain).catch((error) => {
+          console.error(
+            `[Tenant] Failed to index site for tenant ${tenant.id}:`,
+            error
+          );
+        }),
+        populateTenantBrand(tenant.id, tenant.slug, tenant.name, domain).catch(
+          (error) => {
+            console.error(
+              `[Tenant] Failed to fetch brand for tenant ${tenant.id}:`,
+              error,
+            );
+          },
+        ),
+      ]);
     });
   }
 
   return tenant;
+}
+
+async function populateTenantBrand(
+  tenantId: string,
+  slug: string,
+  name: string,
+  domain: string,
+) {
+  const result = await fetchTenantBrand(domain);
+  if (result.errors.length > 0) {
+    console.warn(`[Tenant] Brand fetch warnings for tenant ${tenantId}:`, {
+      errors: result.errors,
+    });
+  }
+
+  const [current] = await db
+    .select({ settings: tenants.settings })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  if (!current) return;
+
+  const existingSettings = isRecord(current.settings)
+    ? current.settings
+    : {};
+  const existingBrandJson = isRecord(existingSettings.brandJson)
+    ? existingSettings.brandJson
+    : {};
+  const brandJson: Record<string, unknown> = {
+    ...existingBrandJson,
+    id: slug,
+    name: result.siteName || name,
+  };
+
+  if (result.logo) {
+    brandJson.logo = {
+      url: result.logo.url,
+      alt: result.logo.alt,
+      height: 30,
+    };
+  }
+
+  if (result.themeColor) {
+    brandJson.colors = {
+      ...(isRecord(existingBrandJson.colors) ? existingBrandJson.colors : {}),
+      primary: result.themeColor,
+    };
+  }
+
+  await db
+    .update(tenants)
+    .set({
+      settings: {
+        ...existingSettings,
+        brandJson,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(tenants.id, tenantId));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export async function checkMembership(tenantId: string, userId: string) {
