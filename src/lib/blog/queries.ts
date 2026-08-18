@@ -14,12 +14,20 @@ export const blogPostStatuses = [
 ] as const;
 
 export type BlogPostStatus = (typeof blogPostStatuses)[number];
+export const hiddenBlogPostStatuses = ["generation_failed"] as const;
+export const defaultBlogPostListStatuses = blogPostStatuses.filter(
+  (status) =>
+    !hiddenBlogPostStatuses.includes(
+      status as (typeof hiddenBlogPostStatuses)[number],
+    ),
+);
 
 export interface BlogPostListFilters {
   status?: BlogPostStatus;
   topic?: string;
   persona?: string;
   page?: number;
+  includeFailed?: boolean;
 }
 
 export interface BlogPostListItem {
@@ -76,6 +84,7 @@ interface BlogPostDetailSupabaseRow extends BlogPostSupabaseRow {
 
 type BlogPostQueryBuilder = {
   eq: (column: string, value: string) => BlogPostQueryBuilder;
+  in: (column: string, values: readonly BlogPostStatus[]) => BlogPostQueryBuilder;
   contains: (
     column: string,
     value: Record<string, string>,
@@ -191,6 +200,10 @@ export async function listBlogPostsForTenant({
     .select("id,title,status,metadata,created_at", { count: "exact" })
     .eq("tenant_id", tenantId);
 
+  if (!filters.includeFailed) {
+    query = query.in("status", defaultBlogPostListStatuses);
+  }
+
   if (filters.status) {
     query = query.eq("status", filters.status);
   }
@@ -219,6 +232,29 @@ export async function listBlogPostsForTenant({
     page,
     pageSize: BLOG_POST_PAGE_SIZE,
   };
+}
+
+export async function countFailedBlogPostsForTenant({
+  supabase,
+  tenantId,
+}: {
+  supabase: BlogPostsSupabaseClient;
+  tenantId: string;
+}): Promise<number> {
+  assertTenantId(tenantId);
+
+  const { error, count } = await supabase
+    .from("blog_posts")
+    .select("id", { count: "exact" })
+    .eq("tenant_id", tenantId)
+    .eq("status", "generation_failed")
+    .range(0, 0);
+
+  if (error) {
+    throw new Error(`Failed to count failed blog posts: ${error.message}`);
+  }
+
+  return count ?? 0;
 }
 
 export async function getBlogPostByIdForTenant({
