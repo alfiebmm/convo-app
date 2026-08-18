@@ -158,7 +158,7 @@ function makeService(responses: BlogPostJson[]) {
             domain: "chemist2u.com.au",
             settings: {
               brandJson,
-              blog: { cta: CTA },
+              blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
             },
           },
           messages: [
@@ -208,6 +208,40 @@ function makeService(responses: BlogPostJson[]) {
   return { service, inserts, prompts };
 }
 
+test("buildSystemPrompt injects keyword, banned terms, and section contract", async () => {
+  const brief = __testing.buildBrief(CONVERSATION_ID, decision(), {
+    tenant: {
+      id: TENANT_ID,
+      name: "Chemist2U",
+      slug: "chemist2u",
+      domain: "chemist2u.com.au",
+      settings: {
+        brandJson: validBrand(),
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    },
+    messages: [],
+  });
+
+  const prompt = __testing.buildSystemPrompt(brief);
+
+  assert.match(
+    prompt,
+    /`post\.sections` array MUST contain between 4 and 10 items \(inclusive\)/
+  );
+  assert.match(prompt, /Fewer than 4 or more than 10 will be REJECTED/);
+  assert.match(prompt, /Aim for 5-7 sections/);
+  assert.match(prompt, /primary keyword "pharmacists" MUST appear/);
+  assert.match(prompt, /`post\.title`/);
+  assert.match(prompt, /At least ONE H2 section heading/);
+  assert.match(prompt, /first 100 words of `post\.intro`/);
+  assert.match(prompt, /`post\.seo\.metaDescription`/);
+  assert.match(prompt, /BANNED TERMS: \[/);
+  assert.match(prompt, /\bjourney\b/);
+  assert.match(prompt, /\brobust\b/);
+  assert.match(prompt, /`heading` string and a `blocks` array/);
+});
+
 test("createArticle renders HTML and persists full post metadata", async () => {
   const { service, inserts } = makeService([validPost()]);
 
@@ -249,17 +283,33 @@ test("banned words retry once and then persist a clean draft", async () => {
   assert.match(prompts[1], /Banned term found: delve/);
 });
 
-test("banned words fail after the retry and mark generation_failed", async () => {
+test("banned words retry repeated same-class violations more than once", async () => {
   const bad = validPost({
     intro:
       "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
   });
-  const { service, inserts } = makeService([bad, bad]);
+  const { service, inserts, prompts } = makeService([bad, bad, validPost()]);
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 3);
+  assert.match(prompts[1], /Banned term found: delve/);
+  assert.match(prompts[2], /Banned term found: delve/);
+});
+
+test("banned words fail after three same-class retries and mark generation_failed", async () => {
+  const bad = validPost({
+    intro:
+      "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
+  });
+  const { service, inserts, prompts } = makeService([bad, bad, bad, bad]);
 
   await service.createArticle(CONVERSATION_ID, decision());
 
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0].status, "generation_failed");
+  assert.equal(prompts.length, 4);
   assert.match(
     String(
       (
@@ -268,6 +318,36 @@ test("banned words fail after the retry and mark generation_failed", async () =>
     ),
     /Banned term found/
   );
+});
+
+test("retry loop gives up after six total generation attempts", async () => {
+  const schemaBad = validPost({ toc: ["Only one item"] });
+  const bannedBad = validPost({
+    intro:
+      "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
+  });
+  const keywordBad = validPost({
+    title: "Ongoing medicine support in Australia",
+  });
+  const englishBad = validPost({
+    intro:
+      "Pharmacists help with ongoing care by answering medicine questions, checking color labels, and explaining side effects.",
+  });
+  const { service, inserts, prompts } = makeService([
+    schemaBad,
+    bannedBad,
+    keywordBad,
+    englishBad,
+    schemaBad,
+    bannedBad,
+    validPost(),
+  ]);
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].status, "generation_failed");
+  assert.equal(prompts.length, 6);
 });
 
 test("em dashes are stripped from rendered content and metadata", async () => {
