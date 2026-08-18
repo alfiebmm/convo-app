@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   BLOG_POST_STATUS_DISPLAY,
   BlogPostStatusPill,
+  FailedGenerationFilterChip,
 } from "../content-list";
 import type { BlogPostStatus } from "@/lib/blog/queries";
 
@@ -63,6 +64,31 @@ test("content status pill renders the required colour mapping", () => {
     assertIncludes(markup, expectation.className, `${status} markup class`);
     assertIncludes(markup, expectation.label, `${status} label`);
   }
+});
+
+test("failed generation filter chip renders count and inactive label", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(FailedGenerationFilterChip, {
+      includeFailed: false,
+      failedCount: 34,
+    }),
+  );
+
+  assertIncludes(markup, "Include failed generations", "inactive label");
+  assertIncludes(markup, "Generation failed", "status pill");
+  assertIncludes(markup, "34 archived", "archived count");
+});
+
+test("failed generation filter chip renders active label", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(FailedGenerationFilterChip, {
+      includeFailed: true,
+      failedCount: 42,
+    }),
+  );
+
+  assertIncludes(markup, "Hiding failed generations", "active label");
+  assertIncludes(markup, "42 archived", "active count");
 });
 
 console.log(`${passed} passed`);

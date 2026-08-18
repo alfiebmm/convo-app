@@ -50,6 +50,11 @@ class FakeBlogPostQuery {
     return this;
   }
 
+  in(...args: unknown[]) {
+    this.calls.push({ method: "in", args });
+    return this;
+  }
+
   contains(...args: unknown[]) {
     this.calls.push({ method: "contains", args });
     return this;
@@ -109,6 +114,44 @@ test("listBlogPostsForTenant filters by status", async () => {
         call.args[1] === "approved",
     ),
     "status eq filter was not applied",
+  );
+});
+
+test("listBlogPostsForTenant excludes failed generations by default", async () => {
+  const { client, query } = makeClient();
+  await listBlogPostsForTenant({
+    supabase: client,
+    tenantId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  const statusFilter = query.calls.find(
+    (call) => call.method === "in" && call.args[0] === "status",
+  );
+
+  if (!statusFilter) {
+    throw new Error("default status IN filter was not applied");
+  }
+
+  assert(
+    Array.isArray(statusFilter.args[1]) &&
+      !statusFilter.args[1].includes("generation_failed"),
+    "default status IN filter should exclude generation_failed",
+  );
+});
+
+test("listBlogPostsForTenant includes failed generations when requested", async () => {
+  const { client, query } = makeClient();
+  await listBlogPostsForTenant({
+    supabase: client,
+    tenantId: "22222222-2222-4222-8222-222222222222",
+    filters: { includeFailed: true },
+  });
+
+  assert(
+    !query.calls.some(
+      (call) => call.method === "in" && call.args[0] === "status",
+    ),
+    "status IN filter should be skipped when failed generations are included",
   );
 });
 
