@@ -66,6 +66,44 @@ function decision(): DecisionResult {
   };
 }
 
+function proseWords(count: number, prefix: string): string {
+  const words = [
+    "pharmacists",
+    "explain",
+    "medicine",
+    "timing",
+    "safety",
+    "questions",
+    "patient",
+    "notes",
+    "review",
+    "routine",
+    "dose",
+    "side",
+    "effects",
+    "clear",
+    "records",
+    "family",
+    "support",
+    "practical",
+    "advice",
+    "follow",
+    "up",
+  ];
+
+  return Array.from(
+    { length: count },
+    (_value, index) => `${prefix}${index}-${words[index % words.length]}`
+  ).join(" ");
+}
+
+function richParagraphs(sectionIndex: number) {
+  return [0, 1, 2].map((paragraphIndex) => ({
+    type: "p" as const,
+    text: proseWords(45, `s${sectionIndex}p${paragraphIndex}`),
+  }));
+}
+
 function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   const post = structuredClone(postFixture) as BlogPostJson;
   const postRecord = post as unknown as Record<string, unknown>;
@@ -91,6 +129,10 @@ function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   post.title = "How pharmacists support ongoing care";
   post.intro =
     "Pharmacists help with ongoing care by answering medicine questions, checking interactions, explaining side effects, and helping people understand when a GP should be involved.";
+  post.sections = post.sections.map((section, index) => ({
+    ...section,
+    blocks: richParagraphs(index),
+  }));
   post.sections[0].heading = "How pharmacists support ongoing care";
   post.sections[post.sections.length - 1].blocks.push({
     type: "cta",
