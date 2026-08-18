@@ -66,6 +66,44 @@ function decision(): DecisionResult {
   };
 }
 
+function proseWords(count: number, prefix: string): string {
+  const words = [
+    "pharmacists",
+    "explain",
+    "medicine",
+    "timing",
+    "safety",
+    "questions",
+    "patient",
+    "notes",
+    "review",
+    "routine",
+    "dose",
+    "side",
+    "effects",
+    "clear",
+    "records",
+    "family",
+    "support",
+    "practical",
+    "advice",
+    "follow",
+    "up",
+  ];
+
+  return Array.from(
+    { length: count },
+    (_value, index) => `${prefix}${index}-${words[index % words.length]}`
+  ).join(" ");
+}
+
+function richParagraphs(sectionIndex: number) {
+  return [0, 1, 2].map((paragraphIndex) => ({
+    type: "p" as const,
+    text: proseWords(45, `s${sectionIndex}p${paragraphIndex}`),
+  }));
+}
+
 function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   const post = structuredClone(postFixture) as BlogPostJson;
   const postRecord = post as unknown as Record<string, unknown>;
@@ -90,6 +128,10 @@ function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   post.title = "How pharmacists support ongoing care";
   post.intro =
     "Pharmacists help with ongoing care by answering medicine questions, checking interactions, explaining side effects, and helping people understand when a GP should be involved.";
+  post.sections = post.sections.map((section, index) => ({
+    ...section,
+    blocks: richParagraphs(index),
+  }));
   post.sections[0].heading = "How pharmacists support ongoing care";
   post.sections[post.sections.length - 1].blocks.push({
     type: "cta",
@@ -243,6 +285,10 @@ test("buildSystemPrompt injects keyword, banned terms, and section contract", as
   );
   assert.match(prompt, /Fewer than 4 or more than 10 will be REJECTED/);
   assert.match(prompt, /Aim for 5-7 sections/);
+  assert.match(prompt, /Each section MUST contain at least 3 paragraph blocks/);
+  assert.match(prompt, /Each paragraph block should be 80-150 words/);
+  assert.match(prompt, /Target total article body 1,200-1,800 words/);
+  assert.match(prompt, /Support long-form content with concrete examples/);
   assert.match(prompt, /primary keyword "pharmacists" MUST appear/);
   assert.match(prompt, /`post\.title`/);
   assert.match(prompt, /At least ONE H2 section heading/);
@@ -394,6 +440,25 @@ test("primary keyword placement failure retries once", async () => {
   assert.equal(inserts[0].status, "draft");
   assert.equal(prompts.length, 2);
   assert.match(prompts[1], /missing from title/);
+});
+
+test("word-count quality gate retries and logs rejection", async () => {
+  const bad = validPost({
+    sections: validPost().sections.map((section) => ({
+      ...section,
+      blocks: [{ type: "p", text: "Too short for a useful article." }],
+    })),
+  });
+  const { service, inserts, prompts, seoValidationLogs } = makeService([bad, validPost()]);
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /Word-count quality gate failed/);
+  assert.match(prompts[1], /Rewrite the full post\.json/);
+  assert.equal(seoValidationLogs[0].metadata.phase, "quality_gate_word_count");
+  assert.equal(seoValidationLogs[1].metadata.phase, "seo_validation");
 });
 
 test("CTA blocks are overridden from tenant config", async () => {

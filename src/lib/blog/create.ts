@@ -28,9 +28,11 @@ import {
   tenantBannedTerms,
   validatePrimaryKeywordPlacement,
   validatePostStructure,
+  validateWordCountGates,
   type BlogCtaConfig,
   type BlogPostJson,
   type WritingRuleViolation,
+  type WordCountGateViolation,
 } from "./writing-rules";
 
 export type BrandJson = Record<string, unknown>;
@@ -135,7 +137,12 @@ type BlogCreateDeps = {
   sleep: (ms: number) => Promise<void>;
 };
 
-export type RetryClass = "schema" | "banned_term" | "australian_english" | "primary_keyword";
+export type RetryClass =
+  | "schema"
+  | "banned_term"
+  | "australian_english"
+  | "primary_keyword"
+  | "word_count";
 
 const MAX_RATE_LIMIT_ATTEMPTS = 2;
 const RATE_LIMIT_RETRY_MS = 5_000;
@@ -162,6 +169,10 @@ Article requirements:
 - Include a one-sentence dek, a direct intro paragraph, exactly 3 toc items, at least 3 FAQs, and hero.url plus hero.alt.
 - Your \`post.sections\` array MUST contain between 4 and 10 items (inclusive). Fewer than 4 or more than 10 will be REJECTED. Aim for 5-7 sections for best structure.
 - Every item in \`post.sections\` MUST be an object with a non-empty \`heading\` string and a \`blocks\` array. Every \`section.blocks\` array MUST contain valid block objects matching the schema.
+- Each section MUST contain at least 3 paragraph blocks (block.type = "p").
+- Each paragraph block should be 80-150 words of concrete, specific prose. Short blocks (under 40 words) or vague filler ("this is important", "consider your options") will be REJECTED.
+- Target total article body 1,200-1,800 words across all sections. Aim high, richer articles rank better.
+- Support long-form content with concrete examples, data points, and specific-to-industry detail. If the source conversation lacks depth, expand using common non-sensitive industry knowledge (per the "no invented facts" rule elsewhere, knowledge OK, fabricated specifics NOT OK).
 - The primary keyword "${primaryKeyword}" MUST appear in ALL of these places or the output will be REJECTED:
   - \`post.title\` (as-is or in natural phrasing)
   - At least ONE H2 section heading
@@ -431,6 +442,9 @@ export function validateCandidate(
   const structure = validatePostStructure(candidate);
   if (structure) throw structure;
 
+  const wordCount = validateWordCountGates(candidate);
+  if (wordCount) throw wordCount;
+
   const stripped = stripEmDashes(candidate);
   for (const replacement of stripped.replacements) {
     console.info("[blog] stripped em dash from generated article", {
@@ -538,6 +552,41 @@ export async function logSeoValidation(
     });
   } catch (error) {
     console.warn("[blog] seo validation logging failed", {
+      conversationId: params.loaded.conversation.id,
+      tenantId: params.loaded.tenant.id,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function logQualityGateViolation(
+  store: BlogCreateStore,
+  params: {
+    loaded: { conversation: ConversationRecord; tenant: TenantRecord };
+    decision: DecisionResult;
+    violation: WordCountGateViolation;
+    targetBlogPostId?: string;
+  }
+): Promise<void> {
+  if (!store.insertSeoValidationLog) return;
+
+  try {
+    await store.insertSeoValidationLog({
+      tenantId: params.loaded.tenant.id,
+      conversationId: params.loaded.conversation.id,
+      action: params.decision.action === "update" ? "update" : "create",
+      reason: params.violation.message,
+      primaryKeyword: params.decision.primary_keyword,
+      intent: params.decision.intent,
+      targetBlogPostId: params.targetBlogPostId,
+      metadata: {
+        phase: "quality_gate_word_count",
+        code: params.violation.code,
+        stats: params.violation.stats,
+      },
+    });
+  } catch (error) {
+    console.warn("[blog] word-count quality gate logging failed", {
       conversationId: params.loaded.conversation.id,
       tenantId: params.loaded.tenant.id,
       reason: error instanceof Error ? error.message : String(error),
@@ -669,6 +718,13 @@ function buildCreateService(deps: BlogCreateDeps) {
                 } satisfies WritingRuleViolation);
 
           failureReason = violation.message;
+          if (violation.code === "word_count") {
+            await logQualityGateViolation(deps.store, {
+              loaded,
+              decision,
+              violation: violation as WordCountGateViolation,
+            });
+          }
           const retryClass = violation.code;
           const retryCount = (retryCounts.get(retryClass) ?? 0) + 1;
           retryCounts.set(retryClass, retryCount);

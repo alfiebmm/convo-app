@@ -62,10 +62,41 @@ export type WritingRuleViolation = {
     | "banned_term"
     | "australian_english"
     | "primary_keyword"
+    | "word_count"
     | "schema";
   message: string;
   sentence?: string;
 };
+
+export type WordCountGateOptions = {
+  minSectionWordCount?: number;
+  minTotalWordCount?: number;
+  minParagraphsPerSection?: number;
+};
+
+export type WordCountGateStats = {
+  totalWordCount: number;
+  sections: Array<{
+    index: number;
+    heading: string;
+    paragraphCount: number;
+    wordCount: number;
+  }>;
+  minSectionWordCount: number;
+  minTotalWordCount: number;
+  minParagraphsPerSection: number;
+};
+
+export type WordCountGateViolation = WritingRuleViolation & {
+  code: "word_count";
+  stats: WordCountGateStats;
+};
+
+export const WORD_COUNT_GATE_DEFAULTS = {
+  minSectionWordCount: 100,
+  minTotalWordCount: 800,
+  minParagraphsPerSection: 3,
+} as const;
 
 export type EmDashStripResult<T> = {
   value: T;
@@ -141,6 +172,10 @@ function sentenceContaining(text: string, needle: string): string {
 function containsTerm(text: string, term: string): boolean {
   const escaped = escapeRegExp(term);
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
+}
+
+function countWords(input: string): number {
+  return input.trim().split(/\s+/).filter(Boolean).length;
 }
 
 export function tenantBannedTerms(settings: unknown): string[] {
@@ -285,6 +320,85 @@ export function validatePrimaryKeywordPlacement(
     code: "primary_keyword",
     message: `Primary keyword "${primaryKeyword}" missing from ${failed.label}.`,
   };
+}
+
+export function wordCountGateStats(
+  post: BlogPostJson,
+  options: WordCountGateOptions = {}
+): WordCountGateStats {
+  const minSectionWordCount =
+    options.minSectionWordCount ?? WORD_COUNT_GATE_DEFAULTS.minSectionWordCount;
+  const minTotalWordCount =
+    options.minTotalWordCount ?? WORD_COUNT_GATE_DEFAULTS.minTotalWordCount;
+  const minParagraphsPerSection =
+    options.minParagraphsPerSection ??
+    WORD_COUNT_GATE_DEFAULTS.minParagraphsPerSection;
+
+  const sections = post.sections.map((section, index) => {
+    const paragraphBlocks = section.blocks.filter((block) => block.type === "p");
+    const wordCount = paragraphBlocks.reduce(
+      (total, block) => total + countWords(block.text),
+      0
+    );
+
+    return {
+      index,
+      heading: section.heading,
+      paragraphCount: paragraphBlocks.length,
+      wordCount,
+    };
+  });
+
+  return {
+    totalWordCount: sections.reduce((total, section) => total + section.wordCount, 0),
+    sections,
+    minSectionWordCount,
+    minTotalWordCount,
+    minParagraphsPerSection,
+  };
+}
+
+export function validateWordCountGates(
+  post: BlogPostJson,
+  options: WordCountGateOptions = {}
+): WordCountGateViolation | null {
+  const stats = wordCountGateStats(post, options);
+
+  const paragraphFailure = stats.sections.find(
+    (section) => section.paragraphCount < stats.minParagraphsPerSection
+  );
+  if (paragraphFailure) {
+    return {
+      code: "word_count",
+      message: `Word-count quality gate failed: section ${
+        paragraphFailure.index + 1
+      } "${paragraphFailure.heading}" has ${paragraphFailure.paragraphCount} paragraph block(s), below the required ${stats.minParagraphsPerSection}.`,
+      stats,
+    };
+  }
+
+  const sectionFailure = stats.sections.find(
+    (section) => section.wordCount < stats.minSectionWordCount
+  );
+  if (sectionFailure) {
+    return {
+      code: "word_count",
+      message: `Word-count quality gate failed: section ${
+        sectionFailure.index + 1
+      } "${sectionFailure.heading}" has ${sectionFailure.wordCount} paragraph words, below the required ${stats.minSectionWordCount}.`,
+      stats,
+    };
+  }
+
+  if (stats.totalWordCount < stats.minTotalWordCount) {
+    return {
+      code: "word_count",
+      message: `Word-count quality gate failed: article body has ${stats.totalWordCount} paragraph words, below the required ${stats.minTotalWordCount}.`,
+      stats,
+    };
+  }
+
+  return null;
 }
 
 export function validatePostStructure(post: BlogPostJson): WritingRuleViolation | null {

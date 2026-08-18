@@ -8,6 +8,7 @@ import {
   DrizzleBlogCreateStore,
   generateWithRateLimitRetry,
   isRecord,
+  logQualityGateViolation,
   logSeoValidation,
   OpenAiBlogCreateClient,
   packValidate,
@@ -39,6 +40,7 @@ import {
   type BlogCtaConfig,
   type BlogPostJson,
   type WritingRuleViolation,
+  type WordCountGateViolation,
 } from "./writing-rules";
 
 type TargetBlogPost = {
@@ -339,6 +341,14 @@ function buildUpdateService(deps: BlogUpdateDeps) {
                 } satisfies WritingRuleViolation);
 
           failureReason = violation.message;
+          if (violation.code === "word_count") {
+            await logQualityGateViolation(deps.store, {
+              loaded,
+              decision,
+              violation: violation as WordCountGateViolation,
+              targetBlogPostId: target.id,
+            });
+          }
           const retryClass = violation.code;
           const retryCount = (retryCounts.get(retryClass) ?? 0) + 1;
           retryCounts.set(retryClass, retryCount);
