@@ -52,6 +52,24 @@ test("createTenant writes settings.forumConfig.starter_prompts on insert", () =>
   );
 });
 
+test("createTenant schedules tenant brand fetch without changing blog fallback", () => {
+  assert.match(
+    tenantSource,
+    /import\s+\{\s*fetchTenantBrand\s*\}\s+from\s+["']\.\/knowledge\/brand-fetcher["']/,
+    "tenant.ts must import fetchTenantBrand",
+  );
+  assert.match(
+    tenantSource,
+    /populateTenantBrand\(tenant\.id,\s*tenant\.slug,\s*tenant\.name,\s*domain\)/,
+    "createTenant must schedule brand population after tenant creation",
+  );
+  assert.match(
+    tenantSource,
+    /brandJson\.logo\s*=\s*\{[\s\S]*?url:\s*result\.logo\.url[\s\S]*?height:\s*30/,
+    "brand population must write brandJson.logo.url with article-header height",
+  );
+});
+
 test("DEFAULT_STARTER_PROMPTS is stable and non-empty (sanity)", () => {
   assert.ok(
     DEFAULT_STARTER_PROMPTS.length > 0,
