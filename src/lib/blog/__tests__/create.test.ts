@@ -50,6 +50,12 @@ type InsertedPost = {
   topic: string | null;
 };
 
+type SeoValidationLog = {
+  action: "create" | "update";
+  reason: string;
+  metadata: Record<string, unknown>;
+};
+
 function decision(): DecisionResult {
   return {
     action: "create",
@@ -66,8 +72,9 @@ function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
 
   post.meta.reviewer = null as unknown as string | undefined;
   post.seo = {
+    metaTitle: "How pharmacists support ongoing care across Australia",
     metaDescription:
-      "Learn how pharmacists support ongoing care, medicine reviews, side effect checks and practical health questions in Australia.",
+      "Learn how pharmacists support ongoing care, medicine reviews, side effect checks and practical health questions, with clear advice on when to contact a GP.",
     canonicalUrl: null as unknown as string,
     ogImage: null as unknown as string,
     authoredAt: null as unknown as string,
@@ -141,6 +148,7 @@ function validBrand(): Record<string, unknown> {
 
 function makeService(responses: BlogPostJson[]) {
   const inserts: InsertedPost[] = [];
+  const seoValidationLogs: SeoValidationLog[] = [];
   const prompts: string[] = [];
   const existingSlugs = new Set<string>();
   const brandJson = validBrand();
@@ -185,6 +193,10 @@ function makeService(responses: BlogPostJson[]) {
         existingSlugs.add(values.slug);
         return { id: `post-${inserts.length}` };
       },
+      async insertSeoValidationLog(input) {
+        seoValidationLogs.push(input);
+        return { id: `seo-log-${seoValidationLogs.length}` };
+      },
     },
     ai: {
       async generatePost(params) {
@@ -205,7 +217,7 @@ function makeService(responses: BlogPostJson[]) {
     sleep: async () => {},
   });
 
-  return { service, inserts, prompts };
+  return { service, inserts, prompts, seoValidationLogs };
 }
 
 test("buildSystemPrompt injects keyword, banned terms, and section contract", async () => {
@@ -235,7 +247,10 @@ test("buildSystemPrompt injects keyword, banned terms, and section contract", as
   assert.match(prompt, /`post\.title`/);
   assert.match(prompt, /At least ONE H2 section heading/);
   assert.match(prompt, /first 100 words of `post\.intro`/);
+  assert.match(prompt, /`post\.seo\.metaTitle`/);
   assert.match(prompt, /`post\.seo\.metaDescription`/);
+  assert.match(prompt, /50-60 character search title/);
+  assert.match(prompt, /140-160 character search description/);
   assert.match(prompt, /BANNED TERMS: \[/);
   assert.match(prompt, /\bjourney\b/);
   assert.match(prompt, /\brobust\b/);
@@ -243,7 +258,7 @@ test("buildSystemPrompt injects keyword, banned terms, and section contract", as
 });
 
 test("createArticle renders HTML and persists full post metadata", async () => {
-  const { service, inserts } = makeService([validPost()]);
+  const { service, inserts, seoValidationLogs } = makeService([validPost()]);
 
   const id = await service.createArticle(CONVERSATION_ID, decision());
 
@@ -251,11 +266,19 @@ test("createArticle renders HTML and persists full post metadata", async () => {
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0].status, "draft");
   assert.equal(inserts[0].title, "How pharmacists support ongoing care");
+  assert.equal(inserts[0].slug, "how-pharmacists-support-ongoing-care");
   assert.match(inserts[0].content, /<html/);
+  assert.match(
+    inserts[0].content,
+    /<title>How pharmacists support ongoing care across Australia/
+  );
   assert.match(inserts[0].content, /<meta name="description"/);
   assert.equal((inserts[0].metadata as BlogPostJson).title, inserts[0].title);
   assert.equal(inserts[0].persona, KEYWORD);
   assert.equal(inserts[0].topic, "educational");
+  assert.equal(seoValidationLogs.length, 1);
+  assert.equal(seoValidationLogs[0].metadata.phase, "seo_validation");
+  assert.equal(seoValidationLogs[0].metadata.ok, true);
 });
 
 test("schema validation retries once with schema errors", async () => {

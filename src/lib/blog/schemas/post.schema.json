@@ -67,6 +67,13 @@
       ],
       "description": "Optional. Overrides for SEO tags and JSON-LD. Sensible defaults are derived from other fields if omitted.",
       "properties": {
+        "metaTitle": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "SEO title, ideally 50-60 characters. Defaults to post.title."
+        },
         "metaDescription": {
           "type": [
             "string",
@@ -122,6 +129,7 @@
       },
       "additionalProperties": false,
       "required": [
+        "metaTitle",
         "metaDescription",
         "canonicalUrl",
         "ogImage",

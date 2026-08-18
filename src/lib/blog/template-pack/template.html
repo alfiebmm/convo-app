@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>{{post.title}} — {{brand.name}}</title>
+<title>{{default post.seo.metaTitle post.title}} — {{brand.name}}</title>
 <meta name="description" content="{{default post.seo.metaDescription post.dek}}" />
 {{#if post.seo.canonicalUrl}}<link rel="canonical" href="{{post.seo.canonicalUrl}}" />{{/if}}
 {{#if post.seo.keywords}}<meta name="keywords" content="{{join post.seo.keywords ', '}}" />{{/if}}
 
 <!-- Open Graph -->
 <meta property="og:type" content="article" />
-<meta property="og:title" content="{{post.title}}" />
+<meta property="og:title" content="{{default post.seo.metaTitle post.title}}" />
 <meta property="og:description" content="{{default post.seo.metaDescription post.dek}}" />
 <meta property="og:image" content="{{default post.seo.ogImage post.hero.url}}" />
 {{#if post.seo.canonicalUrl}}<meta property="og:url" content="{{post.seo.canonicalUrl}}" />{{/if}}
@@ -18,7 +18,7 @@
 
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="{{post.title}}" />
+<meta name="twitter:title" content="{{default post.seo.metaTitle post.title}}" />
 <meta name="twitter:description" content="{{default post.seo.metaDescription post.dek}}" />
 <meta name="twitter:image" content="{{default post.seo.ogImage post.hero.url}}" />
 

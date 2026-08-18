@@ -9,6 +9,7 @@ export type BlogPostJson = {
     reviewer?: string;
   };
   seo?: {
+    metaTitle?: string;
     metaDescription?: string;
     canonicalUrl?: string;
     ogImage?: string;

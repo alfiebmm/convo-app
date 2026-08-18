@@ -48,6 +48,13 @@ type InsertedPost = {
   topic: string | null;
 };
 
+type SeoValidationLog = {
+  action: "create" | "update";
+  reason: string;
+  targetBlogPostId?: string;
+  metadata: Record<string, unknown>;
+};
+
 function decision(): DecisionResult {
   return {
     action: "update",
@@ -65,8 +72,9 @@ function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
 
   post.meta.reviewer = null as unknown as string | undefined;
   post.seo = {
+    metaTitle: "How pharmacists support ongoing care across Australia",
     metaDescription:
-      "Learn how pharmacists support ongoing care, medicine reviews, side effect checks and practical health questions in Australia.",
+      "Learn how pharmacists support ongoing care, medicine reviews, side effect checks and practical health questions, with clear advice on when to contact a GP.",
     canonicalUrl: null as unknown as string,
     ogImage: null as unknown as string,
     authoredAt: null as unknown as string,
@@ -130,6 +138,7 @@ function makeTarget() {
 
 function makeService(responses: BlogPostJson[]) {
   const inserts: InsertedPost[] = [];
+  const seoValidationLogs: SeoValidationLog[] = [];
   const existingSlugs = new Set(["how-pharmacists-support-care"]);
   const target = makeTarget();
   const service = updateTesting.buildUpdateService({
@@ -167,6 +176,10 @@ function makeService(responses: BlogPostJson[]) {
         existingSlugs.add(values.slug);
         return { id: `post-${inserts.length}` };
       },
+      async insertSeoValidationLog(input) {
+        seoValidationLogs.push(input);
+        return { id: `seo-log-${seoValidationLogs.length}` };
+      },
     },
     ai: {
       async generatePost() {
@@ -186,7 +199,7 @@ function makeService(responses: BlogPostJson[]) {
     sleep: async () => {},
     now: () => NOW,
   });
-  return { service, inserts, target };
+  return { service, inserts, target, seoValidationLogs };
 }
 
 test("update decisions route to updateArticle", async () => {
@@ -213,11 +226,15 @@ test("update decisions route to updateArticle", async () => {
 });
 
 test("revision preserves seo.canonicalUrl from target", async () => {
-  const { service, inserts } = makeService([validPost()]);
+  const { service, inserts, seoValidationLogs } = makeService([validPost()]);
   await service.updateArticle(CONVERSATION_ID, decision());
   const metadata = inserts[0].metadata as BlogPostJson & { update_of?: string };
   assert.equal(metadata.seo?.canonicalUrl, CANONICAL_URL);
   assert.equal(metadata.update_of, TARGET_ID);
+  assert.equal(seoValidationLogs.length, 1);
+  assert.equal(seoValidationLogs[0].action, "update");
+  assert.equal(seoValidationLogs[0].targetBlogPostId, TARGET_ID);
+  assert.equal(seoValidationLogs[0].metadata.phase, "seo_validation");
 });
 
 test("revision updates seo.modifiedAt", async () => {

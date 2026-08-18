@@ -15,6 +15,7 @@ function post(): BlogPostJson {
     dek: "A plain guide to safe puppy socialisation timing.",
     meta: { updated: "July 2026", readMinutes: 5 },
     seo: {
+      metaTitle: "Puppy socialisation timeline for confident new owners",
       metaDescription:
         "Use this puppy socialisation timeline to plan safe outings and confidence building.",
     },

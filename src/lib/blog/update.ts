@@ -8,6 +8,7 @@ import {
   DrizzleBlogCreateStore,
   generateWithRateLimitRetry,
   isRecord,
+  logSeoValidation,
   OpenAiBlogCreateClient,
   packValidate,
   parsePostJson,
@@ -17,6 +18,7 @@ import {
   stripRenderedEmDashes,
   transcript,
   uniqueSlug,
+  uniqueGeneratedSlug,
   validateCandidate,
   wordCount,
   type BlogCreateAi,
@@ -31,6 +33,7 @@ import {
 } from "./create";
 import type { DecisionResult } from "./decision";
 import postSchema from "./schemas/post.schema.json";
+import { validateSeoMetadata } from "./seo";
 import {
   tenantBannedTerms,
   type BlogCtaConfig,
@@ -98,6 +101,9 @@ Article update requirements:
 - Refresh stale or weak sections, intro, FAQs, and stats when the source supports it.
 - Keep the same search intent and primary keyword unless the brief explicitly says otherwise.
 - Preserve the tenant CTA config exactly for any type=cta block.
+- Write post.seo.metaTitle as a 50-60 character search title.
+- Write post.seo.metaDescription as a 140-160 character search description.
+- Use a lowercase, hyphenated post.slug with stop words removed, 70 characters or fewer.
 - Do not invent facts that are not supported by the previous version, source conversation, tenant context, or common non-sensitive industry knowledge.
 - Do not fabricate customer names, prices, guarantees, credentials, or policies.
 - Use sentence case headings.
@@ -305,12 +311,19 @@ function buildUpdateService(deps: BlogUpdateDeps) {
         try {
           const candidate = normaliseRevision(parsePostJson(raw), target, deps.now());
           const validated = validateCandidate(candidate, brief, deps.validate);
-          const slug = await uniqueSlug(
+          const slug = await uniqueGeneratedSlug(
             deps.store,
             brief.tenant.id,
-            validated.post.slug
+            validated.post.title
           );
           finalPost = { ...validated.post, slug };
+          await logSeoValidation(deps.store, {
+            loaded,
+            decision,
+            post: finalPost,
+            result: validateSeoMetadata(finalPost),
+            targetBlogPostId: target.id,
+          });
           finalHtml = stripRenderedEmDashes(
             deps.render({ brand: brief.tenant.brandJson, post: finalPost })
           );

@@ -6,13 +6,19 @@ import { and, asc, eq } from "drizzle-orm";
 import type OpenAI from "openai";
 
 import { db } from "@/lib/db";
-import { blogPosts, conversations, messages, tenants } from "@/lib/db/schema";
+import {
+  blogDecisionLogs,
+  blogPosts,
+  conversations,
+  messages,
+  tenants,
+} from "@/lib/db/schema";
 import { getOpenAIClient } from "@/lib/openai";
-import { slugify } from "@/lib/pipeline/dedup";
 
 import type { DecisionResult } from "./decision";
 import brandSchema from "./schemas/brand.schema.json";
 import postSchema from "./schemas/post.schema.json";
+import { generateSlug, validateSeoMetadata, type SeoValidationResult } from "./seo";
 import {
   enforceCtaConfig,
   findAustralianEnglishViolation,
@@ -99,6 +105,16 @@ export type BlogCreateStore = {
     persona: string | null;
     topic: string | null;
   }): Promise<{ id: string }>;
+  insertSeoValidationLog?(input: {
+    tenantId: string;
+    conversationId: string;
+    action: "create" | "update";
+    reason: string;
+    primaryKeyword: string | null;
+    intent: string | null;
+    targetBlogPostId?: string;
+    metadata: Record<string, unknown>;
+  }): Promise<{ id: string }>;
 };
 
 export type BlogCreateAi = {
@@ -150,8 +166,12 @@ Article requirements:
   - \`post.title\` (as-is or in natural phrasing)
   - At least ONE H2 section heading
   - The first 100 words of \`post.intro\`
+  - \`post.seo.metaTitle\`
   - \`post.seo.metaDescription\`
   Check each placement before returning.
+- Write \`post.seo.metaTitle\` as a 50-60 character search title.
+- Write \`post.seo.metaDescription\` as a 140-160 character search description.
+- Use a lowercase, hyphenated \`post.slug\` with stop words removed, 70 characters or fewer.
 - BANNED TERMS: ${bannedTerms}. Using ANY of these terms, even once, will REJECT the entire output. Do not use any word or phrase from this list, not even as part of a compound word.
 - Use the tenant CTA config exactly for any type=cta block.
 - Do not invent facts that are not supported by the source conversation, tenant context, or common non-sensitive industry knowledge.
@@ -436,7 +456,7 @@ export function validateCandidate(
 
   post = {
     ...post,
-    slug: slugify(post.slug || post.title),
+    slug: generateSlug(post.title),
   };
 
   if (!slugIsValid(post.slug)) {
@@ -467,6 +487,64 @@ export async function uniqueSlug(
   return candidate;
 }
 
+export async function uniqueGeneratedSlug(
+  store: BlogCreateStore,
+  tenantId: string,
+  title: string
+): Promise<string> {
+  const existing = new Set<string>();
+  let candidate = generateSlug(title, existing);
+
+  while (await store.slugExists(tenantId, candidate)) {
+    existing.add(candidate);
+    candidate = generateSlug(title, existing);
+  }
+
+  return candidate;
+}
+
+export async function logSeoValidation(
+  store: BlogCreateStore,
+  params: {
+    loaded: { conversation: ConversationRecord; tenant: TenantRecord };
+    decision: DecisionResult;
+    post: BlogPostJson;
+    result: SeoValidationResult;
+    targetBlogPostId?: string;
+  }
+): Promise<void> {
+  if (!store.insertSeoValidationLog) return;
+
+  try {
+    await store.insertSeoValidationLog({
+      tenantId: params.loaded.tenant.id,
+      conversationId: params.loaded.conversation.id,
+      action: params.decision.action === "update" ? "update" : "create",
+      reason: params.result.ok
+        ? "SEO metadata validation passed"
+        : "SEO metadata validation found issues",
+      primaryKeyword: params.decision.primary_keyword,
+      intent: params.decision.intent,
+      targetBlogPostId: params.targetBlogPostId,
+      metadata: {
+        phase: "seo_validation",
+        ok: params.result.ok,
+        issues: params.result.issues,
+        slug: params.post.slug,
+        metaTitleLength: params.post.seo?.metaTitle?.trim().length ?? 0,
+        metaDescriptionLength:
+          params.post.seo?.metaDescription?.trim().length ?? 0,
+      },
+    });
+  } catch (error) {
+    console.warn("[blog] seo validation logging failed", {
+      conversationId: params.loaded.conversation.id,
+      tenantId: params.loaded.tenant.id,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function persistFailure(
   store: BlogCreateStore,
   params: {
@@ -481,7 +559,7 @@ async function persistFailure(
     reason: params.reason,
   });
 
-  const baseSlug = slugify(
+  const baseSlug = generateSlug(
     `generation-failed-${params.loaded.conversation.id.slice(0, 8)}`
   );
   const slug = await uniqueSlug(store, params.loaded.tenant.id, baseSlug);
@@ -563,12 +641,19 @@ function buildCreateService(deps: BlogCreateDeps) {
         try {
           const candidate = parsePostJson(raw);
           const validated = validateCandidate(candidate, brief, deps.validate);
-          const slug = await uniqueSlug(
+          const slug = await uniqueGeneratedSlug(
             deps.store,
             brief.tenant.id,
-            validated.post.slug
+            validated.post.title
           );
           finalPost = { ...validated.post, slug };
+          const seoValidation = validateSeoMetadata(finalPost);
+          await logSeoValidation(deps.store, {
+            loaded,
+            decision,
+            post: finalPost,
+            result: seoValidation,
+          });
           finalHtml = stripRenderedEmDashes(
             deps.render({ brand: brief.tenant.brandJson, post: finalPost })
           );
@@ -735,6 +820,33 @@ export class DrizzleBlogCreateStore implements BlogCreateStore {
       .returning({ id: blogPosts.id });
     return row;
   }
+
+  async insertSeoValidationLog(input: {
+    tenantId: string;
+    conversationId: string;
+    action: "create" | "update";
+    reason: string;
+    primaryKeyword: string | null;
+    intent: string | null;
+    targetBlogPostId?: string;
+    metadata: Record<string, unknown>;
+  }): Promise<{ id: string }> {
+    const [row] = await db
+      .insert(blogDecisionLogs)
+      .values({
+        tenantId: input.tenantId,
+        conversationId: input.conversationId,
+        action: input.action,
+        reason: input.reason,
+        similarPosts: [],
+        primaryKeyword: input.primaryKeyword,
+        intent: input.intent,
+        targetBlogPostId: input.targetBlogPostId,
+        metadata: input.metadata,
+      })
+      .returning({ id: blogDecisionLogs.id });
+    return row;
+  }
 }
 
 const require = createRequire(import.meta.url);
@@ -808,7 +920,7 @@ export async function markUpdatePending(
   const slug = await uniqueSlug(
     store,
     loaded.tenant.id,
-    slugify(`update-pending-${conversationId.slice(0, 8)}`)
+    generateSlug(`update-pending-${conversationId.slice(0, 8)}`)
   );
   const row = await store.insertBlogPost({
     tenantId: loaded.tenant.id,
@@ -836,6 +948,8 @@ export const __testing = {
   buildCreateService,
   buildBrief,
   buildSystemPrompt,
+  logSeoValidation,
   resolveCtaConfig,
   resolveBrandJson,
+  uniqueGeneratedSlug,
 };
