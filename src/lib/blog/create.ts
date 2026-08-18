@@ -123,25 +123,42 @@ type RetryClass = "schema" | "banned_term" | "australian_english" | "primary_key
 
 const MAX_RATE_LIMIT_ATTEMPTS = 2;
 const RATE_LIMIT_RETRY_MS = 5_000;
+const MAX_RETRIES_PER_CLASS = 3;
+const MAX_GENERATION_ATTEMPTS = 6;
 
 const AU_ENGLISH_RULE =
   "Write in Australian English. Use -ise, -our, -re spellings. Words: organisation, optimise, colour, centre, behaviour, favourite, honour, licence (noun), license (verb), programme (noun), analyse, realise.";
 
-const SYSTEM_PROMPT = `You are Convo's senior SEO article writer.
+function formatBannedTerms(terms: string[]): string {
+  return `[${terms.join(", ")}]`;
+}
+
+function buildSystemPrompt(brief: BlogBrief): string {
+  const primaryKeyword = brief.decision.primaryKeyword;
+  const bannedTerms = formatBannedTerms(brief.tenant.writingRules.bannedTerms);
+
+  return `You are Convo's senior SEO article writer.
 
 Return only JSON matching the supplied post schema. Do not include markdown fences.
 
 Article requirements:
 - H1 is post.title.
-- Include a one-sentence dek, a direct intro paragraph, 4 to 10 sections, exactly 3 toc items, at least 3 FAQs, and hero.url plus hero.alt.
-- Populate seo.metaDescription and include the primary keyword in it.
-- Include the primary keyword naturally in post.title, the first 100 words of intro, and at least one section heading.
+- Include a one-sentence dek, a direct intro paragraph, exactly 3 toc items, at least 3 FAQs, and hero.url plus hero.alt.
+- Your \`post.sections\` array MUST contain between 4 and 10 items (inclusive). Fewer than 4 or more than 10 will be REJECTED. Aim for 5-7 sections for best structure.
+- Every item in \`post.sections\` MUST be an object with a non-empty \`heading\` string and a \`blocks\` array. Every \`section.blocks\` array MUST contain valid block objects matching the schema.
+- The primary keyword "${primaryKeyword}" MUST appear in ALL of these places or the output will be REJECTED:
+  - \`post.title\` (as-is or in natural phrasing)
+  - At least ONE H2 section heading
+  - The first 100 words of \`post.intro\`
+  - \`post.seo.metaDescription\`
+  Check each placement before returning.
+- BANNED TERMS: ${bannedTerms}. Using ANY of these terms, even once, will REJECT the entire output. Do not use any word or phrase from this list, not even as part of a compound word.
 - Use the tenant CTA config exactly for any type=cta block.
 - Do not invent facts that are not supported by the source conversation, tenant context, or common non-sensitive industry knowledge.
 - Do not fabricate customer names, prices, guarantees, credentials, or policies.
 - Use sentence case headings.
-- ${AU_ENGLISH_RULE}
-- Avoid all banned terms supplied in the brief.`;
+- ${AU_ENGLISH_RULE}`;
+}
 
 function wordCount(input: string): number {
   return input.trim().split(/\s+/).filter(Boolean).length;
@@ -516,18 +533,22 @@ function buildCreateService(deps: BlogCreateDeps) {
         });
       }
 
-      const usedRetries = new Set<RetryClass>();
+      const retryCounts = new Map<RetryClass, number>();
       const retryInstructions: string[] = [];
       let finalPost: BlogPostJson | null = null;
       let finalHtml = "";
       let failureReason = "Article generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
 
-      while (!finalPost) {
+      for (
+        let generationAttempt = 1;
+        !finalPost && generationAttempt <= MAX_GENERATION_ATTEMPTS;
+        generationAttempt++
+      ) {
         const raw = await generateWithRateLimitRetry(
           deps.ai,
           {
-            systemPrompt: SYSTEM_PROMPT,
+            systemPrompt: buildSystemPrompt(brief),
             userPrompt: buildUserPrompt(brief, retryInstructions),
           },
           deps.sleep
@@ -564,8 +585,23 @@ function buildCreateService(deps: BlogCreateDeps) {
 
           failureReason = violation.message;
           const retryClass = violation.code;
-          if (usedRetries.has(retryClass)) break;
-          usedRetries.add(retryClass);
+          const retryCount = (retryCounts.get(retryClass) ?? 0) + 1;
+          retryCounts.set(retryClass, retryCount);
+          console.info("[blog] article generation retry", {
+            conversationId,
+            retryClass,
+            retryCount,
+            maxRetriesPerClass: MAX_RETRIES_PER_CLASS,
+            generationAttempt,
+            maxGenerationAttempts: MAX_GENERATION_ATTEMPTS,
+            violation: violation.message,
+          });
+          if (
+            retryCount > MAX_RETRIES_PER_CLASS ||
+            generationAttempt >= MAX_GENERATION_ATTEMPTS
+          ) {
+            break;
+          }
           retryInstructions.push(retryInstruction(violation));
         }
       }
@@ -797,6 +833,7 @@ export async function markUpdatePending(
 export const __testing = {
   buildCreateService,
   buildBrief,
+  buildSystemPrompt,
   resolveCtaConfig,
   resolveBrandJson,
 };
