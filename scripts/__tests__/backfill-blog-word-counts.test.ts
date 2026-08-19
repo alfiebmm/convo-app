@@ -26,24 +26,34 @@ test("hasPersistedWordCount recognises backfilled metadata", () => {
   assert.equal(hasPersistedWordCount({}), false);
 });
 
-test("backfillBlogWordCounts dry-run computes legacy rows without writes", async () => {
+test("backfillBlogWordCounts dry-run recomputes rows without writes", async () => {
   const totals = await backfillBlogWordCounts({
     dryRun: true,
     rows: [
       {
         id: "post-1",
         title: "Legacy row",
-        content: "<html><body><p>One two three.</p><p>Four five.</p></body></html>",
+        content:
+          '<html><body><div class="gh-blog-article-body"><div class="gh-blog-article-content"><p>One two three.</p><h2>Section</h2><p>Four five.</p></div></div></body></html>',
         metadata: {},
       },
       {
         id: "post-2",
         title: "Already done",
         content: "<p>Ignored.</p>",
-        metadata: { stats: { wordCount: 1 } },
+        metadata: {
+          stats: { wordCount: 1 },
+          intro: "Recomputed intro.",
+          sections: [
+            {
+              heading: "Section",
+              blocks: [{ type: "p", text: "Recomputed body." }],
+            },
+          ],
+        },
       },
     ],
   });
 
-  assert.deepEqual(totals, { scanned: 2, skipped: 1, backfilled: 1 });
+  assert.deepEqual(totals, { scanned: 2, skipped: 0, backfilled: 2 });
 });

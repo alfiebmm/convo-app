@@ -2,6 +2,7 @@
 
 import {
   BLOG_POST_PAGE_SIZE,
+  computeBlogPostWordCountFallback,
   listBlogPostsForTenant,
   parseBlogPostPage,
   type BlogPostsSupabaseClient,
@@ -228,7 +229,7 @@ test("listBlogPostsForTenant computes word count from rendered content", async (
     {
       ...defaultRows()[0],
       content:
-        "<html><head><title>Ignored title</title></head><body><p>One two three.</p><p>Four five.</p></body></html>",
+        '<html><head><title>Ignored title</title></head><body><div class="gh-blog-article-body"><div class="gh-blog-article-content"><p>One two three.</p><h2>First section</h2><p>Four five.</p></div></div><footer>Ignored footer words</footer></body></html>',
       metadata: {},
     },
   ]);
@@ -239,6 +240,92 @@ test("listBlogPostsForTenant computes word count from rendered content", async (
   });
 
   assertEq(result.rows[0].wordCount, 5, "rendered content word count");
+});
+
+test("computeBlogPostWordCountFallback prefers metadata intro and paragraph blocks", () => {
+  const count = computeBlogPostWordCountFallback(
+    "<html><body><p>Rendered content should not win.</p></body></html>",
+    {
+      intro: "One two three.",
+      dek: "Dek content is ignored.",
+      sections: [
+        {
+          heading: "Section one",
+          blocks: [
+            { type: "p", text: "Four five six seven." },
+            { type: "keyTakeaway", body: "Ignored takeaway copy." },
+            { type: "ul", items: ["Ignored list words"] },
+          ],
+        },
+        {
+          heading: "Section two",
+          blocks: [
+            { type: "p", text: "Eight nine." },
+            { type: "h3", text: "Ignored heading words." },
+          ],
+        },
+      ],
+    },
+  );
+
+  assertEq(count, 9, "metadata intro plus paragraph block word count");
+});
+
+test("computeBlogPostWordCountFallback handles zero-word metadata intro", () => {
+  const count = computeBlogPostWordCountFallback(null, {
+    intro: " ",
+    sections: [
+      {
+        heading: "Section one",
+        blocks: [{ type: "p", text: "One two three." }],
+      },
+    ],
+  });
+
+  assertEq(count, 3, "empty intro should not block metadata path");
+});
+
+test("computeBlogPostWordCountFallback falls back to scoped rendered HTML", () => {
+  const count = computeBlogPostWordCountFallback(
+    `
+      <html>
+        <body>
+          <header><p>Ignored header copy.</p></header>
+          <div class="gh-blog-article-body">
+            <nav class="gh-blog-toc"><p>Ignored table of contents.</p></nav>
+            <div class="gh-blog-article-content">
+              <p>Intro counts here.</p>
+              <aside class="gh-blog-key-takeaway"><p>Ignored takeaway copy.</p></aside>
+              <h2>First section</h2>
+              <p>Body words count.</p>
+              <ul><li>Ignored list copy.</li></ul>
+              <h2>Second section</h2>
+              <p>More body words.</p>
+            </div>
+            <section class="gh-blog-article-faq">
+              <details class="gh-blog-faq-item"><summary>Ignored question?</summary><p>Ignored answer.</p></details>
+            </section>
+          </div>
+          <footer><p>Ignored footer copy.</p></footer>
+        </body>
+      </html>
+    `,
+    { intro: "metadata without sections should fall back" },
+  );
+
+  assertEq(count, 9, "scoped rendered HTML word count");
+});
+
+test("computeBlogPostWordCountFallback falls back for malformed metadata sections", () => {
+  const count = computeBlogPostWordCountFallback(
+    '<div class="gh-blog-article-body"><div class="gh-blog-article-content"><p>Intro copy.</p><h2>Section</h2><p>Body copy here.</p></div></div>',
+    {
+      intro: "Metadata intro ignored.",
+      sections: [{ heading: "Malformed section" }],
+    },
+  );
+
+  assertEq(count, 5, "malformed sections should use HTML fallback");
 });
 
 test("listBlogPostsForTenant filters by topic column", async () => {

@@ -76,6 +76,7 @@ export type WordCountGateOptions = {
 
 export type WordCountGateStats = {
   totalWordCount: number;
+  introWordCount: number;
   sections: Array<{
     index: number;
     heading: string;
@@ -349,8 +350,12 @@ export function wordCountGateStats(
     };
   });
 
+  const introWordCount = countWords(post.intro ?? "");
+
   return {
-    totalWordCount: sections.reduce((total, section) => total + section.wordCount, 0),
+    totalWordCount:
+      introWordCount + sections.reduce((total, section) => total + section.wordCount, 0),
+    introWordCount,
     sections,
     minSectionWordCount,
     minTotalWordCount,
@@ -393,7 +398,7 @@ export function validateWordCountGates(
   if (stats.totalWordCount < stats.minTotalWordCount) {
     return {
       code: "word_count",
-      message: `Word-count quality gate failed: article body has ${stats.totalWordCount} paragraph words, below the required ${stats.minTotalWordCount}.`,
+      message: `Word-count quality gate failed: article body has ${stats.totalWordCount} intro and paragraph words, below the required ${stats.minTotalWordCount}.`,
       stats,
     };
   }

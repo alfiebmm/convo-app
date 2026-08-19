@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   validateWordCountGates,
+  wordCountGateStats,
   type BlogPostJson,
 } from "../writing-rules";
 
@@ -50,16 +51,31 @@ function post(sectionWordCounts: number[][]): BlogPostJson {
 }
 
 test("word-count gates pass at threshold", () => {
-  const violation = validateWordCountGates(
-    post([
+  const candidate = post([
       [67, 67, 66],
       [67, 67, 66],
       [67, 67, 66],
-      [67, 67, 66],
-    ])
-  );
+      [64, 64, 63],
+    ]);
+  const violation = validateWordCountGates(candidate);
 
   assert.equal(violation, null);
+});
+
+test("word-count gate stats include intro words in total count", () => {
+  const candidate = post([
+    [100, 100, 100],
+    [100, 100, 100],
+    [100, 100, 100],
+    [100, 100, 100],
+  ]);
+
+  const violation = validateWordCountGates(candidate);
+  const stats = wordCountGateStats(candidate);
+
+  assert.equal(violation, null);
+  assert.equal(stats.introWordCount, 9);
+  assert.equal(stats.totalWordCount, 1209);
 });
 
 test("word-count gates fail below section minimum", () => {
@@ -83,12 +99,13 @@ test("word-count gates fail below total minimum", () => {
       [67, 67, 66],
       [67, 67, 66],
       [67, 67, 66],
-      [67, 67, 65],
+      [67, 67, 56],
     ])
   );
 
   assert.equal(violation?.code, "word_count");
-  assert.match(violation?.message ?? "", /article body has 799 paragraph words/);
+  assert.equal(violation?.stats.introWordCount, 9);
+  assert.match(violation?.message ?? "", /article body has 799 intro and paragraph words/);
   assert.match(violation?.message ?? "", /below the required 800/);
 });
 

@@ -149,15 +149,106 @@ function parseWordCount(value: unknown) {
   return null;
 }
 
-export function computeBlogPostWordCountFallback(
-  content: string | null | undefined
-): number | null {
-  if (!content) return null;
+function countWords(input: string) {
+  const plain = input
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain ? plain.split(" ").filter(Boolean).length : 0;
+}
+
+function metadataSectionsWordCount(metadata: Record<string, unknown> | null | undefined) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  if (!Array.isArray(metadata.sections) || metadata.sections.length === 0) return null;
+
+  let sectionWordCount = 0;
+  for (const section of metadata.sections) {
+    if (!section || typeof section !== "object" || Array.isArray(section)) return null;
+    const blocks = (section as Record<string, unknown>).blocks;
+    if (!Array.isArray(blocks)) return null;
+
+    for (const block of blocks) {
+      if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+      const record = block as Record<string, unknown>;
+      if (record.type === "p" && typeof record.text === "string") {
+        sectionWordCount += countWords(record.text);
+      }
+    }
+  }
+
+  const introWordCount = typeof metadata.intro === "string" ? countWords(metadata.intro) : 0;
+  const total = introWordCount + sectionWordCount;
+  return total > 0 ? total : null;
+}
+
+function findClassElementContent(html: string, className: string): string | null {
+  const startPattern = new RegExp(
+    `<([a-z][a-z0-9-]*)\\b(?=[^>]*\\bclass=["'][^"']*\\b${className}\\b[^"']*["'])[^>]*>`,
+    "i",
+  );
+  const start = startPattern.exec(html);
+  if (!start || start.index === undefined) return null;
+
+  const body = html.slice(start.index + start[0].length);
+  const endPattern = new RegExp(
+    `(?:<section\\b(?=[^>]*\\bclass=["'][^"']*\\bgh-blog-article-faq\\b)|<section\\b(?=[^>]*\\bclass=["'][^"']*\\bgh-blog-article-related\\b)|<footer\\b|</${start[1]}>|</body>)`,
+    "i",
+  );
+  const end = endPattern.exec(body);
+  return end && end.index !== undefined ? body.slice(0, end.index) : body;
+}
+
+function removeExcludedHtml(html: string) {
+  return html
+    .replace(
+      /<(nav|aside|footer)\b[^>]*>[\s\S]*?<\/\1>/gi,
+      " ",
+    )
+    .replace(
+      /<details\b(?=[^>]*\bclass=["'][^"']*\bgh-blog-faq-item\b)[^>]*>[\s\S]*?<\/details>/gi,
+      " ",
+    )
+    .replace(
+      /<div\b(?=[^>]*\bclass=["'][^"']*\bgh-blog-(?:tldr|toc)\b)[^>]*>[\s\S]*?<\/div>/gi,
+      " ",
+    );
+}
+
+function paragraphWordCountFromHtml(html: string) {
+  const matches = html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi);
+  let total = 0;
+  for (const match of matches) {
+    total += countWords(match[1] ?? "");
+  }
+  return total;
+}
+
+function htmlBodyWordCount(content: string) {
   const bodyMatch = content.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
   const body = bodyMatch ? bodyMatch[1] : content;
-  const plain = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  const count = plain ? plain.split(" ").filter(Boolean).length : 0;
-  return count > 0 ? count : null;
+  const articleBody = findClassElementContent(body, "gh-blog-article-body") ?? body;
+  const articleContent =
+    findClassElementContent(articleBody, "gh-blog-article-content") ?? articleBody;
+  const cleaned = removeExcludedHtml(articleContent);
+  const firstH2 = cleaned.search(/<h2\b/i);
+  const introHtml = firstH2 >= 0 ? cleaned.slice(0, firstH2) : cleaned;
+  const sectionsHtml = firstH2 >= 0 ? cleaned.slice(firstH2) : "";
+  const total = paragraphWordCountFromHtml(introHtml) + paragraphWordCountFromHtml(sectionsHtml);
+  return total > 0 ? total : null;
+}
+
+export function computeBlogPostWordCountFallback(
+  content: string | null | undefined,
+  metadata?: Record<string, unknown> | null,
+): number | null {
+  const metadataWordCount = metadataSectionsWordCount(metadata);
+  if (metadataWordCount !== null) return metadataWordCount;
+  if (!content) return null;
+  return htmlBodyWordCount(content);
 }
 
 function metadataStatsWordCount(metadata: Record<string, unknown>) {
@@ -191,7 +282,7 @@ function mapBlogPostRow(row: BlogPostSupabaseRow): BlogPostListItem {
     title: row.title ?? "Untitled article",
     topic,
     persona,
-    wordCount: metadataWordCount ?? computeBlogPostWordCountFallback(row.content),
+    wordCount: metadataWordCount ?? computeBlogPostWordCountFallback(row.content, metadata),
     status: row.status,
     createdAt: new Date(row.created_at),
   };
