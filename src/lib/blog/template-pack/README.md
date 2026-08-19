@@ -11,12 +11,14 @@ The create and update pipelines reject thin article bodies with these default
 quality gates:
 
 - `minSectionWordCount`: 100 paragraph words per section.
-- `minTotalWordCount`: 800 paragraph words across all sections.
+- `minTotalWordCount`: 800 words across the intro paragraph and section paragraphs.
 - `minParagraphsPerSection`: 3 paragraph blocks per section.
 
-Only `block.type = "p"` content under `post.sections[].blocks[]` counts toward
-these gates. CTA blocks, lists, headings, takeaways, related links, FAQs, intro,
-dek, and SEO metadata are ignored for this body-prose count.
+Word count measures the intro paragraph plus section paragraph blocks
+(`section.blocks[].text` where `type = "p"`). It excludes dek, TOC labels, FAQ
+questions and answers, key-takeaway blocks, related-articles boilerplate, and
+footer prose. This is what appears on the dashboard Content tab and what the
+CON-283 gates enforce.
 
 The prompt targets 1,200-1,800 body words with 80-150 words per paragraph so the
 model has room above the conservative 800-word rejection floor. The lower gate

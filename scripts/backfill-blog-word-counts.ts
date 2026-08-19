@@ -92,7 +92,6 @@ async function fetchRows(pool: pg.Pool, limit?: number): Promise<BlogPostRow[]> 
     `
       SELECT id, title, content, metadata
         FROM blog_posts
-       WHERE metadata #>> '{stats,wordCount}' IS NULL
        ORDER BY created_at ASC, id ASC
       ${limitSql}
     `,
@@ -110,38 +109,10 @@ async function updateRow(
   await pool.query(
     `
       UPDATE blog_posts
-         SET metadata = jsonb_set(
-               jsonb_set(
-                 metadata,
-                 '{word_count}',
-                 to_jsonb($2::integer),
-                 true
-               ),
-               '{stats}',
-               (
-                 CASE
-                   WHEN jsonb_typeof(metadata->'stats') = 'object'
-                     THEN metadata->'stats'
-                   ELSE '{}'::jsonb
-                 END
-               ) || jsonb_build_object(
-                 'wordCount',
-                 $2::integer,
-                 'cards',
-                 CASE
-                   WHEN jsonb_typeof(metadata->'stats') = 'array'
-                     THEN metadata->'stats'
-                   WHEN jsonb_typeof(metadata->'stats'->'cards') = 'array'
-                     THEN metadata->'stats'->'cards'
-                   ELSE 'null'::jsonb
-                 END
-               ),
-               true
-             )
+         SET metadata = $2::jsonb
        WHERE id = $1
-         AND metadata #>> '{stats,wordCount}' IS NULL
     `,
-    [row.id, wordCount],
+    [row.id, JSON.stringify(metadataWithWordCount(row.metadata, wordCount))],
   );
 }
 
@@ -175,12 +146,8 @@ export async function backfillBlogWordCounts({
 
   for (const row of rows) {
     totals.scanned++;
-    if (hasPersistedWordCount(row.metadata)) {
-      totals.skipped++;
-      continue;
-    }
-
-    const wordCount = computeBlogPostWordCountFallback(row.content);
+    const metadata = isRecord(row.metadata) ? row.metadata : null;
+    const wordCount = computeBlogPostWordCountFallback(row.content, metadata);
     if (!wordCount) {
       totals.skipped++;
       console.log(`${row.id}\t${row.title ?? "Untitled article"}\tskipped`);
