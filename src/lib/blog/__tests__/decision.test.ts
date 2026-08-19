@@ -14,7 +14,9 @@ type TestStore = {
     title: string;
     slug: string;
     content: string;
+    metadata?: Record<string, unknown> | null;
     last_modified: Date;
+    word_count?: number | null;
   }>;
   loadConversation: (conversationId: string) => Promise<{
     conversation: { id: string; tenantId: string };
@@ -97,6 +99,23 @@ function assertLogged(store: TestStore, action: DecisionAction) {
   assert.equal((store.logs[0] as { action: DecisionAction }).action, action);
 }
 
+function words(count: number) {
+  return Array.from({ length: count }, (_, index) => `word${index}`).join(" ");
+}
+
+function longConversation() {
+  return [
+    {
+      role: "user",
+      content: words(850),
+    },
+  ];
+}
+
+function longRenderedHtml() {
+  return `<html><body>${"<div>template chrome text</div>".repeat(1500)}<article>${words(174)}</article></body></html>`;
+}
+
 test("decide updates when the closest post is high similarity", async () => {
   const { service, store } = makeService({
     similarPosts: [
@@ -151,7 +170,7 @@ test("decide creates for a fresh medium-similarity post", async () => {
         score: 0.72,
         title: "General puppy guide",
         slug: "general-puppy-guide",
-        content: "Existing long article content ".repeat(40),
+        content: `<main class="gh-blog-article-body"><p>${words(160)}</p></main>`,
         last_modified: new Date("2026-07-01T00:00:00.000Z"),
       },
     ],
@@ -161,6 +180,133 @@ test("decide creates for a fresh medium-similarity post", async () => {
 
   assert.equal(result.action, "create");
   assert.equal(result.similar_posts[0].band, "medium");
+  assert.match(result.reason, /fresh enough/);
+  assertLogged(store, "create");
+});
+
+test("decide updates a medium-similarity post when stored word count is thin despite long rendered HTML", async () => {
+  const { service, store } = makeService({
+    messages: longConversation(),
+    minWordCount: 800,
+    similarPosts: [
+      {
+        blog_post_id: "post-thin-stored-count",
+        score: 0.72,
+        title: "Puppy socialisation draft",
+        slug: "puppy-socialisation-draft",
+        content: longRenderedHtml(),
+        metadata: {},
+        word_count: 174,
+        last_modified: new Date("2026-07-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "update");
+  assert.equal(result.target_blog_post_id, "post-thin-stored-count");
+  assert.equal(result.similar_posts[0].word_count, 174);
+  assert.match(result.reason, /below the word-count threshold/);
+  assertLogged(store, "update");
+});
+
+test("decide updates a medium-similarity post when metadata stats word count is thin", async () => {
+  const { service, store } = makeService({
+    messages: longConversation(),
+    minWordCount: 80,
+    similarPosts: [
+      {
+        blog_post_id: "post-thin-stats",
+        score: 0.72,
+        title: "Puppy socialisation draft",
+        slug: "puppy-socialisation-draft",
+        content: longRenderedHtml(),
+        metadata: {
+          stats: {
+            wordCount: 45,
+          },
+        },
+        word_count: null,
+        last_modified: new Date("2026-07-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "update");
+  assert.equal(result.target_blog_post_id, "post-thin-stats");
+  assert.equal(result.similar_posts[0].word_count, 45);
+  assert.match(result.reason, /below the word-count threshold/);
+  assertLogged(store, "update");
+});
+
+test("decide updates a medium-similarity post when metadata sections are thin", async () => {
+  const { service, store } = makeService({
+    messages: longConversation(),
+    minWordCount: 800,
+    similarPosts: [
+      {
+        blog_post_id: "post-thin-sections",
+        score: 0.72,
+        title: "Puppy socialisation draft",
+        slug: "puppy-socialisation-draft",
+        content: longRenderedHtml(),
+        metadata: {
+          stats: {
+            wordCount: null,
+          },
+          sections: [
+            {
+              heading: "Puppy socialisation",
+              blocks: [
+                {
+                  type: "p",
+                  text: words(174),
+                },
+              ],
+            },
+          ],
+        },
+        word_count: null,
+        last_modified: new Date("2026-07-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "update");
+  assert.equal(result.target_blog_post_id, "post-thin-sections");
+  assert.equal(result.similar_posts[0].word_count, 174);
+  assert.match(result.reason, /below the word-count threshold/);
+  assertLogged(store, "update");
+});
+
+test("decide creates for a fresh medium-similarity post when stored word count is healthy", async () => {
+  const { service, store } = makeService({
+    messages: longConversation(),
+    minWordCount: 800,
+    similarPosts: [
+      {
+        blog_post_id: "post-healthy-count",
+        score: 0.72,
+        title: "Puppy socialisation guide",
+        slug: "puppy-socialisation-guide",
+        content: "Existing long article content ".repeat(40),
+        metadata: {},
+        word_count: 1500,
+        last_modified: new Date("2026-07-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "create");
+  assert.equal(result.target_blog_post_id, undefined);
+  assert.equal(result.similar_posts[0].word_count, 1500);
   assert.match(result.reason, /fresh enough/);
   assertLogged(store, "create");
 });
