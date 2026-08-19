@@ -5,6 +5,7 @@ import { blogPosts } from "@/lib/db/schema";
 
 import {
   defaultBlogRender,
+  buildBlogPostMetadata,
   DrizzleBlogCreateStore,
   generateWithRateLimitRetry,
   isRecord,
@@ -288,6 +289,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
       const retryInstructions: string[] = [];
       let finalPost: BlogPostJson | null = null;
       let finalHtml = "";
+      let finalWordCount: number | null = null;
       let failureReason = "Article update generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
 
@@ -319,6 +321,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
             validated.post.title
           );
           finalPost = { ...validated.post, slug };
+          finalWordCount = validated.wordCount;
           await logSeoValidation(deps.store, {
             loaded,
             decision,
@@ -379,6 +382,9 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           reason: failureReason,
         });
       }
+      if (finalWordCount === null) {
+        throw new Error("Validated article update is missing word count");
+      }
 
       const row = await deps.store.insertBlogPost({
         tenantId: loaded.tenant.id,
@@ -386,15 +392,14 @@ function buildUpdateService(deps: BlogUpdateDeps) {
         title: finalPost.title,
         slug: finalPost.slug,
         content: finalHtml,
-        metadata: {
-          ...finalPost,
+        metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
           update_of: target.id,
           generation: {
             decision,
             updateOf: target.id,
             emDashReplacements: allEmDashReplacements,
           },
-        },
+        }),
         status: "draft",
         persona: decision.primary_keyword,
         topic: decision.intent,

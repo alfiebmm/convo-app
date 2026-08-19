@@ -273,6 +273,7 @@ test("revision preserves seo.canonicalUrl from target", async () => {
   const metadata = inserts[0].metadata as BlogPostJson & { update_of?: string };
   assert.equal(metadata.seo?.canonicalUrl, CANONICAL_URL);
   assert.equal(metadata.update_of, TARGET_ID);
+  assert.equal((inserts[0].metadata.stats as Record<string, unknown>).wordCount, 945);
   assert.equal(seoValidationLogs.length, 1);
   assert.equal(seoValidationLogs[0].action, "update");
   assert.equal(seoValidationLogs[0].targetBlogPostId, TARGET_ID);

@@ -28,6 +28,7 @@ import {
   tenantBannedTerms,
   validatePrimaryKeywordPlacement,
   validatePostStructure,
+  wordCountGateStats,
   validateWordCountGates,
   type BlogCtaConfig,
   type BlogPostJson,
@@ -435,7 +436,11 @@ export function validateCandidate(
   candidate: BlogPostJson,
   brief: BlogBrief,
   validate: BlogValidator
-): { post: BlogPostJson; emDashReplacements: Array<{ before: string; after: string }> } {
+): {
+  post: BlogPostJson;
+  emDashReplacements: Array<{ before: string; after: string }>;
+  wordCount: number;
+} {
   const schemaErrors = validate({ brand: brief.tenant.brandJson, post: candidate });
   if (schemaErrors.length > 0) throw schemaFailure(schemaErrors);
 
@@ -444,6 +449,7 @@ export function validateCandidate(
 
   const wordCount = validateWordCountGates(candidate);
   if (wordCount) throw wordCount;
+  const stats = wordCountGateStats(candidate);
 
   const stripped = stripEmDashes(candidate);
   for (const replacement of stripped.replacements) {
@@ -480,7 +486,28 @@ export function validateCandidate(
     } satisfies WritingRuleViolation;
   }
 
-  return { post, emDashReplacements: stripped.replacements };
+  return {
+    post,
+    emDashReplacements: stripped.replacements,
+    wordCount: stats.totalWordCount,
+  };
+}
+
+export function buildBlogPostMetadata(
+  post: BlogPostJson,
+  wordCount: number,
+  extra: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...post,
+    ...extra,
+    word_count: wordCount,
+    wordCount,
+    stats: {
+      wordCount,
+      cards: post.stats ?? null,
+    },
+  };
 }
 
 export function stripRenderedEmDashes(html: string): string {
@@ -664,6 +691,7 @@ function buildCreateService(deps: BlogCreateDeps) {
       const retryInstructions: string[] = [];
       let finalPost: BlogPostJson | null = null;
       let finalHtml = "";
+      let finalWordCount: number | null = null;
       let failureReason = "Article generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
 
@@ -696,6 +724,7 @@ function buildCreateService(deps: BlogCreateDeps) {
             validated.post.title
           );
           finalPost = { ...validated.post, slug };
+          finalWordCount = validated.wordCount;
           const seoValidation = validateSeoMetadata(finalPost);
           await logSeoValidation(deps.store, {
             loaded,
@@ -754,6 +783,9 @@ function buildCreateService(deps: BlogCreateDeps) {
           reason: failureReason,
         });
       }
+      if (finalWordCount === null) {
+        throw new Error("Validated article is missing word count");
+      }
 
       const row = await deps.store.insertBlogPost({
         tenantId: loaded.tenant.id,
@@ -761,13 +793,12 @@ function buildCreateService(deps: BlogCreateDeps) {
         title: finalPost.title,
         slug: finalPost.slug,
         content: finalHtml,
-        metadata: {
-          ...finalPost,
+        metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
           generation: {
             decision,
             emDashReplacements: allEmDashReplacements,
           },
-        },
+        }),
         status: "draft",
         persona: decision.primary_keyword,
         topic: decision.intent,
