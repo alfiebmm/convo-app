@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/schema";
 import { parseForumConfigPerSlice } from "@/lib/forum-config/validate";
 import { getOpenAIClient } from "@/lib/openai";
+import { computeBlogPostWordCountFallback } from "./queries";
 
 export type DecisionAction = "create" | "update" | "skip";
 export type SimilarityBand = "high" | "medium" | "low";
@@ -21,7 +22,7 @@ export interface SimilarPost {
   title?: string;
   slug?: string;
   last_modified?: Date | null;
-  word_count?: number;
+  word_count?: number | null;
   band?: SimilarityBand;
 }
 
@@ -57,6 +58,7 @@ interface KeywordIntent {
 
 interface SimilarPostCandidate extends SimilarPost {
   content: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface DecisionLogInput {
@@ -115,6 +117,61 @@ Return valid JSON only with:
 
 function wordCount(input: string): number {
   return input.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return Boolean(input && typeof input === "object" && !Array.isArray(input));
+}
+
+function parseStoredWordCount(input: unknown): number | null {
+  if (typeof input === "number" && Number.isFinite(input)) return input;
+  if (typeof input === "string" && /^\d+$/.test(input)) return Number(input);
+  return null;
+}
+
+function metadataWordCount(metadata: Record<string, unknown> | null | undefined) {
+  if (!metadata) return null;
+  const stats = isRecord(metadata.stats) ? metadata.stats : {};
+  return (
+    parseStoredWordCount(stats.wordCount ?? stats.word_count) ??
+    parseStoredWordCount(metadata.wordCount ?? metadata.word_count)
+  );
+}
+
+function paragraphTextFromBlock(block: unknown): string | null {
+  if (typeof block === "string") return block;
+  if (!isRecord(block)) return null;
+  const type = typeof block.type === "string" ? block.type : null;
+  if (type && type !== "p" && type !== "paragraph") return null;
+  const value = block.text ?? block.content;
+  return typeof value === "string" ? value : null;
+}
+
+function metadataSectionsWordCount(
+  metadata: Record<string, unknown> | null | undefined
+): number | null {
+  if (!metadata) return null;
+  let total = typeof metadata.intro === "string" ? wordCount(metadata.intro) : 0;
+
+  const sections = Array.isArray(metadata.sections) ? metadata.sections : [];
+  for (const section of sections) {
+    if (!isRecord(section) || !Array.isArray(section.blocks)) continue;
+    for (const block of section.blocks) {
+      const text = paragraphTextFromBlock(block);
+      if (text) total += wordCount(text);
+    }
+  }
+
+  return total > 0 ? total : null;
+}
+
+function candidateWordCount(post: SimilarPostCandidate): number | null {
+  return (
+    post.word_count ??
+    metadataWordCount(post.metadata) ??
+    metadataSectionsWordCount(post.metadata) ??
+    computeBlogPostWordCountFallback(post.content)
+  );
 }
 
 function transcript(messages: MessageRecord[]): string {
@@ -200,7 +257,7 @@ function tenantExclusionList(settings: unknown): string[] {
 }
 
 function publicSimilarPosts(posts: SimilarPostCandidate[]): SimilarPost[] {
-  return posts.map(({ content: _content, ...post }) => post);
+  return posts.map(({ content: _content, metadata: _metadata, ...post }) => post);
 }
 
 function decideFromSimilarity(
@@ -224,7 +281,7 @@ function decideFromSimilarity(
   }
 
   const stale = daysSince(top.last_modified, config.now) > config.staleAfterDays;
-  const thinExisting = (top.word_count ?? wordCount(top.content)) < config.minWordCount;
+  const thinExisting = (candidateWordCount(top) ?? 0) < config.minWordCount;
 
   if (stale) {
     return {
@@ -317,14 +374,14 @@ function buildDecisionService(deps: DecisionDeps) {
           ...post,
           score: Number(post.score.toFixed(6)),
           band: similarityBand(post.score),
-          word_count: post.word_count ?? wordCount(post.content),
+          word_count: candidateWordCount(post),
         }))
       );
 
       const decision = decideFromSimilarity(
         similarCandidates.map((post) => ({
           ...post,
-          word_count: post.word_count ?? wordCount(post.content),
+          word_count: candidateWordCount(post),
         })),
         config
       );
@@ -452,6 +509,7 @@ class DrizzleDecisionStore implements DecisionStore {
         title: blogPosts.title,
         slug: blogPosts.slug,
         content: blogPosts.content,
+        metadata: blogPosts.metadata,
         last_modified: blogPosts.lastModified,
         score: sql<number>`(1 - (${blogPosts.embedding} <=> ${embeddingVector}::vector))`,
       })
@@ -463,7 +521,8 @@ class DrizzleDecisionStore implements DecisionStore {
     return rows.map((row) => ({
       ...row,
       score: Number(row.score),
-      word_count: wordCount(row.content),
+      metadata: isRecord(row.metadata) ? row.metadata : {},
+      word_count: isRecord(row.metadata) ? metadataWordCount(row.metadata) : null,
     }));
   }
 
