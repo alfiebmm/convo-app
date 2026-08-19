@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { and, asc, eq } from "drizzle-orm";
 import type OpenAI from "openai";
 
+import { APP_CONFIG } from "@/config/app";
 import { db } from "@/lib/db";
 import {
   blogDecisionLogs,
@@ -16,6 +17,7 @@ import {
 import { getOpenAIClient } from "@/lib/openai";
 
 import type { DecisionResult } from "./decision";
+import { isHttpsUrl, pickHeroPlaceholderColour } from "./hero-placeholder";
 import brandSchema from "./schemas/brand.schema.json";
 import postSchema from "./schemas/post.schema.json";
 import { generateSlug, validateSeoMetadata, type SeoValidationResult } from "./seo";
@@ -42,6 +44,7 @@ type BlogBrief = {
     id: string;
     name: string;
     brandJson: BrandJson;
+    heroPlaceholderUrl?: string | null;
     writingRules: { bannedTerms: string[]; enforceAustralianEnglish: boolean };
     ctaConfig: BlogCtaConfig;
   };
@@ -229,6 +232,56 @@ function siteBaseUrl(tenant: TenantRecord): string {
   return `https://${tenant.slug}.convoapp.com.au`;
 }
 
+function readBrandPrimaryColour(brand: BrandJson): string {
+  const colors = isRecord(brand.colors) ? brand.colors : {};
+  return readString(colors.primary) ?? "#71717A";
+}
+
+function heroPlaceholderUrl(brand: BrandJson): string {
+  const colour = pickHeroPlaceholderColour(readBrandPrimaryColour(brand));
+  return new URL(`/hero-placeholders/gradient-${colour}.jpg`, APP_CONFIG.url).toString();
+}
+
+function normalisePostHero<
+  T extends Partial<BlogPostJson> & { hero?: Partial<BlogPostJson["hero"]> },
+>(
+  post: T,
+  brief: BlogBrief
+): T & { hero: BlogPostJson["hero"] } {
+  const hero: Record<string, unknown> = isRecord(post.hero) ? post.hero : {};
+  const heroUrl = readString(hero.url);
+  if (isHttpsUrl(heroUrl)) {
+    return {
+      ...post,
+      hero: {
+        url: heroUrl,
+        alt: readString(hero.alt) ?? post.title ?? brief.tenant.name,
+      },
+    };
+  }
+
+  const configuredHeroUrl = brief.tenant.heroPlaceholderUrl ?? null;
+  const placeholderUrl = isHttpsUrl(configuredHeroUrl)
+    ? configuredHeroUrl
+    : heroPlaceholderUrl(brief.tenant.brandJson);
+
+  console.warn("[blog] article hero fell back to placeholder", {
+    tenantId: brief.tenant.id,
+    conversationId: brief.source.conversationId,
+    placeholderUrl,
+    reason: heroUrl ? "invalid_or_non_https_url" : "missing_url",
+  });
+
+  return {
+    ...post,
+    hero: {
+      ...hero,
+      url: placeholderUrl,
+      alt: readString(hero.alt) ?? post.title ?? brief.tenant.name,
+    },
+  };
+}
+
 function buildDefaultBrand(tenant: TenantRecord, cta: BlogCtaConfig): BrandJson {
   const baseUrl = siteBaseUrl(tenant);
 
@@ -345,6 +398,9 @@ function buildBrief(
       id: loaded.tenant.id,
       name: loaded.tenant.name,
       brandJson: resolveBrandJson(loaded.tenant, ctaConfig),
+      heroPlaceholderUrl: readString(
+        settingPath(loaded.tenant.settings, ["brandJson", "heroPlaceholder", "url"])
+      ),
       writingRules: {
         bannedTerms,
         enforceAustralianEnglish: true,
@@ -689,7 +745,8 @@ function buildCreateService(deps: BlogCreateDeps) {
 
         try {
           const candidate = parsePostJson(raw);
-          const validated = validateCandidate(candidate, brief, deps.validate);
+          const candidateWithHero = normalisePostHero(candidate, brief);
+          const validated = validateCandidate(candidateWithHero, brief, deps.validate);
           const slug = await uniqueGeneratedSlug(
             deps.store,
             brief.tenant.id,
@@ -1004,7 +1061,9 @@ export const __testing = {
   buildCreateService,
   buildBrief,
   buildSystemPrompt,
+  heroPlaceholderUrl,
   logSeoValidation,
+  normalisePostHero,
   resolveCtaConfig,
   resolveBrandJson,
   uniqueGeneratedSlug,

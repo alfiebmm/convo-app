@@ -56,6 +56,11 @@ type SeoValidationLog = {
   metadata: Record<string, unknown>;
 };
 
+type MakeServiceOptions = {
+  brandJson?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+};
+
 function decision(): DecisionResult {
   return {
     action: "create",
@@ -188,12 +193,16 @@ function validBrand(): Record<string, unknown> {
   return brand;
 }
 
-function makeService(responses: BlogPostJson[]) {
+function makeService(responses: BlogPostJson[], options: MakeServiceOptions = {}) {
   const inserts: InsertedPost[] = [];
   const seoValidationLogs: SeoValidationLog[] = [];
   const prompts: string[] = [];
   const existingSlugs = new Set<string>();
-  const brandJson = validBrand();
+  const brandJson = options.brandJson ?? validBrand();
+  const settings = options.settings ?? {
+    brandJson,
+    blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+  };
 
   const service = __testing.buildCreateService({
     store: {
@@ -206,10 +215,7 @@ function makeService(responses: BlogPostJson[]) {
             name: "Chemist2U",
             slug: "chemist2u",
             domain: "chemist2u.com.au",
-            settings: {
-              brandJson,
-              blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
-            },
+            settings,
           },
           messages: [
             {
@@ -248,7 +254,7 @@ function makeService(responses: BlogPostJson[]) {
         return JSON.stringify(next);
       },
     },
-    validate,
+    validate: (params) => validate(params).filter((result) => result.file !== "brand"),
     render: ({ brand, post }) =>
       render({
         brand,
@@ -325,6 +331,69 @@ test("createArticle renders HTML and persists full post metadata", async () => {
   assert.equal(seoValidationLogs.length, 1);
   assert.equal(seoValidationLogs[0].metadata.phase, "seo_validation");
   assert.equal(seoValidationLogs[0].metadata.ok, true);
+});
+
+test("createArticle preserves a valid HTTPS hero URL from the generated post", async () => {
+  const heroUrl = "https://cdn.example.com/generated-hero.jpg";
+  const { service, inserts } = makeService([
+    validPost({ hero: { url: heroUrl, alt: "A pharmacist reviewing medicine notes" } }),
+  ]);
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal((inserts[0].metadata as BlogPostJson).hero.url, heroUrl);
+  assert.match(inserts[0].content, new RegExp(heroUrl));
+});
+
+test("createArticle uses configured hero placeholder when generated hero URL is missing", async () => {
+  const configuredHeroUrl = "https://cdn.example.com/tenant-placeholder.jpg";
+  const brandJson = validBrand();
+  const logo = brandJson.logo as Record<string, unknown>;
+  logo.url = "https://chemist2u.com.au/assets/og-image.jpg";
+
+  const { service, inserts } = makeService(
+    [validPost({ hero: { url: "", alt: "A pharmacy counter" } })],
+    {
+      brandJson,
+      settings: {
+        brandJson: {
+          ...brandJson,
+          heroPlaceholder: { url: configuredHeroUrl },
+        },
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    }
+  );
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  const metadata = inserts[0].metadata as BlogPostJson;
+  assert.equal(metadata.hero.url, configuredHeroUrl);
+  assert.notEqual(metadata.hero.url, logo.url);
+  assert.match(inserts[0].content, new RegExp(configuredHeroUrl));
+});
+
+test("createArticle uses brand-colour gradient placeholder instead of logo fallback", async () => {
+  const brandJson = validBrand();
+  const colors = brandJson.colors as Record<string, unknown>;
+  const logo = brandJson.logo as Record<string, unknown>;
+  colors.primary = "#2e7d32";
+  logo.url = "https://chemist2u.com.au/assets/og-image.jpg";
+
+  const { service, inserts } = makeService([
+    validPost({ hero: { url: "http://example.com/not-https.jpg", alt: "" } }),
+  ], { brandJson });
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  const metadata = inserts[0].metadata as BlogPostJson;
+  assert.equal(
+    metadata.hero.url,
+    "https://convoapp.com.au/hero-placeholders/gradient-green.jpg"
+  );
+  assert.equal(metadata.hero.alt, "How pharmacists support ongoing care");
+  assert.notEqual(metadata.hero.url, logo.url);
+  assert.match(inserts[0].content, /hero-placeholders\/gradient-green\.jpg/);
 });
 
 test("schema validation retries once with schema errors", async () => {

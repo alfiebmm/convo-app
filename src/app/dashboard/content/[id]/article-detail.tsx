@@ -303,7 +303,7 @@ export async function ArticleDetailView({ post }: { post: BlogPostDetail }) {
       </details>
 
       <article
-        className="prose prose-slate max-w-none"
+        className="prose prose-slate max-w-none [&_img]:mx-auto [&_img]:w-auto [&_img]:max-h-[400px] [&_.gh-blog-site-header__logo_img]:max-h-[36px] [&_.gh-blog-article-hero__image_img]:max-h-[280px] [&_.gh-blog-article-hero__image_img]:rounded-lg"
         dangerouslySetInnerHTML={{ __html: body }}
       />
 
