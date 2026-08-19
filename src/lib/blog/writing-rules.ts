@@ -71,6 +71,7 @@ export type WritingRuleViolation = {
 export type WordCountGateOptions = {
   minSectionWordCount?: number;
   minTotalWordCount?: number;
+  maxTotalWordCount?: number;
   minParagraphsPerSection?: number;
 };
 
@@ -85,6 +86,7 @@ export type WordCountGateStats = {
   }>;
   minSectionWordCount: number;
   minTotalWordCount: number;
+  maxTotalWordCount: number;
   minParagraphsPerSection: number;
 };
 
@@ -96,6 +98,7 @@ export type WordCountGateViolation = WritingRuleViolation & {
 export const WORD_COUNT_GATE_DEFAULTS = {
   minSectionWordCount: 100,
   minTotalWordCount: 800,
+  maxTotalWordCount: 1800,
   minParagraphsPerSection: 3,
 } as const;
 
@@ -331,6 +334,8 @@ export function wordCountGateStats(
     options.minSectionWordCount ?? WORD_COUNT_GATE_DEFAULTS.minSectionWordCount;
   const minTotalWordCount =
     options.minTotalWordCount ?? WORD_COUNT_GATE_DEFAULTS.minTotalWordCount;
+  const maxTotalWordCount =
+    options.maxTotalWordCount ?? WORD_COUNT_GATE_DEFAULTS.maxTotalWordCount;
   const minParagraphsPerSection =
     options.minParagraphsPerSection ??
     WORD_COUNT_GATE_DEFAULTS.minParagraphsPerSection;
@@ -359,6 +364,7 @@ export function wordCountGateStats(
     sections,
     minSectionWordCount,
     minTotalWordCount,
+    maxTotalWordCount,
     minParagraphsPerSection,
   };
 }
@@ -399,6 +405,14 @@ export function validateWordCountGates(
     return {
       code: "word_count",
       message: `Word-count quality gate failed: article body has ${stats.totalWordCount} intro and paragraph words, below the required ${stats.minTotalWordCount}.`,
+      stats,
+    };
+  }
+
+  if (stats.totalWordCount > stats.maxTotalWordCount) {
+    return {
+      code: "word_count",
+      message: `Word-count quality gate failed: article body has ${stats.totalWordCount} paragraph + intro words, above the maximum ${stats.maxTotalWordCount}. Target range is 800-1,500.`,
       stats,
     };
   }
