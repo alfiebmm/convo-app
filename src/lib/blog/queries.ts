@@ -68,6 +68,9 @@ interface BlogPostSupabaseRow {
   title: string | null;
   status: BlogPostStatus;
   metadata: Record<string, unknown> | null;
+  content: string | null;
+  persona: string | null;
+  topic: string | null;
   created_at: string;
 }
 
@@ -146,17 +149,49 @@ function parseWordCount(value: unknown) {
   return null;
 }
 
+export function computeBlogPostWordCountFallback(
+  content: string | null | undefined
+): number | null {
+  if (!content) return null;
+  const bodyMatch = content.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+  const body = bodyMatch ? bodyMatch[1] : content;
+  const plain = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const count = plain ? plain.split(" ").filter(Boolean).length : 0;
+  return count > 0 ? count : null;
+}
+
+function metadataStatsWordCount(metadata: Record<string, unknown>) {
+  const stats =
+    metadata.stats && typeof metadata.stats === "object" && !Array.isArray(metadata.stats)
+      ? (metadata.stats as Record<string, unknown>)
+      : {};
+  return parseWordCount(stats.wordCount ?? stats.word_count);
+}
+
 function mapBlogPostRow(row: BlogPostSupabaseRow): BlogPostListItem {
   const metadata = row.metadata ?? {};
-  const topic = typeof metadata.topic === "string" ? metadata.topic : null;
-  const persona = typeof metadata.persona === "string" ? metadata.persona : null;
+  const topic =
+    typeof row.topic === "string" && row.topic.trim()
+      ? row.topic
+      : typeof metadata.topic === "string"
+        ? metadata.topic
+        : null;
+  const persona =
+    typeof row.persona === "string" && row.persona.trim()
+      ? row.persona
+      : typeof metadata.persona === "string"
+        ? metadata.persona
+        : null;
+  const metadataWordCount =
+    metadataStatsWordCount(metadata) ??
+    parseWordCount(metadata.word_count ?? metadata.wordCount);
 
   return {
     id: row.id,
     title: row.title ?? "Untitled article",
     topic,
     persona,
-    wordCount: parseWordCount(metadata.word_count),
+    wordCount: metadataWordCount ?? computeBlogPostWordCountFallback(row.content),
     status: row.status,
     createdAt: new Date(row.created_at),
   };
@@ -197,7 +232,7 @@ export async function listBlogPostsForTenant({
 
   let query = supabase
     .from("blog_posts")
-    .select("id,title,status,metadata,created_at", { count: "exact" })
+    .select("id,title,status,metadata,content,persona,topic,created_at", { count: "exact" })
     .eq("tenant_id", tenantId);
 
   if (!filters.includeFailed) {
@@ -210,12 +245,12 @@ export async function listBlogPostsForTenant({
 
   const topic = cleanText(filters.topic);
   if (topic) {
-    query = query.contains("metadata", { topic });
+    query = query.eq("topic", topic);
   }
 
   const persona = cleanText(filters.persona);
   if (persona) {
-    query = query.contains("metadata", { persona });
+    query = query.eq("persona", persona);
   }
 
   const { data, error, count } = await query

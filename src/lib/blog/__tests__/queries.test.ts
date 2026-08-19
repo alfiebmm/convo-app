@@ -39,6 +39,7 @@ function decodeJwtPayload(jwt: string) {
 
 class FakeBlogPostQuery {
   calls: Array<{ method: string; args: unknown[] }> = [];
+  constructor(private data = defaultRows()) {}
 
   select(...args: unknown[]) {
     this.calls.push({ method: "select", args });
@@ -70,25 +71,43 @@ class FakeBlogPostQuery {
     return {
       count: 1,
       error: null,
-      data: [
-        {
-          id: "11111111-1111-4111-8111-111111111111",
-          title: "Choosing the right puppy class",
-          status: "in_review",
-          metadata: {
-            topic: "Puppy training",
-            persona: "New dog owner",
-            word_count: "875",
-          },
-          created_at: "2026-07-01T00:00:00.000Z",
-        },
-      ],
+      data: this.data,
     };
   }
 }
 
-function makeClient() {
-  const query = new FakeBlogPostQuery();
+type FakeBlogPostRow = {
+  id: string;
+  title: string | null;
+  status: "draft" | "in_review" | "approved" | "published" | "rejected";
+  topic: string | null;
+  persona: string | null;
+  content: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+function defaultRows(): FakeBlogPostRow[] {
+  return [
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      title: "Choosing the right puppy class",
+      status: "in_review",
+      topic: "Puppy training",
+      persona: "New dog owner",
+      content: "<html><body><p>Puppy class guide content.</p></body></html>",
+      metadata: {
+        topic: "Metadata topic",
+        persona: "Metadata persona",
+        word_count: "875",
+      },
+      created_at: "2026-07-01T00:00:00.000Z",
+    },
+  ];
+}
+
+function makeClient(data = defaultRows()) {
+  const query = new FakeBlogPostQuery(data);
   const client = {
     from(table: string) {
       query.calls.push({ method: "from", args: [table] });
@@ -155,7 +174,74 @@ test("listBlogPostsForTenant includes failed generations when requested", async 
   );
 });
 
-test("listBlogPostsForTenant filters by topic metadata", async () => {
+test("listBlogPostsForTenant maps top-level topic and persona columns", async () => {
+  const { client } = makeClient();
+  const result = await listBlogPostsForTenant({
+    supabase: client,
+    tenantId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  assertEq(result.rows[0].topic, "Puppy training", "topic");
+  assertEq(result.rows[0].persona, "New dog owner", "persona");
+});
+
+test("listBlogPostsForTenant falls back to metadata topic and persona", async () => {
+  const { client } = makeClient([
+    {
+      ...defaultRows()[0],
+      topic: null,
+      persona: " ",
+      metadata: {
+        topic: "Metadata topic",
+        persona: "Metadata persona",
+      },
+    },
+  ]);
+
+  const result = await listBlogPostsForTenant({
+    supabase: client,
+    tenantId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  assertEq(result.rows[0].topic, "Metadata topic", "topic metadata fallback");
+  assertEq(result.rows[0].persona, "Metadata persona", "persona metadata fallback");
+});
+
+test("listBlogPostsForTenant maps word count from metadata stats", async () => {
+  const { client } = makeClient([
+    {
+      ...defaultRows()[0],
+      metadata: { stats: { wordCount: 912 } },
+    },
+  ]);
+
+  const result = await listBlogPostsForTenant({
+    supabase: client,
+    tenantId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  assertEq(result.rows[0].wordCount, 912, "stats wordCount");
+});
+
+test("listBlogPostsForTenant computes word count from rendered content", async () => {
+  const { client } = makeClient([
+    {
+      ...defaultRows()[0],
+      content:
+        "<html><head><title>Ignored title</title></head><body><p>One two three.</p><p>Four five.</p></body></html>",
+      metadata: {},
+    },
+  ]);
+
+  const result = await listBlogPostsForTenant({
+    supabase: client,
+    tenantId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  assertEq(result.rows[0].wordCount, 5, "rendered content word count");
+});
+
+test("listBlogPostsForTenant filters by topic column", async () => {
   const { client, query } = makeClient();
   await listBlogPostsForTenant({
     supabase: client,
@@ -166,16 +252,15 @@ test("listBlogPostsForTenant filters by topic metadata", async () => {
   assert(
     query.calls.some(
       (call) =>
-        call.method === "contains" &&
-        call.args[0] === "metadata" &&
-        JSON.stringify(call.args[1]) ===
-          JSON.stringify({ topic: "Puppy training" }),
+        call.method === "eq" &&
+        call.args[0] === "topic" &&
+        call.args[1] === "Puppy training",
     ),
-    "topic metadata contains filter was not applied",
+    "topic column filter was not applied",
   );
 });
 
-test("listBlogPostsForTenant filters by persona metadata", async () => {
+test("listBlogPostsForTenant filters by persona column", async () => {
   const { client, query } = makeClient();
   await listBlogPostsForTenant({
     supabase: client,
@@ -186,12 +271,11 @@ test("listBlogPostsForTenant filters by persona metadata", async () => {
   assert(
     query.calls.some(
       (call) =>
-        call.method === "contains" &&
-        call.args[0] === "metadata" &&
-        JSON.stringify(call.args[1]) ===
-          JSON.stringify({ persona: "New dog owner" }),
+        call.method === "eq" &&
+        call.args[0] === "persona" &&
+        call.args[1] === "New dog owner",
     ),
-    "persona metadata contains filter was not applied",
+    "persona column filter was not applied",
   );
 });
 
@@ -227,6 +311,17 @@ test("listBlogPostsForTenant uses tenant-scoped authenticated query shape", asyn
       (call) => call.method === "from" && call.args[0] === "blog_posts",
     ),
     "query should read blog_posts",
+  );
+  assert(
+    query.calls.some(
+      (call) =>
+        call.method === "select" &&
+        typeof call.args[0] === "string" &&
+        call.args[0].includes("topic") &&
+        call.args[0].includes("persona") &&
+        call.args[0].includes("content"),
+    ),
+    "list query should select topic, persona, and content",
   );
   assert(
     query.calls.some(

@@ -326,6 +326,10 @@ test("createArticle renders HTML and persists full post metadata", async () => {
   );
   assert.match(inserts[0].content, /<meta name="description"/);
   assert.equal((inserts[0].metadata as BlogPostJson).title, inserts[0].title);
+  assert.equal(
+    (inserts[0].metadata.stats as Record<string, unknown>).wordCount,
+    945,
+  );
   assert.equal(inserts[0].persona, KEYWORD);
   assert.equal(inserts[0].topic, "educational");
   assert.equal(seoValidationLogs.length, 1);
