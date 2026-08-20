@@ -5,7 +5,7 @@ import { runBlogPipeline, type BlogPipelineResult } from "@/lib/blog/pipeline";
 import { db } from "@/lib/db";
 import { blogPosts, conversations, messages, tenants } from "@/lib/db/schema";
 
-export type BlogTriggerSource = "manual" | "idle";
+export type BlogTriggerSource = "manual" | "idle" | "backfill";
 
 export type BlogTriggerResult =
   | { status: "queued"; conversationId: string }
