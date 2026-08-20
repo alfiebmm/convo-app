@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { blogPosts } from "@/lib/db/schema";
+import { blogDecisionLogs, blogPosts } from "@/lib/db/schema";
 
 import { createArticle } from "./create";
 import { decide, type DecisionResult } from "./decision";
@@ -18,6 +18,10 @@ type BlogPipelineDeps = {
   decide(conversationId: string): Promise<DecisionResult>;
   createArticle(conversationId: string, decision: DecisionResult): Promise<string>;
   updateArticle(conversationId: string, decision: DecisionResult): Promise<string>;
+  linkDecisionToBlogPost(
+    decisionLogId: string | undefined,
+    blogPostId: string
+  ): Promise<void>;
 };
 
 async function findExistingPost(conversationId: string): Promise<{ id: string } | null> {
@@ -57,9 +61,22 @@ function buildPipelineService(deps: BlogPipelineDeps) {
       }
 
       const blogPostId = await deps.createArticle(conversationId, decision);
+      await deps.linkDecisionToBlogPost(decision.log_id, blogPostId);
       return { conversationId, decision, blogPostId };
     },
   };
+}
+
+async function linkDecisionToBlogPost(
+  decisionLogId: string | undefined,
+  blogPostId: string
+): Promise<void> {
+  if (!decisionLogId) return;
+
+  await db
+    .update(blogDecisionLogs)
+    .set({ targetBlogPostId: blogPostId })
+    .where(eq(blogDecisionLogs.id, decisionLogId));
 }
 
 const defaultService = buildPipelineService({
@@ -67,6 +84,7 @@ const defaultService = buildPipelineService({
   decide,
   createArticle,
   updateArticle,
+  linkDecisionToBlogPost,
 });
 
 /**

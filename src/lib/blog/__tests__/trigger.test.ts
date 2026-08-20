@@ -45,7 +45,7 @@ function createDeps(
     }),
     hasBlogPostForThread: async () => false,
     saveTriggerState: async () => {},
-    runBlogPipeline: async () => {},
+    runBlogPipeline: async () => null,
     ...overrides,
   };
 }
@@ -59,26 +59,60 @@ function immediateSchedule(calls: Array<() => Promise<void>>): ScheduleBlogTask 
 async function run() {
   await test("manual trigger queues the pipeline in the background", async () => {
     const tasks: Array<() => Promise<void>> = [];
-    let saved = false;
+    const savedPostIds: Array<string | null | undefined> = [];
     let ranFor: string | null = null;
     const res = await requestBlogPipeline("conversation-a", {
       source: "manual",
       schedule: immediateSchedule(tasks),
       deps: createDeps({
-        saveTriggerState: async () => {
-          saved = true;
+        saveTriggerState: async (...args) => {
+          savedPostIds.push(args[4]);
         },
         runBlogPipeline: async (conversationId) => {
           ranFor = conversationId;
+          return {
+            conversationId,
+            decision: {
+              action: "create",
+              reason: "Low similarity.",
+              similar_posts: [],
+              primary_keyword: "pharmacists",
+              intent: "educational",
+            },
+            blogPostId: "blog-post-1",
+          };
         },
       }),
     });
 
     assertEq(res.status, "queued", "status");
-    assertEq(saved, true, "trigger state saved");
+    assertEq(savedPostIds.length, 0, "state is not saved before pipeline result");
     assertEq(tasks.length, 1, "background task count");
     await tasks[0]();
     assertEq(ranFor, "conversation-a", "pipeline conversation id");
+    assertEq(savedPostIds.length, 1, "converted state saved");
+    assertEq(savedPostIds[0], "blog-post-1", "blog post id stored");
+  });
+
+  await test("pipeline failure does not mark the conversation converted", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    let saveCount = 0;
+    const res = await requestBlogPipeline("conversation-a", {
+      source: "manual",
+      schedule: immediateSchedule(tasks),
+      deps: createDeps({
+        saveTriggerState: async () => {
+          saveCount++;
+        },
+        runBlogPipeline: async () => {
+          throw new Error("article generation timed out");
+        },
+      }),
+    });
+
+    assertEq(res.status, "queued", "status");
+    await tasks[0]();
+    assertEq(saveCount, 0, "state saves");
   });
 
   await test("trigger skips when a blog post already exists for thread_id", async () => {

@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import { resolveBlogIdleMinutes } from "@/lib/blog/config";
-import { runBlogPipeline } from "@/lib/blog/pipeline";
+import { runBlogPipeline, type BlogPipelineResult } from "@/lib/blog/pipeline";
 import { db } from "@/lib/db";
 import { blogPosts, conversations, messages, tenants } from "@/lib/db/schema";
 
@@ -36,9 +36,10 @@ export type BlogTriggerDeps = {
     conversation: ConversationForTrigger,
     source: BlogTriggerSource,
     markCompleted: boolean,
-    now: Date
+    now: Date,
+    blogPostId?: string | null
   ) => Promise<void>;
-  runBlogPipeline: (conversationId: string) => Promise<unknown>;
+  runBlogPipeline: (conversationId: string) => Promise<BlogPipelineResult | null>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -90,7 +91,13 @@ const defaultDeps: BlogTriggerDeps = {
     return Boolean(post);
   },
 
-  async saveTriggerState(conversation, source, markCompleted, now) {
+  async saveTriggerState(
+    conversation,
+    source,
+    markCompleted,
+    now,
+    blogPostId
+  ) {
     const existing = asRecord(conversation.metadata.blogConversion);
     const nextMetadata = {
       ...conversation.metadata,
@@ -99,6 +106,7 @@ const defaultDeps: BlogTriggerDeps = {
         state: "converted_to_blog",
         source,
         triggeredAt: now.toISOString(),
+        ...(blogPostId ? { blogPostId } : {}),
       },
     };
     await db
@@ -123,14 +131,12 @@ export async function requestBlogPipeline(
     markCompleted = false,
     schedule,
     deps = defaultDeps,
-    now = new Date(),
   }: {
     source: BlogTriggerSource;
     tenantId?: string;
     markCompleted?: boolean;
     schedule: ScheduleBlogTask;
     deps?: BlogTriggerDeps;
-    now?: Date;
   }
 ): Promise<BlogTriggerResult> {
   const conversation = await deps.findConversation(conversationId, tenantId);
@@ -152,11 +158,18 @@ export async function requestBlogPipeline(
     return { status: "skipped", conversationId, reason: "already_triggered" };
   }
 
-  await deps.saveTriggerState(conversation, source, markCompleted, now);
-
   schedule(async () => {
     try {
-      await deps.runBlogPipeline(conversationId);
+      const result = await deps.runBlogPipeline(conversationId);
+      if (!result) return;
+
+      await deps.saveTriggerState(
+        conversation,
+        source,
+        markCompleted,
+        new Date(),
+        result.blogPostId
+      );
     } catch (error) {
       console.error("[blog] pipeline failed", {
         conversationId,
@@ -283,7 +296,6 @@ export async function triggerIdleBlogPipelines({
         tenantId: tenant.id,
         markCompleted: true,
         schedule,
-        now,
       });
       if (trigger.status === "queued") summary.queued++;
       else if (trigger.status === "skipped") summary.skipped++;
