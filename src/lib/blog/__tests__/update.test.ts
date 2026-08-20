@@ -260,6 +260,7 @@ test("update decisions route to updateArticle", async () => {
       updated = true;
       return "updated";
     },
+    linkDecisionToBlogPost: async () => {},
   });
   const result = await service.runBlogPipeline(CONVERSATION_ID);
   assert.equal(result?.blogPostId, "updated");

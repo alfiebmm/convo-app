@@ -113,7 +113,7 @@ const defaultDeps: ReprocessFailedBlogDeps = {
          AND COALESCE(
                ${conversations.metadata}->'blogConversion'->>'state',
                ''
-             ) <> 'converted_to_blog'
+             ) NOT IN ('converted_to_blog', 'conversion_queued')
        ORDER BY COALESCE(latest_messages.latest_message_at, ${conversations.startedAt}) DESC
        LIMIT ${limit}
     `);
