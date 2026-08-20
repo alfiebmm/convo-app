@@ -81,7 +81,7 @@ const defaultDeps: ReprocessFailedBlogDeps = {
 
     await db.execute(sql`
       UPDATE ${conversations}
-         SET ${conversations.metadata} = jsonb_set(
+         SET metadata = jsonb_set(
                ${conversations.metadata},
                '{blogConversion,state}',
                '"reset"'::jsonb,
