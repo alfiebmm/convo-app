@@ -15,6 +15,14 @@ export const metadata: Metadata = {
   description: APP_CONFIG.description,
   metadataBase: new URL(APP_CONFIG.url),
   applicationName: APP_CONFIG.name,
+  icons: {
+    // App Router auto-serves /favicon.ico, /icon.png, /apple-icon.png from src/app/.
+    // These entries add dark-mode-aware SVG variants that modern browsers prefer.
+    icon: [
+      { url: "/favicon-light.svg", type: "image/svg+xml", media: "(prefers-color-scheme: light)" },
+      { url: "/favicon-dark.svg", type: "image/svg+xml", media: "(prefers-color-scheme: dark)" },
+    ],
+  },
   openGraph: {
     siteName: APP_CONFIG.name,
     type: "website",
