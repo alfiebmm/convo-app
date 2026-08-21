@@ -21,6 +21,24 @@ const nextConfig: NextConfig = {
       "./src/lib/blog/schemas/**",
     ],
   },
+  async rewrites() {
+    // Route /blog/* to the Convo Blog WordPress install on WP Engine.
+    // Subdirectory topology: users see one domain (convoapp.com.au), Google
+    // indexes one domain, SEO authority consolidates on the marketing site.
+    // Origin is convoblog.wpenginepowered.com; the WP install serves a
+    // branded landing at / and articles at /:slug.
+    const wpOrigin = "https://convoblog.wpenginepowered.com";
+    return [
+      { source: "/blog", destination: `${wpOrigin}/` },
+      { source: "/blog/:path*", destination: `${wpOrigin}/:path*` },
+      // WP REST API — public discovery + block editor + Yoast sitemap etc.
+      { source: "/wp-json/:path*", destination: `${wpOrigin}/wp-json/:path*` },
+      // WP core + theme + uploaded media assets — must proxy through so
+      // relative asset URLs from the WP HTML resolve under our origin.
+      { source: "/wp-content/:path*", destination: `${wpOrigin}/wp-content/:path*` },
+      { source: "/wp-includes/:path*", destination: `${wpOrigin}/wp-includes/:path*` },
+    ];
+  },
   async redirects() {
     return [
       // CON-238: Follow-up editor moved from Knowledge into Forum config.
