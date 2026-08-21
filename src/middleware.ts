@@ -13,6 +13,8 @@
  *     here is safe and required — Vercel Cron cannot present a NextAuth cookie)
  *   - /api/blog/reprocess-failed (manual blog retry route; bearer-authenticated
  *     with `Authorization: Bearer $CRON_SECRET`)
+ *   - /api/blog/backfill-orphans (CON-290 orphan-recovery route; bearer-authenticated
+ *     with `Authorization: Bearer $CRON_SECRET`)
  *   - /api/chat (widget chat endpoint)
  *   - /api/widget/* (widget tracking etc.)
  *   - /api/conversations/qualifying/* (widget qualifying-question flow, CON-94)
@@ -163,6 +165,6 @@ export const config = {
   matcher: [
     "/platform-admin/:path*",
     "/dashboard/:path*",
-    "/api/((?!auth|cron|blog/reprocess-failed|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook|cases/pill-init|cases/[^/]+/capture).*)",
+    "/api/((?!auth|cron|blog/reprocess-failed|blog/backfill-orphans|chat|widget|conversations/case-events|conversations/qualifying|pipeline|billing/webhook|cases/pill-init|cases/[^/]+/capture).*)",
   ],
 };
