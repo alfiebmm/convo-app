@@ -293,7 +293,7 @@ test("buildSystemPrompt injects keyword, banned terms, and section contract", as
   assert.match(prompt, /Aim for 5-7 sections/);
   assert.match(prompt, /Each section MUST contain at least 3 paragraph blocks/);
   assert.match(prompt, /Each paragraph block should be 80-150 words/);
-  assert.match(prompt, /Target total article body 800-1,500 words/);
+  assert.match(prompt, /total article body MUST land between 800 and 1,500 words/);
   assert.match(prompt, /across all sections plus the intro paragraph/);
   assert.doesNotMatch(prompt, /Aim high/);
   assert.match(prompt, /Support long-form content with concrete examples/);

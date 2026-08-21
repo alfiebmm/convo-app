@@ -72,6 +72,7 @@ export type WordCountGateOptions = {
   minSectionWordCount?: number;
   minTotalWordCount?: number;
   maxTotalWordCount?: number;
+  hardFloorTotalWordCount?: number;
   minParagraphsPerSection?: number;
 };
 
@@ -87,6 +88,7 @@ export type WordCountGateStats = {
   minSectionWordCount: number;
   minTotalWordCount: number;
   maxTotalWordCount: number;
+  hardFloorTotalWordCount: number;
   minParagraphsPerSection: number;
 };
 
@@ -95,10 +97,23 @@ export type WordCountGateViolation = WritingRuleViolation & {
   stats: WordCountGateStats;
 };
 
+export type WordCountGateWarning = {
+  code: "word_count_below_target";
+  message: string;
+  stats: WordCountGateStats;
+};
+
+// CON-291: the target range 800-1,500 is a *generation-prompt contract*, not a
+// hard-fail filter. `minTotalWordCount` is now the target floor we prompt the
+// model to hit and warn on when missed. `hardFloorTotalWordCount` is the true
+// reject line: articles below that are treated as generator failures and
+// dropped; articles between hard floor and target floor are accepted with a
+// warning log so we can retune the prompt rather than reject drafts.
 export const WORD_COUNT_GATE_DEFAULTS = {
   minSectionWordCount: 100,
   minTotalWordCount: 800,
   maxTotalWordCount: 1800,
+  hardFloorTotalWordCount: 500,
   minParagraphsPerSection: 3,
 } as const;
 
@@ -336,6 +351,9 @@ export function wordCountGateStats(
     options.minTotalWordCount ?? WORD_COUNT_GATE_DEFAULTS.minTotalWordCount;
   const maxTotalWordCount =
     options.maxTotalWordCount ?? WORD_COUNT_GATE_DEFAULTS.maxTotalWordCount;
+  const hardFloorTotalWordCount =
+    options.hardFloorTotalWordCount ??
+    WORD_COUNT_GATE_DEFAULTS.hardFloorTotalWordCount;
   const minParagraphsPerSection =
     options.minParagraphsPerSection ??
     WORD_COUNT_GATE_DEFAULTS.minParagraphsPerSection;
@@ -365,6 +383,7 @@ export function wordCountGateStats(
     minSectionWordCount,
     minTotalWordCount,
     maxTotalWordCount,
+    hardFloorTotalWordCount,
     minParagraphsPerSection,
   };
 }
@@ -401,10 +420,13 @@ export function validateWordCountGates(
     };
   }
 
-  if (stats.totalWordCount < stats.minTotalWordCount) {
+  // CON-291: only reject drafts below the *hard floor* (default 500). Drafts
+  // between the hard floor and the target minimum are accepted with a warning
+  // (see `wordCountGateWarning`).
+  if (stats.totalWordCount < stats.hardFloorTotalWordCount) {
     return {
       code: "word_count",
-      message: `Word-count quality gate failed: article body has ${stats.totalWordCount} intro and paragraph words, below the required ${stats.minTotalWordCount}.`,
+      message: `Word-count quality gate failed: article body has ${stats.totalWordCount} intro and paragraph words, below the hard floor of ${stats.hardFloorTotalWordCount}.`,
       stats,
     };
   }
@@ -413,6 +435,29 @@ export function validateWordCountGates(
     return {
       code: "word_count",
       message: `Word-count quality gate failed: article body has ${stats.totalWordCount} paragraph + intro words, above the maximum ${stats.maxTotalWordCount}. Target range is 800-1,500.`,
+      stats,
+    };
+  }
+
+  return null;
+}
+
+// CON-291: returns a non-fatal warning when an accepted draft lands under the
+// target minimum. Callers should log this and keep the draft, then use the
+// warning volume to retune the generation prompt.
+export function wordCountGateWarning(
+  post: BlogPostJson,
+  options: WordCountGateOptions = {}
+): WordCountGateWarning | null {
+  const stats = wordCountGateStats(post, options);
+
+  if (
+    stats.totalWordCount >= stats.hardFloorTotalWordCount &&
+    stats.totalWordCount < stats.minTotalWordCount
+  ) {
+    return {
+      code: "word_count_below_target",
+      message: `Word-count warning: article body has ${stats.totalWordCount} intro and paragraph words, below the ${stats.minTotalWordCount}-word target minimum. Draft accepted; investigate generation prompt if this becomes common.`,
       stats,
     };
   }

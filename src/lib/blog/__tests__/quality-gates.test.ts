@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   validateWordCountGates,
   wordCountGateStats,
+  wordCountGateWarning,
   type BlogPostJson,
 } from "../writing-rules";
 
@@ -96,13 +97,31 @@ test("word-count gates fail above 1,800 word ceiling", () => {
   assert.match(violation?.message ?? "", /Target range is 800-1,500/);
 });
 
-test("word-count gates fail at 700 words", () => {
-  const violation = validateWordCountGates(postWithTotalWordCount(700));
+test("word-count gates accept 700 words with a warning (CON-291)", () => {
+  const candidate = postWithTotalWordCount(700);
+  const violation = validateWordCountGates(candidate);
+  const warning = wordCountGateWarning(candidate);
+
+  assert.equal(violation, null);
+  assert.equal(warning?.code, "word_count_below_target");
+  assert.equal(warning?.stats.totalWordCount, 700);
+  assert.match(warning?.message ?? "", /article body has 700 intro and paragraph words/);
+  assert.match(warning?.message ?? "", /below the 800-word target minimum/);
+});
+
+test("word-count gates fail below the 500-word hard floor (CON-291)", () => {
+  // Build a 499-word draft with sections wide enough to clear the 100-word
+  // section minimum so the hard-floor rule is what fires (not section-min).
+  const candidate = post([
+    [45, 45, 45],
+    [45, 45, 45],
+    [40, 40, 40],
+    [35, 33, 32],
+  ]);
+  const violation = validateWordCountGates(candidate);
 
   assert.equal(violation?.code, "word_count");
-  assert.equal(violation?.stats.introWordCount, 9);
-  assert.match(violation?.message ?? "", /article body has 700 intro and paragraph words/);
-  assert.match(violation?.message ?? "", /below the required 800/);
+  assert.match(violation?.message ?? "", /below the hard floor of 500/);
 });
 
 test("word-count gates pass at threshold", () => {
@@ -148,15 +167,23 @@ test("word-count gates fail below section minimum", () => {
   assert.match(violation?.message ?? "", /below the required 100/);
 });
 
-test("word-count gates fail below total minimum", () => {
-  const violation = validateWordCountGates(
-    postWithTotalWordCount(799)
-  );
+test("word-count gates accept 799 words with a warning (CON-291)", () => {
+  const candidate = postWithTotalWordCount(799);
+  const violation = validateWordCountGates(candidate);
+  const warning = wordCountGateWarning(candidate);
 
-  assert.equal(violation?.code, "word_count");
-  assert.equal(violation?.stats.introWordCount, 9);
-  assert.match(violation?.message ?? "", /article body has 799 intro and paragraph words/);
-  assert.match(violation?.message ?? "", /below the required 800/);
+  assert.equal(violation, null);
+  assert.equal(warning?.code, "word_count_below_target");
+  assert.equal(warning?.stats.totalWordCount, 799);
+});
+
+test("word-count gates return no warning at target minimum (CON-291)", () => {
+  const candidate = postWithTotalWordCount(800);
+  const violation = validateWordCountGates(candidate);
+  const warning = wordCountGateWarning(candidate);
+
+  assert.equal(violation, null);
+  assert.equal(warning, null);
 });
 
 test("word-count gates fail below paragraphs per section minimum", () => {

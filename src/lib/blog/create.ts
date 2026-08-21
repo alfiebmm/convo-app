@@ -31,6 +31,7 @@ import {
   validatePrimaryKeywordPlacement,
   validatePostStructure,
   wordCountGateStats,
+  wordCountGateWarning,
   validateWordCountGates,
   type BlogCtaConfig,
   type BlogPostJson,
@@ -175,7 +176,7 @@ Article requirements:
 - Every item in \`post.sections\` MUST be an object with a non-empty \`heading\` string and a \`blocks\` array. Every \`section.blocks\` array MUST contain valid block objects matching the schema.
 - Each section MUST contain at least 3 paragraph blocks (block.type = "p").
 - Each paragraph block should be 80-150 words of concrete, specific prose. Short blocks (under 40 words) or vague filler ("this is important", "consider your options") will be REJECTED.
-- Target total article body 800-1,500 words across all sections plus the intro paragraph. Aim for the middle of that range for balanced depth and reader retention. Do not exceed 1,500 words unless the topic genuinely warrants it.
+- HARD REQUIREMENT: total article body MUST land between 800 and 1,500 words across all sections plus the intro paragraph. This is a generation contract, not a post-hoc filter — plan your section lengths up front so the total lands in range. Aim for the middle (around 1,100-1,300 words) for balanced depth and reader retention. Below 800 words the article will be flagged for review; above 1,500 words it will be REJECTED unless the topic genuinely warrants it.
 - Support long-form content with concrete examples, data points, and specific-to-industry detail. If the source conversation lacks depth, expand using common non-sensitive industry knowledge (per the "no invented facts" rule elsewhere, knowledge OK, fabricated specifics NOT OK).
 - The primary keyword "${primaryKeyword}" MUST appear in ALL of these places or the output will be REJECTED:
   - \`post.title\` (as-is or in natural phrasing)
@@ -506,6 +507,19 @@ export function validateCandidate(
   const wordCount = validateWordCountGates(candidate);
   if (wordCount) throw wordCount;
   const stats = wordCountGateStats(candidate);
+
+  // CON-291: log a non-fatal warning when accepted drafts land under the
+  // target minimum so we can retune the generation prompt without dropping
+  // otherwise-usable articles.
+  const warning = wordCountGateWarning(candidate);
+  if (warning) {
+    console.info("[blog] word count below target minimum", {
+      conversationId: brief.source.conversationId,
+      totalWordCount: warning.stats.totalWordCount,
+      minTotalWordCount: warning.stats.minTotalWordCount,
+      hardFloorTotalWordCount: warning.stats.hardFloorTotalWordCount,
+    });
+  }
 
   const stripped = stripEmDashes(candidate);
   for (const replacement of stripped.replacements) {
