@@ -28,6 +28,7 @@ import {
   type ConversationContactLinkRow,
   type LinkContactInput,
   type ListContactsByTenantFilters,
+  type UpdateContactIdentifierInput,
   type UpsertContactInput,
 } from "./store";
 
@@ -45,6 +46,7 @@ export type {
   ConversationContactLinkRow,
   LinkContactInput,
   ListContactsByTenantFilters,
+  UpdateContactIdentifierInput,
   UpsertContactInput,
 } from "./store";
 
@@ -238,6 +240,64 @@ export async function updateContactDisplayName(
     contactId,
     trimmed,
   );
+
+  if (contact && shouldFireWebhookHooks(opts)) {
+    void store
+      .findLatestCaseForContact(tenantId, contact.id)
+      .then((caseRow) => {
+        if (!caseRow) return;
+        fireWebhookEvent({
+          tenantId,
+          caseId: caseRow.id,
+          event: "contact.updated",
+          payload: {
+            event: "contact.updated",
+            contact,
+            case: caseRow,
+          },
+          idempotencyKey: `contact.updated:${contact.id}:${contact.updatedAt.toISOString()}`,
+        });
+      })
+      .catch((error) => {
+        console.error("Contact webhook event hook failed", error);
+      });
+  }
+
+  return contact;
+}
+
+// ---------------------------------------------------------------------------
+// updateContactIdentifier
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge newly captured identifiers onto an existing tenant-scoped contact.
+ * Existing email and phone values win; attributes are shallow-merged.
+ *
+ * @param tenantId Tenant UUID, required.
+ * @param contactId Contact UUID, required.
+ * @param input Identifier and attribute payload.
+ */
+export async function updateContactIdentifier(
+  tenantId: string,
+  contactId: string,
+  input: UpdateContactIdentifierInput,
+  opts?: ContactHelperOptions,
+): Promise<ContactRow | null> {
+  assertTenantId(tenantId);
+  assertUuid(contactId, "contactId");
+  if (
+    !input.emailNormalised &&
+    !input.phoneNormalised &&
+    Object.keys(input.attributes ?? {}).length === 0
+  ) {
+    throw new Error(
+      "updateContactIdentifier requires at least one of emailNormalised, phoneNormalised, or attributes",
+    );
+  }
+
+  const store = resolveStore(opts);
+  const contact = await store.updateContactIdentifier(tenantId, contactId, input);
 
   if (contact && shouldFireWebhookHooks(opts)) {
     void store

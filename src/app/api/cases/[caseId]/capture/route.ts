@@ -81,6 +81,7 @@ import { recordCaseEvent } from "@/lib/cases/events";
 import {
   upsertContact,
   linkContactToConversation,
+  updateContactIdentifier,
   updateContactDisplayName,
   normaliseEmail,
   normalisePhone,
@@ -255,6 +256,7 @@ export type CaptureRouteDeps = {
   recordCaseEvent: typeof recordCaseEvent;
   upsertContact: typeof upsertContact;
   linkContactToConversation: typeof linkContactToConversation;
+  updateContactIdentifier: typeof updateContactIdentifier;
   updateContactDisplayName: typeof updateContactDisplayName;
   /**
    * Patch a case to bind a contact_id once an identifier is captured.
@@ -286,6 +288,7 @@ const defaultDeps: CaptureRouteDeps = {
   recordCaseEvent,
   upsertContact,
   linkContactToConversation,
+  updateContactIdentifier,
   updateContactDisplayName,
   updateCaseContactId: defaultUpdateCaseContactId(getDefaultCasesStore()),
 };
@@ -557,20 +560,24 @@ async function handleSubmit(
       };
     }
 
-    const result = await deps.upsertContact(body.tenantId, upsertInput);
-    contact = result.contact;
-    contactCreated = result.created;
+    if (kase.contactId) {
+      contact = await deps.updateContactIdentifier(
+        body.tenantId,
+        kase.contactId,
+        upsertInput,
+      );
+      contactCreated = false;
+    } else {
+      const result = await deps.upsertContact(body.tenantId, upsertInput);
+      contact = result.contact;
+      contactCreated = result.created;
 
-    await deps.linkContactToConversation(body.tenantId, {
-      conversationId: kase.conversationId,
-      contactId: contact.id,
-      relationship: "primary_contact",
-    });
+      await deps.linkContactToConversation(body.tenantId, {
+        conversationId: kase.conversationId,
+        contactId: contact.id,
+        relationship: "primary_contact",
+      });
 
-    // 3. Bind the case to the contact if it wasn't already bound. We
-    //    only set, never overwrite — once a case has a contact, the
-    //    classifier/staff own that relationship.
-    if (!kase.contactId) {
       await deps.updateCaseContactId(body.tenantId, kase.id, contact.id);
     }
   }

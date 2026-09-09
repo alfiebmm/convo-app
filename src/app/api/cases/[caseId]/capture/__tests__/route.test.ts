@@ -286,6 +286,21 @@ function makeDeps(
         createdAt: new Date(),
       };
     }) as CaptureRouteDeps["linkContactToConversation"],
+    updateContactIdentifier: (async (tenantId, contactId, input) => {
+      const existing = world.contacts.find(
+        (c) => c.tenantId === tenantId && c.id === contactId,
+      );
+      if (!existing) return null;
+      existing.emailNormalised =
+        existing.emailNormalised ?? input.emailNormalised ?? null;
+      existing.phoneNormalised =
+        existing.phoneNormalised ?? input.phoneNormalised ?? null;
+      existing.attributes = {
+        ...(existing.attributes ?? {}),
+        ...(input.attributes ?? {}),
+      };
+      return makeContactRow(existing);
+    }) as CaptureRouteDeps["updateContactIdentifier"],
     updateContactDisplayName: (async (tenantId, contactId, displayName) => {
       const existing = world.contacts.find(
         (c) => c.tenantId === tenantId && c.id === contactId,
@@ -752,7 +767,7 @@ async function runAll() {
   );
 
   await test(
-    "CON-269 regression: submit email then mobile still upserts and audits identifiers",
+    "CON-267: submit email then mobile updates the case-linked contact",
     async () => {
       const world = makeWorld();
       const deps = makeDeps(world);
@@ -785,20 +800,135 @@ async function runAll() {
       );
 
       assertEq(mobileRes.status, 200, "mobile status");
-      assertEq(world.contacts.length, 2, "mobile contact upsert still runs");
-      assertEq(world.contacts[1].phoneNormalised, "0400123456", "phone stored");
+      assertEq(world.contacts.length, 1, "no orphan contact");
+      assertEq(world.contacts[0].id, emailContactId, "same contact");
+      assertEq(
+        world.contacts[0].emailNormalised,
+        "blake@example.com",
+        "email retained",
+      );
+      assertEq(world.contacts[0].phoneNormalised, "0400123456", "phone merged");
       assertEq(
         world.cases[0].contactId,
         emailContactId,
         "existing case contact not overwritten",
       );
-      assertEq(world.links.length, 2, "both identifier submits link contacts");
+      assertEq(world.links.length, 1, "second identifier does not relink");
       assert(
         typeof world.events[3].payload.value_hash === "string",
         "mobile audit has hash",
       );
     },
   );
+
+  await test(
+    "CON-267: submit mobile then email updates the case-linked contact",
+    async () => {
+      const world = makeWorld();
+      const deps = makeDeps(world);
+
+      await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "mobile",
+          value: "0400 123 456",
+        }),
+        CASE_A,
+        deps,
+      );
+      const mobileContactId = world.contacts[0].id;
+
+      const emailRes = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "email",
+          value: "Blake@Example.com",
+        }),
+        CASE_A,
+        deps,
+      );
+
+      assertEq(emailRes.status, 200, "email status");
+      assertEq(world.contacts.length, 1, "no orphan contact");
+      assertEq(world.contacts[0].id, mobileContactId, "same contact");
+      assertEq(world.contacts[0].phoneNormalised, "0400123456", "phone retained");
+      assertEq(
+        world.contacts[0].emailNormalised,
+        "blake@example.com",
+        "email merged",
+      );
+      assertEq(world.links.length, 1, "second identifier does not relink");
+    },
+  );
+
+  await test("CON-267: submit same email twice leaves one contact", async () => {
+    const world = makeWorld();
+    const deps = makeDeps(world);
+    await handleCaptureSubmit(
+      mockReq({
+        tenantId: TENANT_A,
+        visitorId: VISITOR_A,
+        conversationId: CONVO_A,
+        action: "submit",
+        field: "email",
+        value: "blake@example.com",
+      }),
+      CASE_A,
+      deps,
+    );
+    await handleCaptureSubmit(
+      mockReq({
+        tenantId: TENANT_A,
+        visitorId: VISITOR_A,
+        conversationId: CONVO_A,
+        action: "submit",
+        field: "email",
+        value: "blake@example.com",
+      }),
+      CASE_A,
+      deps,
+    );
+    assertEq(world.contacts.length, 1, "no duplicate contact");
+    assertEq(world.contacts[0].emailNormalised, "blake@example.com", "email retained");
+    assertEq(world.links.length, 1, "second email does not relink");
+  });
+
+  await test("CON-267: submit different email second keeps first email", async () => {
+    const world = makeWorld();
+    const deps = makeDeps(world);
+    await handleCaptureSubmit(
+      mockReq({
+        tenantId: TENANT_A,
+        visitorId: VISITOR_A,
+        conversationId: CONVO_A,
+        action: "submit",
+        field: "email",
+        value: "first@example.com",
+      }),
+      CASE_A,
+      deps,
+    );
+    await handleCaptureSubmit(
+      mockReq({
+        tenantId: TENANT_A,
+        visitorId: VISITOR_A,
+        conversationId: CONVO_A,
+        action: "submit",
+        field: "email",
+        value: "second@example.com",
+      }),
+      CASE_A,
+      deps,
+    );
+    assertEq(world.contacts.length, 1, "no duplicate contact");
+    assertEq(world.contacts[0].emailNormalised, "first@example.com", "first wins");
+  });
 
   await test("submit mobile twice → second is no-op for contact (upsert)", async () => {
     const world = makeWorld();
@@ -828,6 +958,7 @@ async function runAll() {
       deps,
     );
     assertEq(world.contacts.length, 1, "no duplicate contact");
+    assertEq(world.links.length, 1, "second mobile does not relink");
     assertEq(world.events.length, 4, "four audit events");
   });
 

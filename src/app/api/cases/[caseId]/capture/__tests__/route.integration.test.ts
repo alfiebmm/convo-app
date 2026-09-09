@@ -13,6 +13,7 @@ import { createInMemoryCasesStore } from "@/lib/cases/__tests__/in-memory-store"
 import {
   upsertContact,
   linkContactToConversation,
+  updateContactIdentifier,
   updateContactDisplayName,
 } from "@/lib/contacts";
 import { createInMemoryContactsStore } from "@/lib/contacts/__tests__/in-memory-store";
@@ -55,6 +56,10 @@ async function seedHarness() {
       upsertContact(tenantId, input, { store: contactsStore }),
     linkContactToConversation: (tenantId, input) =>
       linkContactToConversation(tenantId, input, { store: contactsStore }),
+    updateContactIdentifier: (tenantId, contactId, input) =>
+      updateContactIdentifier(tenantId, contactId, input, {
+        store: contactsStore,
+      }),
     updateContactDisplayName: (tenantId, contactId, displayName) =>
       updateContactDisplayName(tenantId, contactId, displayName, {
         store: contactsStore,
@@ -122,6 +127,48 @@ test("POST /api/cases/:caseId/capture integration submits an identifier-grade em
 
   const updatedCase = casesDump.cases.find((row) => row.id === kase.id);
   assert.equal(updatedCase?.contactId, contactsDump.contacts[0].id);
+});
+
+test("POST /api/cases/:caseId/capture integration merges a second identifier into the linked contact", async () => {
+  const { casesStore, contactsStore, deps, kase } = await seedHarness();
+
+  await handleCaptureSubmit(
+    mockReq({
+      tenantId: TENANT_ID,
+      visitorId: VISITOR_ID,
+      conversationId: CONVERSATION_ID,
+      action: "submit",
+      field: "email",
+      value: "test@example.com",
+    }),
+    kase.id,
+    deps,
+  );
+
+  const res = await handleCaptureSubmit(
+    mockReq({
+      tenantId: TENANT_ID,
+      visitorId: VISITOR_ID,
+      conversationId: CONVERSATION_ID,
+      action: "submit",
+      field: "mobile",
+      value: "0400 123 456",
+    }),
+    kase.id,
+    deps,
+  );
+
+  assert.equal(res.status, 200);
+  const contactsDump = contactsStore._dump();
+  assert.equal(contactsDump.contacts.length, 1);
+  assert.equal(contactsDump.contacts[0].emailNormalised, "test@example.com");
+  assert.equal(contactsDump.contacts[0].phoneNormalised, "0400123456");
+
+  const casesDump = casesStore._dump();
+  assert.equal(
+    casesDump.cases.find((row) => row.id === kase.id)?.contactId,
+    contactsDump.contacts[0].id,
+  );
 });
 
 test("POST /api/cases/:caseId/capture integration records a decline audit event without creating a contact or setting case.contactId", async () => {
