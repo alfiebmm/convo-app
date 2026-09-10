@@ -134,6 +134,42 @@ test("success publishes article and persists WordPress metadata", async () => {
   });
 });
 
+test("passes semantic content to WordPress when available", async () => {
+  const deps = makeDeps({
+    post: makePost({
+      content: '<html><body><style>.gh-blog-article{}</style><div class="gh-blog-article">Full preview</div></body></html>',
+      contentSemantic:
+        '<script type="application/ld+json">{"@type":"Article"}</script>\n<h1>Semantic article</h1>\n<p>Destination themed body.</p>',
+    }),
+  });
+
+  await runPublish(deps);
+
+  assert.equal(deps.publishCalls.length, 1);
+  assert.equal(
+    deps.publishCalls[0][2],
+    '<script type="application/ld+json">{"@type":"Article"}</script>\n<h1>Semantic article</h1>\n<p>Destination themed body.</p>',
+  );
+});
+
+test("falls back to tokenised content when semantic content is absent", async () => {
+  const deps = makeDeps({
+    post: makePost({
+      content: '<html><body><div class="gh-blog-article">Full preview</div></body></html>',
+      contentSemantic: null,
+    }),
+  });
+
+  await runPublish(deps);
+
+  assert.equal(deps.publishCalls.length, 1);
+  assert.equal(deps.publishCalls[0][2], undefined);
+  assert.equal(
+    deps.publishCalls[0][1].content,
+    '<html><body><div class="gh-blog-article">Full preview</div></body></html>',
+  );
+});
+
 test("failure transitions to publish_failed and stores exact error", async () => {
   const deps = makeDeps({
     publishOk: false,

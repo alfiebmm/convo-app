@@ -400,6 +400,7 @@ export const blogPosts = pgTable(
     title: text("title").notNull(),
     slug: varchar("slug", { length: 255 }).notNull(),
     content: text("content").notNull(),
+    contentSemantic: text("content_semantic"),
     metadata: jsonb("metadata").default({}).notNull(),
     embedding: vector("embedding"),
     status: blogPostStatusEnum("status").default("draft").notNull(),

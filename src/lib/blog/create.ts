@@ -107,6 +107,7 @@ export type BlogCreateStore = {
     title: string;
     slug: string;
     content: string;
+    contentSemantic?: string | null;
     metadata: Record<string, unknown>;
     status: "draft" | "generation_failed" | "update_pending";
     persona: string | null;
@@ -138,6 +139,7 @@ type BlogCreateDeps = {
   store: BlogCreateStore;
   ai: BlogCreateAi;
   render: BlogRenderer;
+  renderSemantic: BlogRenderer;
   validate: BlogValidator;
   sleep: (ms: number) => Promise<void>;
 };
@@ -761,6 +763,7 @@ function buildCreateService(deps: BlogCreateDeps) {
       const retryInstructions: string[] = [];
       let finalPost: BlogPostJson | null = null;
       let finalHtml = "";
+      let finalSemanticHtml = "";
       let finalWordCount: number | null = null;
       let failureReason = "Article generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
@@ -805,6 +808,9 @@ function buildCreateService(deps: BlogCreateDeps) {
           });
           finalHtml = stripRenderedEmDashes(
             deps.render({ brand: brief.tenant.brandJson, post: finalPost })
+          );
+          finalSemanticHtml = stripRenderedEmDashes(
+            deps.renderSemantic({ brand: brief.tenant.brandJson, post: finalPost })
           );
           allEmDashReplacements.push(...validated.emDashReplacements);
         } catch (error) {
@@ -864,6 +870,7 @@ function buildCreateService(deps: BlogCreateDeps) {
         title: finalPost.title,
         slug: finalPost.slug,
         content: finalHtml,
+        contentSemantic: finalSemanticHtml,
         metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
           generation: {
             decision,
@@ -1020,6 +1027,12 @@ const { render: packRender } = require("./template-pack/renderer.js") as {
     templatePath: string;
   }) => string;
 };
+const { renderSemantic: packRenderSemantic } = require("./template-pack/renderer.js") as {
+  renderSemantic: (params: {
+    brand: BrandJson;
+    post: BlogPostJson;
+  }) => string;
+};
 const { validate: rawPackValidate } = require("./template-pack/validate.js") as {
   validate: (
     params: { brand: BrandJson; post: BlogPostJson; schemas?: unknown }
@@ -1053,11 +1066,15 @@ export const defaultBlogRender: BlogRenderer = ({ brand, post }) =>
     templatePath: path.join(templatePackDir, "template.html"),
   });
 
+export const defaultBlogSemanticRender: BlogRenderer = ({ brand, post }) =>
+  packRenderSemantic({ brand, post });
+
 const defaultService = buildCreateService({
   store: new DrizzleBlogCreateStore(),
   ai: new OpenAiBlogCreateClient(),
   validate: packValidate,
   render: defaultBlogRender,
+  renderSemantic: defaultBlogSemanticRender,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 });
 
