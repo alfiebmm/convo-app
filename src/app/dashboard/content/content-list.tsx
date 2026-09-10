@@ -12,7 +12,12 @@ export const BLOG_POST_STATUS_DISPLAY: Record<
   draft: { label: "Draft", className: "bg-slate-100 text-slate-700" },
   in_review: { label: "In Review", className: "bg-amber-100 text-amber-800" },
   approved: { label: "Approved", className: "bg-green-100 text-green-800" },
+  publishing: { label: "Publishing", className: "bg-orange-100 text-orange-800" },
   published: { label: "Published", className: "bg-blue-100 text-blue-800" },
+  publish_failed: {
+    label: "Publish failed",
+    className: "bg-red-100 text-red-800",
+  },
   rejected: { label: "Rejected", className: "bg-red-100 text-red-800" },
   generation_failed: {
     label: "Generation failed",

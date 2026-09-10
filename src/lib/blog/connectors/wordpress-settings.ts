@@ -86,6 +86,13 @@ export function decryptStoredWordPressConnector(
   };
 }
 
+export function getDecryptedWordPressConnectorFromSettings(
+  settings: unknown,
+): WordPressConfig | null {
+  const connector = parseStoredWordPressConnector(settings);
+  return connector ? decryptStoredWordPressConnector(connector) : null;
+}
+
 export function mergeWordPressConnectorSettings(
   settings: Record<string, unknown>,
   wordpress: StoredWordPressConnector,

@@ -4,6 +4,7 @@ import { marked } from "marked";
 import type { BlogPostDetail } from "@/lib/blog/queries";
 
 import { BlogPostStatusPill } from "../content-list";
+import { PublishBlogPostButton } from "./publish-blog-post-button";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -249,6 +250,16 @@ function FailureState({ post }: { post: BlogPostDetail }) {
 }
 
 export async function ArticleDetailView({ post }: { post: BlogPostDetail }) {
+  return ArticleDetailViewWithPublishing({ post, wordpressSiteUrl: null });
+}
+
+export async function ArticleDetailViewWithPublishing({
+  post,
+  wordpressSiteUrl,
+}: {
+  post: BlogPostDetail;
+  wordpressSiteUrl: string | null;
+}) {
   if (post.status === "generation_failed") {
     return <FailureState post={post} />;
   }
@@ -332,13 +343,34 @@ export async function ArticleDetailView({ post }: { post: BlogPostDetail }) {
         </Link>
       ) : null}
 
+      {publishedUrl(post) ? (
+        <a
+          href={publishedUrl(post) ?? undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex text-sm font-medium text-orange-600 hover:text-orange-700"
+        >
+          View on WordPress
+        </a>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
-        {["Approve", "Reject", "Edit", "Publish"].map((action) => (
+        {["Approve", "Reject", "Edit"].map((action) => (
           <DisabledAction key={action} tooltip="Coming in CON-107 / CON-111">
             {action}
           </DisabledAction>
         ))}
+        <PublishBlogPostButton
+          postId={post.id}
+          status={post.status}
+          wordpressSiteUrl={wordpressSiteUrl}
+        />
       </div>
     </div>
   );
+}
+
+function publishedUrl(post: BlogPostDetail) {
+  const published = nestedRecord(post.metadata, "published");
+  return stringValue(published.wp_post_url);
 }
