@@ -49,6 +49,7 @@ export interface BlogPostDetail {
   title: string;
   slug: string;
   content: string;
+  contentSemantic?: string | null;
   metadata: Record<string, unknown>;
   status: BlogPostStatus;
   persona: string | null;
@@ -71,6 +72,7 @@ interface BlogPostSupabaseRow {
   status: BlogPostStatus;
   metadata: Record<string, unknown> | null;
   content: string | null;
+  content_semantic?: string | null;
   persona: string | null;
   topic: string | null;
   created_at: string;
@@ -298,6 +300,7 @@ function mapBlogPostDetailRow(row: BlogPostDetailSupabaseRow): BlogPostDetail {
     title: row.title ?? "Untitled article",
     slug: row.slug,
     content: row.content ?? "",
+    contentSemantic: row.content_semantic ?? null,
     metadata: row.metadata ?? {},
     status: row.status,
     persona: row.persona,
@@ -406,6 +409,7 @@ export async function getBlogPostByIdForTenant({
         "title",
         "slug",
         "content",
+        "content_semantic",
         "metadata",
         "status",
         "persona",

@@ -5,6 +5,7 @@ import { blogPosts } from "@/lib/db/schema";
 
 import {
   defaultBlogRender,
+  defaultBlogSemanticRender,
   buildBlogPostMetadata,
   DrizzleBlogCreateStore,
   generateWithRateLimitRetry,
@@ -63,6 +64,7 @@ type BlogUpdateDeps = {
   store: BlogUpdateStore;
   ai: BlogCreateAi;
   render: BlogRenderer;
+  renderSemantic: BlogRenderer;
   validate: BlogValidator;
   sleep: (ms: number) => Promise<void>;
   now: () => Date;
@@ -289,6 +291,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
       const retryInstructions: string[] = [];
       let finalPost: BlogPostJson | null = null;
       let finalHtml = "";
+      let finalSemanticHtml = "";
       let finalWordCount: number | null = null;
       let failureReason = "Article update generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
@@ -331,6 +334,9 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           });
           finalHtml = stripRenderedEmDashes(
             deps.render({ brand: brief.tenant.brandJson, post: finalPost })
+          );
+          finalSemanticHtml = stripRenderedEmDashes(
+            deps.renderSemantic({ brand: brief.tenant.brandJson, post: finalPost })
           );
           allEmDashReplacements.push(...validated.emDashReplacements);
         } catch (error) {
@@ -392,6 +398,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
         title: finalPost.title,
         slug: finalPost.slug,
         content: finalHtml,
+        contentSemantic: finalSemanticHtml,
         metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
           update_of: target.id,
           generation: {
@@ -439,6 +446,7 @@ const defaultService = buildUpdateService({
   ai: new OpenAiBlogCreateClient(),
   validate: packValidate,
   render: defaultBlogRender,
+  renderSemantic: defaultBlogSemanticRender,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => new Date(),
 });

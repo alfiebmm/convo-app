@@ -79,6 +79,7 @@ function mapBlogPostRow(row: typeof blogPosts.$inferSelect): BlogPostDetail {
     title: row.title,
     slug: row.slug,
     content: row.content,
+    contentSemantic: row.contentSemantic,
     metadata: metadataRecord(row.metadata),
     status: row.status,
     persona: row.persona,
@@ -158,11 +159,16 @@ export async function publishBlogPost(
       lastModified: deps.now(),
     });
 
-    const publishResult = await deps.publishArticle(config, {
+    const publishPost: BlogPostDetail = {
       ...post,
       status: "publishing",
       metadata: baseMetadata,
-    });
+    };
+    const publishResult = await deps.publishArticle(
+      config,
+      publishPost,
+      post.contentSemantic ?? undefined,
+    );
 
     if (!publishResult.ok) {
       const failedAt = deps.now();
