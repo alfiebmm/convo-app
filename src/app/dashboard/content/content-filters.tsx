@@ -14,7 +14,9 @@ const statusOptions = [
   { value: "draft", label: "Draft" },
   { value: "in_review", label: "In Review" },
   { value: "approved", label: "Approved" },
+  { value: "publishing", label: "Publishing" },
   { value: "published", label: "Published" },
+  { value: "publish_failed", label: "Publish failed" },
   { value: "rejected", label: "Rejected" },
 ];
 
