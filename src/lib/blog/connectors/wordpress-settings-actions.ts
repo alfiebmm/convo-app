@@ -9,6 +9,7 @@ import {
 } from "@/lib/blog/connectors/wordpress";
 import {
   encryptedWordPressConnectorFromInput,
+  decryptStoredWordPressConnector,
   maskStoredWordPressConnector,
   mergeWordPressConnectorSettings,
   parseStoredWordPressConnector,
@@ -63,6 +64,18 @@ export async function getWordPressConnectorForTenant(
   if (!connector) return { ok: true, config: null };
 
   return { ok: true, config: maskStoredWordPressConnector(connector) };
+}
+
+export async function getDecryptedWordPressConnectorForTenant(
+  tenantId: string,
+  store: Pick<WordPressSettingsStore, "getTenantSettings">,
+): Promise<WordPressConfig | null> {
+  assertTenantId(tenantId);
+  const settings = await store.getTenantSettings(tenantId);
+  if (settings === null) return null;
+
+  const connector = parseStoredWordPressConnector(settings);
+  return connector ? decryptStoredWordPressConnector(connector) : null;
 }
 
 export async function testWordPressConnectorForTenant(
