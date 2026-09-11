@@ -15,4 +15,5 @@ export type VerifyCredentialsResult =
 export type PublishArticle = (
   config: unknown,
   post: BlogPostDetail,
+  contentOverride?: string,
 ) => Promise<PublishArticleResult>;

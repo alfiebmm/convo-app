@@ -10,12 +10,16 @@ import brandFixture from "../schemas/brand.example.chemist2u.json";
 import postFixture from "../schemas/post.example.chemist2u.json";
 
 const require = createRequire(import.meta.url);
-const { render } = require("../template-pack/renderer.js") as {
+const { render, renderSemantic } = require("../template-pack/renderer.js") as {
   render: (params: {
     brand: Record<string, unknown>;
     post: BlogPostJson;
     stylesPath: string;
     templatePath: string;
+  }) => string;
+  renderSemantic: (params: {
+    brand: Record<string, unknown>;
+    post: BlogPostJson;
   }) => string;
 };
 const { validate } = require("../template-pack/validate.js") as {
@@ -44,6 +48,7 @@ type InsertedPost = {
   title: string;
   slug: string;
   content: string;
+  contentSemantic?: string | null;
   metadata: Record<string, unknown>;
   status: "draft" | "generation_failed" | "update_pending";
   persona: string | null;
@@ -262,6 +267,7 @@ function makeService(responses: BlogPostJson[], options: MakeServiceOptions = {}
         stylesPath: path.join(process.cwd(), "src/lib/blog/template-pack/_tokenised.css"),
         templatePath: path.join(process.cwd(), "src/lib/blog/template-pack/template.html"),
       }),
+    renderSemantic,
     sleep: async () => {},
   });
 
@@ -327,6 +333,8 @@ test("createArticle renders HTML and persists full post metadata", async () => {
     /<title>How pharmacists support ongoing care across Australia/
   );
   assert.match(inserts[0].content, /<meta name="description"/);
+  assert.match(inserts[0].contentSemantic ?? "", /<script type="application\/ld\+json">/);
+  assert.doesNotMatch(inserts[0].contentSemantic ?? "", /class=|gh-blog-|<style\b/i);
   assert.equal((inserts[0].metadata as BlogPostJson).title, inserts[0].title);
   assert.equal(
     (inserts[0].metadata.stats as Record<string, unknown>).wordCount,

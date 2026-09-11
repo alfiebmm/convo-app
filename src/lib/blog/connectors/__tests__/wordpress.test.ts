@@ -183,6 +183,34 @@ test("publishArticle creates a live post with JSON body and returns WordPress de
   }
 });
 
+test("publishArticle can override content while preserving default payload fields", async () => {
+  const fetchMock = mockFetch([
+    jsonResponse(201, {
+      id: 124,
+      link: "https://example.com/semantic-post/",
+    }),
+  ]);
+  try {
+    await publishArticle(
+      config,
+      makePost({
+        content: '<html><body><div class="gh-blog-article">Preview body</div></body></html>',
+      }),
+      '<script type="application/ld+json">{"@type":"Article"}</script><h1>Semantic body</h1>',
+    );
+
+    assert.deepEqual(JSON.parse(String(fetchMock.calls[0].init?.body)), {
+      title: "How to choose a puppy class",
+      content:
+        '<script type="application/ld+json">{"@type":"Article"}</script><h1>Semantic body</h1>',
+      slug: "choose-puppy-class",
+      status: "publish",
+    });
+  } finally {
+    fetchMock.restore();
+  }
+});
+
 test("publishArticle updates an existing WordPress post when metadata has wp_post_id", async () => {
   const fetchMock = mockFetch([
     jsonResponse(200, {

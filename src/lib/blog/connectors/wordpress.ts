@@ -110,11 +110,11 @@ function metadataRecord(value: unknown) {
   return value as Record<string, unknown>;
 }
 
-function wordpressPayload(post: BlogPostDetail) {
+function wordpressPayload(post: BlogPostDetail, contentOverride?: string) {
   const metadata = post.metadata ?? {};
   const payload: Record<string, unknown> = {
     title: post.title,
-    content: post.content,
+    content: contentOverride ?? post.content,
     slug: post.slug,
     status: "publish",
   };
@@ -178,6 +178,7 @@ export async function verifyCredentials(
 export async function publishArticle(
   config: WordPressConfig,
   post: BlogPostDetail,
+  contentOverride?: string,
 ): Promise<PublishArticleResult> {
   const normalized = normalizeSiteUrl(config.siteUrl);
   if (!normalized.ok) return normalized;
@@ -190,7 +191,7 @@ export async function publishArticle(
   const response = await fetchWithRetry(endpoint(normalized.siteUrl, path), {
     method: existingPostId ? "PUT" : "POST",
     headers: jsonHeaders(config),
-    body: JSON.stringify(wordpressPayload(post)),
+    body: JSON.stringify(wordpressPayload(post, contentOverride)),
   });
 
   if (!response.ok) {
