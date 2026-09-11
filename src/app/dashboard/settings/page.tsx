@@ -49,11 +49,6 @@ interface NotificationsConfig {
 interface TenantSettings {
   cms?: {
     type: string;
-    wordpress?: {
-      siteUrl: string;
-      username: string;
-      applicationPassword: string;
-    };
     shopify?: {
       shopDomain: string;
       accessToken: string;
@@ -78,6 +73,7 @@ interface TenantSettings {
   };
   autoPublish?: boolean;
   autoPublishThreshold?: number;
+  connectors?: Record<string, unknown>;
   guardrails?: GuardrailsConfig;
   notifications?: NotificationsConfig;
 }
@@ -264,10 +260,7 @@ export default function SettingsPage() {
             Connect to your CMS to publish content directly.
           </p>
           <div className="mt-4 space-y-3">
-            <WordPressIntegration
-              settings={settings}
-              onUpdate={setSettings}
-            />
+            <WordPressConnectorCard settings={settings} />
             <ShopifyIntegration
               settings={settings}
               onUpdate={setSettings}
@@ -509,165 +502,47 @@ async function disconnectCMS(
   onUpdate(data.settings);
 }
 
-// ─── WordPress Integration Card ──────────────────────────────
-
-function WordPressIntegration({
-  settings,
-  onUpdate,
-}: {
-  settings: TenantSettings;
-  onUpdate: (s: TenantSettings) => void;
-}) {
-  const isConnected = !!settings.cms?.wordpress?.siteUrl;
-  const [showForm, setShowForm] = useState(false);
-  const [siteUrl, setSiteUrl] = useState(
-    settings.cms?.wordpress?.siteUrl ?? ""
-  );
-  const [username, setUsername] = useState(
-    settings.cms?.wordpress?.username ?? ""
-  );
-  const [appPassword, setAppPassword] = useState(
-    settings.cms?.wordpress?.applicationPassword ?? ""
-  );
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    success: boolean;
-    error?: string;
-  } | null>(null);
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await saveCMSConfig(
-        "wordpress",
-        "wordpress",
-        { siteUrl, username, applicationPassword: appPassword },
-        onUpdate
-      );
-      setShowForm(false);
-    } catch (err) {
-      console.error("Failed to save WordPress settings:", err);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDisconnect() {
-    setSaving(true);
-    try {
-      await disconnectCMS("wordpress", settings, onUpdate);
-      setSiteUrl("");
-      setUsername("");
-      setAppPassword("");
-    } catch (err) {
-      console.error("Failed to disconnect:", err);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleTest() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/settings/test-wordpress", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          siteUrl,
-          username,
-          applicationPassword: appPassword,
-        }),
-      });
-      const data = await res.json();
-      setTestResult(data);
-    } catch {
-      setTestResult({ success: false, error: "Network error" });
-    } finally {
-      setTesting(false);
-    }
-  }
+function WordPressConnectorCard({ settings }: { settings: TenantSettings }) {
+  const wordpress = extractWordPressConnector(settings);
+  const isConnected = Boolean(wordpress?.siteUrl);
 
   return (
-    <div className="rounded-lg border border-slate-200 p-4">
-      <div className="flex items-center justify-between">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-medium text-slate-900">WordPress</p>
-          <p className="text-sm text-slate-500">
-            Publish articles via WP REST API
+          <p className="mt-1 text-sm text-slate-500">
+            Publish approved articles to a WordPress site.
           </p>
+          {wordpress?.siteUrl && (
+            <p className="mt-1 text-xs text-slate-500">{wordpress.siteUrl}</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {isConnected && <ConnectedBadge />}
-          {isConnected ? (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowForm(!showForm)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                Edit
-              </button>
-              <button
-                onClick={handleDisconnect}
-                disabled={saving}
-                className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              Connect
-            </button>
-          )}
+          <Link
+            href="/dashboard/settings/connectors/wordpress"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Configure
+          </Link>
         </div>
       </div>
-
-      {showForm && (
-        <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
-          <FormField label="Site URL">
-            <input
-              type="url"
-              value={siteUrl}
-              onChange={(e) => setSiteUrl(e.target.value)}
-              placeholder="https://yoursite.com"
-              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </FormField>
-          <FormField label="Username">
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="admin"
-              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </FormField>
-          <FormField label="Application Password" hint="Generate in WordPress → Users → Application Passwords">
-            <input
-              type="password"
-              value={appPassword}
-              onChange={(e) => setAppPassword(e.target.value)}
-              placeholder="xxxx xxxx xxxx xxxx"
-              className="mt-1 w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </FormField>
-          <FormActions
-            onSave={handleSave}
-            onTest={handleTest}
-            saving={saving}
-            testing={testing}
-            disabled={!siteUrl || !username || !appPassword}
-          />
-          <TestResultBanner result={testResult} />
-        </div>
-      )}
     </div>
   );
+}
+
+function extractWordPressConnector(settings: TenantSettings) {
+  const connectors = settings.connectors;
+  if (!connectors || typeof connectors !== "object" || Array.isArray(connectors)) {
+    return null;
+  }
+  const wordpress = (connectors as Record<string, unknown>).wordpress;
+  if (!wordpress || typeof wordpress !== "object" || Array.isArray(wordpress)) {
+    return null;
+  }
+  const record = wordpress as Record<string, unknown>;
+  return typeof record.siteUrl === "string" ? { siteUrl: record.siteUrl } : null;
 }
 
 // ─── Shopify Integration Card ────────────────────────────────

@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { cookies } from "next/headers";
 import type { TenantSettings } from "@/lib/publishing";
 import { withApiErrorLogging } from "@/lib/errors/wrap";
+import { redactWordPressSecretsFromSettings } from "@/lib/blog/connectors/wordpress-settings";
 
 async function getActiveTenantId(userId: string): Promise<string | null> {
   const cookieStore = await cookies();
@@ -61,8 +62,12 @@ async function getImpl() {
     return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
   }
 
+  const settings = redactWordPressSecretsFromSettings(
+    (tenant.settings ?? {}) as Record<string, unknown>,
+  );
+
   return NextResponse.json({
-    settings: tenant.settings as TenantSettings,
+    settings: settings as TenantSettings,
     tenant: {
       id: tenant.id,
       name: tenant.name,
@@ -119,8 +124,12 @@ async function patchImpl(req: NextRequest) {
     .where(eq(tenants.id, tenantId))
     .returning();
 
+  const redactedSettings = redactWordPressSecretsFromSettings(
+    (updated.settings ?? {}) as Record<string, unknown>,
+  );
+
   return NextResponse.json({
-    settings: updated.settings,
+    settings: redactedSettings,
     tenant: {
       id: updated.id,
       name: updated.name,
