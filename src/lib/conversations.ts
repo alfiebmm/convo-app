@@ -100,6 +100,7 @@ export async function addMessage(
     .update(conversations)
     .set({
       messageCount: sql`${conversations.messageCount} + 1`,
+      lastActivityAt: new Date(),
     })
     .where(eq(conversations.id, conversationId));
 
