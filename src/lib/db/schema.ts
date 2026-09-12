@@ -262,6 +262,13 @@ export const conversations = pgTable(
       .notNull(),
     visitorId: varchar("visitor_id", { length: 255 }), // anonymous fingerprint / cookie ID
     status: conversationStatusEnum("status").default("active").notNull(),
+    title: text("title"),
+    topic: text("topic"),
+    persona: text("persona"),
+    aiSummary: text("ai_summary"),
+    summaryGeneratedAt: timestamp("summary_generated_at", {
+      withTimezone: true,
+    }),
     metadata: jsonb("metadata").default({}).notNull(), // page URL, referrer, device, etc.
     messageCount: integer("message_count").default(0).notNull(),
     // Human triage flags — independent of conversation lifecycle status.
@@ -278,6 +285,9 @@ export const conversations = pgTable(
       .defaultNow()
       .notNull(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -286,6 +296,12 @@ export const conversations = pgTable(
     index("conversations_tenant_idx").on(table.tenantId),
     index("conversations_status_idx").on(table.tenantId, table.status),
     index("conversations_followup_idx").on(table.tenantId, table.needsFollowup),
+    index("conversations_tenant_last_activity_idx").on(
+      table.tenantId,
+      table.lastActivityAt
+    ),
+    index("conversations_tenant_persona_idx").on(table.tenantId, table.persona),
+    index("conversations_tenant_topic_idx").on(table.tenantId, table.topic),
   ]
 );
 
