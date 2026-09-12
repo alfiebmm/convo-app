@@ -133,6 +133,31 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
     "regulated advice",
   ],
 
+  contentRules: {
+    styleGuide: {
+      tone: "Friendly, practical and specific",
+      bannedWords: [],
+      readingLevel: "Plain English",
+      lengthTargets: {
+        min: 800,
+        max: 1500,
+      },
+    },
+    blogTemplate: {
+      h1Pattern: "{primaryKeyword}",
+      h2Sections: [],
+      faqEnabled: true,
+      ctaPlaceholders: [],
+    },
+    personas: [],
+    exclusionList: [
+      "legal advice",
+      "medical advice",
+      "financial advice",
+      "regulated advice",
+    ],
+  },
+
   seo_defaults: {
     title_template: "{topic} | {site_name}",
     meta_template:

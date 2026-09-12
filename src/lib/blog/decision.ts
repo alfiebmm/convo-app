@@ -9,7 +9,10 @@ import {
   messages,
   tenants,
 } from "@/lib/db/schema";
-import { parseForumConfigPerSlice } from "@/lib/forum-config/validate";
+import {
+  contentRulesExclusionList,
+  matchesExcludedTopic,
+} from "@/lib/forum-config/content-rules";
 import { getOpenAIClient } from "@/lib/openai";
 import { computeBlogPostWordCountFallback } from "./queries";
 
@@ -196,27 +199,17 @@ function daysSince(date: Date | null | undefined, now: Date): number {
   return (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
 }
 
-function normalise(input: string): string {
-  return input.trim().toLowerCase();
-}
-
 function matchesExclusion(
   exclusionList: readonly string[],
   extracted: KeywordIntent,
   sourceTranscript: string
 ): string | null {
-  const haystack = normalise(
+  const haystack =
     [extracted.primary_keyword, extracted.intent, sourceTranscript]
       .filter(Boolean)
-      .join(" ")
-  );
+      .join(" ");
 
-  for (const term of exclusionList) {
-    const needle = normalise(term);
-    if (needle && haystack.includes(needle)) return term;
-  }
-
-  return null;
+  return matchesExcludedTopic(exclusionList, haystack);
 }
 
 function parseDecisionConfig(settings: unknown): Partial<DecisionConfig> {
@@ -252,8 +245,7 @@ function parseDecisionConfig(settings: unknown): Partial<DecisionConfig> {
 }
 
 function tenantExclusionList(settings: unknown): string[] {
-  const parsed = parseForumConfigPerSlice(settings);
-  return parsed.exclusion_list;
+  return contentRulesExclusionList(settings);
 }
 
 function publicSimilarPosts(posts: SimilarPostCandidate[]): SimilarPost[] {
