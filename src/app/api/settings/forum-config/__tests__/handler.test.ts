@@ -105,6 +105,30 @@ const validFollowUp = {
   destinations: [],
 };
 
+const validContentRules = {
+  styleGuide: {
+    tone: "Direct and useful",
+    bannedWords: ["cheap"],
+    readingLevel: "Plain English",
+    lengthTargets: { min: 900, max: 1400 },
+  },
+  blogTemplate: {
+    h1Pattern: "{primaryKeyword} guide",
+    h2Sections: ["Overview", "Costs"],
+    faqEnabled: true,
+    ctaPlaceholders: ["book-call"],
+  },
+  personas: [
+    {
+      name: "Buyers",
+      description: "Researching options",
+      goals: ["Compare providers"],
+      painPoints: ["Unclear pricing"],
+    },
+  ],
+  exclusionList: ["legal advice"],
+};
+
 async function run() {
   // ── GET ────────────────────────────────────────────────────
 
@@ -291,6 +315,34 @@ async function run() {
     assertEq(topics[0], "old-topic", "allowed_topics not touched by persona patch");
   });
 
+  await test("PATCH persists contentRules slice", async () => {
+    const deps = makeDeps({
+      "tenant-a": {
+        forumConfig: { ai_persona: validPersona },
+      },
+    });
+    const res = await handleForumConfigPatch(
+      "tenant-a",
+      { contentRules: validContentRules },
+      deps,
+    );
+    assertEq(res.status, 200, "status");
+    const stored = deps._readStore("tenant-a") as Record<string, unknown>;
+    const fc = stored.forumConfig as Record<string, unknown>;
+    const rules = fc.contentRules as Record<string, unknown>;
+    const styleGuide = rules.styleGuide as Record<string, unknown>;
+    const blogTemplate = rules.blogTemplate as Record<string, unknown>;
+    const personas = rules.personas as Record<string, unknown>[];
+    assertEq(styleGuide.tone, "Direct and useful", "style guide persisted");
+    assertEq(
+      (blogTemplate.h2Sections as string[])[1],
+      "Costs",
+      "template persisted",
+    );
+    assertEq(personas[0].name, "Buyers", "personas persisted");
+    assertEq(deps._writes.length, 1, "one write");
+  });
+
   await test("PATCH preserves OTHER settings keys (widget, cms)", async () => {
     const deps = makeDeps({
       "tenant-a": {
@@ -439,26 +491,30 @@ async function run() {
 
   await test("PATCH rejects invalid starter_prompts action blocks", async () => {
     const deps = makeDeps({ "tenant-a": {} });
-    const res = await handleForumConfigPatch("tenant-a", {
-      starter_prompts: [
-        {
-          emoji: "✉️",
-          label: "Get in touch",
-          prompt: "How do I get in touch?",
-          action: {
-            type: "lead_capture",
-            capture_policy: {
-              id: "starter_pill_get_in_touch",
-              case_type: "lead",
-              required_fields: ["email"],
-              optional_fields: ["email"],
-              privacy_notice: "We use your details to follow up.",
-              privacy_policy_url: "https://example.com/privacy",
+    const res = await handleForumConfigPatch(
+      "tenant-a",
+      {
+        starter_prompts: [
+          {
+            emoji: "✉️",
+            label: "Get in touch",
+            prompt: "How do I get in touch?",
+            action: {
+              type: "lead_capture",
+              capture_policy: {
+                id: "starter_pill_get_in_touch",
+                case_type: "lead",
+                required_fields: ["email"],
+                optional_fields: ["email"],
+                privacy_notice: "We use your details to follow up.",
+                privacy_policy_url: "https://example.com/privacy",
+              },
             },
           },
-        },
-      ],
-    });
+        ],
+      },
+      deps,
+    );
     assertEq(res.status, 400, "status");
     assertEq(deps._writes.length, 0, "no writes on invalid starter prompt");
   });

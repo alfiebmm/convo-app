@@ -2,6 +2,11 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { blogPosts } from "@/lib/db/schema";
+import {
+  contentRulesBannedWords,
+  readContentRules,
+} from "@/lib/forum-config/content-rules";
+import type { ContentRules } from "@/lib/forum-config/schema";
 
 import {
   defaultBlogRender,
@@ -77,6 +82,7 @@ type BlogUpdateBrief = {
     brandJson: BrandJson;
     writingRules: { bannedTerms: string[]; enforceAustralianEnglish: boolean };
     ctaConfig: BlogCtaConfig;
+    contentRules: ContentRules;
   };
   source: { conversationId: string; messages: MessageRecord[]; wordCount: number };
   decision: { primaryKeyword: string; intent: string; targetBlogPostId: string };
@@ -143,10 +149,16 @@ function buildBrief(
       name: loaded.tenant.name,
       brandJson: resolveBrandJson(loaded.tenant, ctaConfig),
       writingRules: {
-        bannedTerms: tenantBannedTerms(loaded.tenant.settings),
+        bannedTerms: Array.from(
+          new Set([
+            ...tenantBannedTerms(loaded.tenant.settings),
+            ...contentRulesBannedWords(loaded.tenant.settings),
+          ]),
+        ),
         enforceAustralianEnglish: true,
       },
       ctaConfig,
+      contentRules: readContentRules(loaded.tenant.settings),
     },
     source: {
       conversationId,

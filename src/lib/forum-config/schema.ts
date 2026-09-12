@@ -100,6 +100,53 @@ export const allowedTopicsSchema = z.array(z.string()).default([]);
 export const exclusionListSchema = z.array(z.string()).default([]);
 
 // ============================================================
+// Content Rules Configuration (CON-88)
+// ============================================================
+
+export const contentRulesPersonaSchema = z.object({
+  id: z.string().min(1).optional(),
+  name: z.string().min(1),
+  description: z.string().default(""),
+  goals: z.array(z.string()).default([]),
+  painPoints: z.array(z.string()).default([]),
+});
+
+export const contentRulesSchema = z.object({
+  styleGuide: z
+    .object({
+      tone: z.string().default("Friendly, practical and specific"),
+      bannedWords: z.array(z.string()).default([]),
+      readingLevel: z.string().default("Plain English"),
+      lengthTargets: z
+        .object({
+          min: z.number().int().nonnegative().default(800),
+          max: z.number().int().positive().default(1500),
+        })
+        .superRefine((value, ctx) => {
+          if (value.max < value.min) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["max"],
+              message: "Maximum length must be greater than or equal to minimum length",
+            });
+          }
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+  blogTemplate: z
+    .object({
+      h1Pattern: z.string().default("{primaryKeyword}"),
+      h2Sections: z.array(z.string()).default([]),
+      faqEnabled: z.boolean().default(true),
+      ctaPlaceholders: z.array(z.string()).default([]),
+    })
+    .prefault({}),
+  personas: z.array(contentRulesPersonaSchema).default([]),
+  exclusionList: z.array(z.string()).default([]),
+});
+
+// ============================================================
 // SEO Defaults Configuration
 // ============================================================
 
@@ -692,6 +739,7 @@ export const forumConfigSchema = z.object({
   lead_capture: leadCaptureSchema.prefault({}),
   allowed_topics: allowedTopicsSchema,
   exclusion_list: exclusionListSchema,
+  contentRules: contentRulesSchema.prefault({}),
   seo_defaults: seoDefaultsSchema.prefault({}),
   blog: blogConfigSchema.prefault({}),
   connectors: connectorsSchema.prefault({}),
@@ -714,6 +762,7 @@ export type BlogConfig = z.infer<typeof blogConfigSchema>;
 export type Connectors = z.infer<typeof connectorsSchema>;
 export type Limits = z.infer<typeof limitsSchema>;
 export type LeadCapture = z.infer<typeof leadCaptureSchema>;
+export type ContentRules = z.infer<typeof contentRulesSchema>;
 
 // Follow-up (CON-157)
 export type CaseType = z.infer<typeof caseTypeEnum>;

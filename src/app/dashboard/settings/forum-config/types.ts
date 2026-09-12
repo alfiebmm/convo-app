@@ -8,6 +8,7 @@ export type AuthoringSliceKey =
   | "starter_prompts"
   | "welcome"
   | "allowed_topics"
+  | "contentRules"
   | "follow_up";
 
 /**

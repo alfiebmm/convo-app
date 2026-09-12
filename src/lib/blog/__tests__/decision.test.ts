@@ -354,3 +354,25 @@ test("decide skips when tenant exclusion list matches", async () => {
   assert.match(result.reason, /tenant exclusion list/);
   assertLogged(store, "skip");
 });
+
+test("decide skips when contentRules exclusionList matches", async () => {
+  const { service, store } = makeService({
+    settings: {
+      forumConfig: {
+        contentRules: {
+          exclusionList: ["regulated advice"],
+        },
+      },
+    },
+    extracted: {
+      primary_keyword: "regulated advice for buyers",
+      intent: "educational",
+    },
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "skip");
+  assert.match(result.reason, /tenant exclusion list/);
+  assertLogged(store, "skip");
+});

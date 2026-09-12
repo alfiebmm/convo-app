@@ -15,6 +15,12 @@ import {
   tenants,
 } from "@/lib/db/schema";
 import { getOpenAIClient } from "@/lib/openai";
+import {
+  contentRulesBannedWords,
+  contentRulesPromptAddendum,
+  readContentRules,
+} from "@/lib/forum-config/content-rules";
+import type { ContentRules } from "@/lib/forum-config/schema";
 
 import type { DecisionResult } from "./decision";
 import { isHttpsUrl, pickHeroPlaceholderColour } from "./hero-placeholder";
@@ -49,6 +55,7 @@ type BlogBrief = {
     heroPlaceholderUrl?: string | null;
     writingRules: { bannedTerms: string[]; enforceAustralianEnglish: boolean };
     ctaConfig: BlogCtaConfig;
+    contentRules: ContentRules;
   };
   source: {
     conversationId: string;
@@ -166,6 +173,7 @@ function formatBannedTerms(terms: string[]): string {
 function buildSystemPrompt(brief: BlogBrief): string {
   const primaryKeyword = brief.decision.primaryKeyword;
   const bannedTerms = formatBannedTerms(brief.tenant.writingRules.bannedTerms);
+  const lengthTargets = brief.tenant.contentRules.styleGuide.lengthTargets;
 
   return `You are Convo's senior SEO article writer.
 
@@ -178,7 +186,7 @@ Article requirements:
 - Every item in \`post.sections\` MUST be an object with a non-empty \`heading\` string and a \`blocks\` array. Every \`section.blocks\` array MUST contain valid block objects matching the schema.
 - Each section MUST contain at least 3 paragraph blocks (block.type = "p").
 - Each paragraph block should be 80-150 words of concrete, specific prose. Short blocks (under 40 words) or vague filler ("this is important", "consider your options") will be REJECTED.
-- HARD REQUIREMENT: total article body MUST land between 800 and 1,500 words across all sections plus the intro paragraph. This is a generation contract, not a post-hoc filter — plan your section lengths up front so the total lands in range. Aim for the middle (around 1,100-1,300 words) for balanced depth and reader retention. Below 800 words the article will be flagged for review; above 1,500 words it will be REJECTED unless the topic genuinely warrants it.
+- HARD REQUIREMENT: total article body MUST land between ${lengthTargets.min} and ${lengthTargets.max} words across all sections plus the intro paragraph. This is a generation contract, not a post-hoc filter — plan your section lengths up front so the total lands in range. Aim for the middle for balanced depth and reader retention.
 - Support long-form content with concrete examples, data points, and specific-to-industry detail. If the source conversation lacks depth, expand using common non-sensitive industry knowledge (per the "no invented facts" rule elsewhere, knowledge OK, fabricated specifics NOT OK).
 - The primary keyword "${primaryKeyword}" MUST appear in ALL of these places or the output will be REJECTED:
   - \`post.title\` (as-is or in natural phrasing)
@@ -195,7 +203,9 @@ Article requirements:
 - Do not invent facts that are not supported by the source conversation, tenant context, or common non-sensitive industry knowledge.
 - Do not fabricate customer names, prices, guarantees, credentials, or policies.
 - Use sentence case headings.
-- ${AU_ENGLISH_RULE}`;
+- ${AU_ENGLISH_RULE}
+
+${contentRulesPromptAddendum(brief.tenant.contentRules)}`;
 }
 
 export function wordCount(input: string): number {
@@ -395,7 +405,13 @@ function buildBrief(
   if (!primaryKeyword) throw new Error("Create decision is missing primary_keyword");
 
   const ctaConfig = resolveCtaConfig(loaded.tenant);
-  const bannedTerms = tenantBannedTerms(loaded.tenant.settings);
+  const bannedTerms = Array.from(
+    new Set([
+      ...tenantBannedTerms(loaded.tenant.settings),
+      ...contentRulesBannedWords(loaded.tenant.settings),
+    ]),
+  );
+  const contentRules = readContentRules(loaded.tenant.settings);
 
   return {
     tenant: {
@@ -410,6 +426,7 @@ function buildBrief(
         enforceAustralianEnglish: true,
       },
       ctaConfig,
+      contentRules,
     },
     source: {
       conversationId,

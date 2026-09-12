@@ -46,6 +46,10 @@ import {
   qualifyingQuestionsSchema,
 } from "@/lib/forum-config/schema";
 import {
+  contentRulesExclusionList,
+  matchesExcludedTopic,
+} from "@/lib/forum-config/content-rules";
+import {
   assertForumConfigCompleteness,
   REQUIRED_FORUM_CONFIG_SLICES,
 } from "@/lib/forum-config/completeness";
@@ -70,6 +74,82 @@ const buildPillQualifyingDirective = (questions: string[]) =>
   questions.length === 0
     ? ""
     : `The user has not yet answered the qualifying questions: ${questions.join("; ")}. Before answering their message, ask them these qualifying questions naturally in-conversation, one at a time. Example opener: "Before I answer, quick question so I can help properly: ${questions[0]}". Once they answer, acknowledge briefly and continue with their original request.`;
+
+const DEFAULT_EXCLUDED_TOPIC_RESPONSE =
+  "I cannot help with that topic here. I can still help with questions that are within this site's supported topics.";
+
+function deflectionForExcludedTopic(
+  settings: Record<string, unknown> | null,
+  matchedTopic: string,
+): string {
+  const guardrails =
+    settings?.guardrails && typeof settings.guardrails === "object"
+      ? (settings.guardrails as Record<string, unknown>)
+      : {};
+  const boundaries =
+    guardrails.topicBoundaries && typeof guardrails.topicBoundaries === "object"
+      ? (guardrails.topicBoundaries as Record<string, unknown>)
+      : {};
+  const deflect = Array.isArray(boundaries.deflect) ? boundaries.deflect : [];
+  const matched = deflect.find((rule) => {
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) return false;
+    const topic = (rule as Record<string, unknown>).topic;
+    return (
+      typeof topic === "string" &&
+      topic.trim().toLowerCase() === matchedTopic.trim().toLowerCase()
+    );
+  });
+
+  if (matched && typeof matched === "object" && !Array.isArray(matched)) {
+    const response = (matched as Record<string, unknown>).response;
+    if (typeof response === "string" && response.trim()) return response.trim();
+  }
+
+  return DEFAULT_EXCLUDED_TOPIC_RESPONSE;
+}
+
+async function excludedTopicResponse(params: {
+  conversationId: string;
+  tenantSettings: Record<string, unknown> | null;
+  message: string;
+}): Promise<Response | null> {
+  const matchedTopic = matchesExcludedTopic(
+    contentRulesExclusionList(params.tenantSettings),
+    params.message,
+  );
+  if (!matchedTopic) return null;
+
+  const content = deflectionForExcludedTopic(params.tenantSettings, matchedTopic);
+  await addMessage(params.conversationId, "assistant", content);
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: "meta", conversationId: params.conversationId })}\n\n`,
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: "token", content })}\n\n`,
+        ),
+      );
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`),
+      );
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
 
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -255,6 +335,15 @@ export async function POST(req: NextRequest) {
         patternMatched: injectionFlag.pattern,
         rawMessage: message,
       });
+    }
+
+    if (!isGreetingTurn) {
+      const excludedResponse = await excludedTopicResponse({
+        conversationId: convoId,
+        tenantSettings,
+        message,
+      });
+      if (excludedResponse) return excludedResponse;
     }
 
     // CON-94: load resolved persona from this conversation's qualifying
