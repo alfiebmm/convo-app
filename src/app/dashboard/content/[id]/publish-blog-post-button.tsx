@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import type { PrePublishChecklistResult } from "@/lib/blog/pre-publish-checklist";
 import type { BlogPostStatus } from "@/lib/blog/queries";
 
 const publishableStatuses = new Set<BlogPostStatus>([
@@ -20,11 +21,13 @@ type Notice =
 export function PublishBlogPostButton({
   postId,
   status,
+  prePublishChecklist,
   wordpressSiteUrl,
   onPublished,
 }: {
   postId: string;
   status: BlogPostStatus;
+  prePublishChecklist?: PrePublishChecklistResult | null;
   wordpressSiteUrl: string | null;
   onPublished?: () => void;
 }) {
@@ -52,6 +55,7 @@ export function PublishBlogPostButton({
     <ConnectedPublishBlogPostButton
       postId={postId}
       status={status}
+      prePublishChecklist={prePublishChecklist}
       wordpressSiteUrl={wordpressSiteUrl}
       onPublished={onPublished}
     />
@@ -61,11 +65,13 @@ export function PublishBlogPostButton({
 function ConnectedPublishBlogPostButton({
   postId,
   status,
+  prePublishChecklist,
   wordpressSiteUrl,
   onPublished,
 }: {
   postId: string;
   status: BlogPostStatus;
+  prePublishChecklist?: PrePublishChecklistResult | null;
   wordpressSiteUrl: string;
   onPublished?: () => void;
 }) {
@@ -74,7 +80,15 @@ function ConnectedPublishBlogPostButton({
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const canPublish = publishableStatuses.has(status);
-  const disabled = publishing || !canPublish;
+  const failingChecks =
+    prePublishChecklist?.items.filter((item) => item.status === "fail").length ?? 0;
+  const checklistOk = prePublishChecklist?.ok === true;
+  const disabled = publishing || !canPublish || !checklistOk;
+  const disabledTitle = !canPublish
+    ? `Cannot publish from ${status} status`
+    : !checklistOk
+      ? `Fix ${failingChecks} failing pre-publish checks before publishing.`
+      : "Publish to WordPress";
 
   async function publish() {
     setPublishing(true);
@@ -123,13 +137,9 @@ function ConnectedPublishBlogPostButton({
       <button
         type="button"
         disabled={disabled}
-        title={
-          canPublish
-            ? "Publish to WordPress"
-            : `Cannot publish from ${status} status`
-        }
+        title={disabledTitle}
         onClick={() => setConfirming(true)}
-        className="rounded-lg bg-[#FF6B2C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#E85A1E] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+        className="rounded-lg bg-[#FF6B2C] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#E85A1E] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-300 disabled:text-slate-500"
       >
         {publishing ? "Publishing..." : "Publish"}
       </button>

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { ArticleDetailView } from "../article-detail";
+import { ArticleDetailView, ArticleDetailViewWithPublishing } from "../article-detail";
 import {
   getBlogPostByIdForTenant,
   type BlogPostDetail,
@@ -58,6 +58,18 @@ function makePost(overrides: Partial<BlogPostDetail> = {}): BlogPostDetail {
 
 async function renderArticle(post: BlogPostDetail) {
   const element = await ArticleDetailView({ post });
+  return renderToStaticMarkup(element);
+}
+
+async function renderArticleWithPublishing(post: BlogPostDetail) {
+  const checklist = post.metadata.prePublishChecklist as Parameters<
+    typeof ArticleDetailViewWithPublishing
+  >[0]["checklist"];
+  const element = await ArticleDetailViewWithPublishing({
+    post,
+    checklist,
+    wordpressSiteUrl: "https://doggo.com.au",
+  });
   return renderToStaticMarkup(element);
 }
 
@@ -121,6 +133,34 @@ test("renders success state with title and body", async () => {
   assert.match(markup, /rel="noopener noreferrer"/);
   assert.match(markup, /View source conversation/);
   assert.match(markup, /Medication reviews/);
+});
+
+test("renders pre-publish checklist pass and fail rows", async () => {
+  const markup = await renderArticleWithPublishing(
+    makePost({
+      metadata: {
+        prePublishChecklist: {
+          ok: false,
+          ranAt: "2026-09-10T00:00:00.000Z",
+          items: [
+            { id: "word_count", label: "Word count gates", status: "pass" },
+            {
+              id: "canonical_url",
+              label: "Canonical URL",
+              status: "fail",
+              message: "Canonical URL is required.",
+            },
+          ],
+        },
+      },
+    }),
+  );
+
+  assert.match(markup, /Pre-publish checklist/);
+  assert.match(markup, /1 \/ 2 checks passed/);
+  assert.match(markup, /Word count gates/);
+  assert.match(markup, /Canonical URL is required/);
+  assert.match(markup, /Fix 1 failing pre-publish checks before publishing/);
 });
 
 test("renders failure banner with generation failure reason", async () => {

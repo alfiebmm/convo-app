@@ -439,13 +439,15 @@ async function run() {
 
   await test("PATCH rejects invalid starter_prompts action blocks", async () => {
     const deps = makeDeps({ "tenant-a": {} });
-    const res = await handleForumConfigPatch("tenant-a", {
-      starter_prompts: [
-        {
-          emoji: "✉️",
-          label: "Get in touch",
-          prompt: "How do I get in touch?",
-          action: {
+    const res = await handleForumConfigPatch(
+      "tenant-a",
+      {
+        starter_prompts: [
+          {
+            emoji: "✉️",
+            label: "Get in touch",
+            prompt: "How do I get in touch?",
+            action: {
             type: "lead_capture",
             capture_policy: {
               id: "starter_pill_get_in_touch",
@@ -455,10 +457,12 @@ async function run() {
               privacy_notice: "We use your details to follow up.",
               privacy_policy_url: "https://example.com/privacy",
             },
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+      deps,
+    );
     assertEq(res.status, 400, "status");
     assertEq(deps._writes.length, 0, "no writes on invalid starter prompt");
   });

@@ -105,21 +105,22 @@ test("sendTestWebhookForTenant POSTs a signed test payload", async () => {
   assert.equal(result.statusCode, 200);
   assert.equal(typeof result.latencyMs, "number");
   assert.ok(request);
-  assert.equal(request.url, "https://tenant.example.com/webhooks/convo");
-  assert.equal(request.init.method, "POST");
+  const sentRequest = request as { url: string; init: RequestInit };
+  assert.equal(sentRequest.url, "https://tenant.example.com/webhooks/convo");
+  assert.equal(sentRequest.init.method, "POST");
   assert.equal(
-    (request.init.headers as Record<string, string>)["Content-Type"],
+    (sentRequest.init.headers as Record<string, string>)["Content-Type"],
     "application/json",
   );
   assert.match(
-    (request.init.headers as Record<string, string>)["X-Convo-Signature"],
+    (sentRequest.init.headers as Record<string, string>)["X-Convo-Signature"],
     /^t=\d+,v1=/,
   );
   assert.match(
-    (request.init.headers as Record<string, string>)["Idempotency-Key"],
+    (sentRequest.init.headers as Record<string, string>)["Idempotency-Key"],
     /^test\.ping:/,
   );
-  assert.deepEqual(JSON.parse(String(request.init.body)), {
+  assert.deepEqual(JSON.parse(String(sentRequest.init.body)), {
     event: "test.ping",
     occurred_at: "2026-06-28T00:00:00.000Z",
     data: {

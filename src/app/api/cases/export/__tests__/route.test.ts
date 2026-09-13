@@ -158,7 +158,7 @@ function makeDeps(
     canExportPii: () => canExportPii,
     listCases: async (tenantId, filters) => {
       seen.tenantIds.push(tenantId);
-      seen.statuses.push(filters.status);
+      seen.statuses.push(filters?.status);
       return rows.filter((row) => row.tenantId === tenantId);
     },
     getContactDetail: async (tenantId, contactId) => {

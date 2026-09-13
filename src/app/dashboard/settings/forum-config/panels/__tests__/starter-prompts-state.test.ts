@@ -71,6 +71,7 @@ test("label overrides only attach to selected fields", () => {
   assert.deepEqual(lead.action.field_label_overrides, {});
 
   lead = setLabelOverride(lead, "email", "Work email");
+  if (lead.action?.type !== "lead_capture") return;
   assert.deepEqual(lead.action.field_label_overrides, {
     email: "Work email",
   });
