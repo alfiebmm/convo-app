@@ -18,6 +18,7 @@ import type {
   ConversationContactLinkRow,
   LinkContactInput,
   ListContactsByTenantFilters,
+  UpdateContactIdentifierInput,
   UpsertContactInput,
 } from "../store";
 
@@ -216,6 +217,35 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
         displayName,
         lastSeenAt: new Date(),
         updatedAt: new Date(),
+      };
+      const idx = contacts.indexOf(existing);
+      contacts[idx] = updated;
+      return { ...updated };
+    },
+
+    async updateContactIdentifier(
+      tenantId,
+      contactId,
+      input: UpdateContactIdentifierInput,
+    ): Promise<ContactRow | null> {
+      const existing = contacts.find(
+        (c) => c.tenantId === tenantId && c.id === contactId,
+      );
+      if (!existing) return null;
+
+      const now = new Date();
+      const updated: ContactRow = {
+        ...existing,
+        emailNormalised:
+          existing.emailNormalised ?? input.emailNormalised ?? null,
+        phoneNormalised:
+          existing.phoneNormalised ?? input.phoneNormalised ?? null,
+        attributes: {
+          ...existing.attributes,
+          ...(input.attributes ?? {}),
+        },
+        lastSeenAt: now,
+        updatedAt: now,
       };
       const idx = contacts.indexOf(existing);
       contacts[idx] = updated;

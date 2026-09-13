@@ -20,6 +20,7 @@ import {
   listContactsByTenant,
   normaliseEmail,
   normalisePhone,
+  updateContactIdentifier,
   upsertContact,
 } from "../index";
 import { revealContactIdentifierForTenant } from "../pii";
@@ -239,6 +240,128 @@ async function runAllTests() {
       () => upsertContact("", { emailNormalised: "x@y.com" }, { store }),
       "tenantId is required",
       "empty tenantId",
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // updateContactIdentifier
+  // -------------------------------------------------------------------------
+
+  await test("updateContactIdentifier: merges missing phone and attributes", async () => {
+    const store = createInMemoryContactsStore();
+    const { contact } = await upsertContact(
+      TENANT_A,
+      {
+        emailNormalised: "merge@example.com",
+        attributes: { persona: "buyer" },
+      },
+      { store },
+    );
+
+    const updated = await updateContactIdentifier(
+      TENANT_A,
+      contact.id,
+      {
+        phoneNormalised: "+61400000000",
+        attributes: { company: "Merge Co" },
+      },
+      { store },
+    );
+
+    assert(updated !== null, "contact updated");
+    assertEq(updated!.id, contact.id, "same contact");
+    assertEq(updated!.emailNormalised, "merge@example.com", "email retained");
+    assertEq(updated!.phoneNormalised, "+61400000000", "phone merged");
+    assertEq(updated!.attributes.persona as string, "buyer", "existing attr kept");
+    assertEq(updated!.attributes.company as string, "Merge Co", "new attr merged");
+    assertEq(store._dump().contacts.length, 1, "still one row");
+  });
+
+  await test("updateContactIdentifier: first identifier wins", async () => {
+    const store = createInMemoryContactsStore();
+    const { contact } = await upsertContact(
+      TENANT_A,
+      {
+        emailNormalised: "first@example.com",
+        phoneNormalised: "+61411111111",
+      },
+      { store },
+    );
+
+    const updated = await updateContactIdentifier(
+      TENANT_A,
+      contact.id,
+      {
+        emailNormalised: "second@example.com",
+        phoneNormalised: "+61422222222",
+      },
+      { store },
+    );
+
+    assert(updated !== null, "contact updated");
+    assertEq(updated!.emailNormalised, "first@example.com", "email first-win");
+    assertEq(updated!.phoneNormalised, "+61411111111", "phone first-win");
+  });
+
+  await test("updateContactIdentifier: tenant scoped update misses other tenant", async () => {
+    const store = createInMemoryContactsStore();
+    const { contact } = await upsertContact(
+      TENANT_A,
+      { emailNormalised: "tenant@example.com" },
+      { store },
+    );
+
+    const updated = await updateContactIdentifier(
+      TENANT_B,
+      contact.id,
+      { phoneNormalised: "+61400000000" },
+      { store },
+    );
+
+    assertEq(updated, null, "tenant B cannot update tenant A contact");
+    const original = await updateContactIdentifier(
+      TENANT_A,
+      contact.id,
+      { attributes: { checked: true } },
+      { store },
+    );
+    assertEq(original!.phoneNormalised, null, "phone not changed by tenant B");
+  });
+
+  await test("updateContactIdentifier: validates tenant, contact and payload", async () => {
+    const store = createInMemoryContactsStore();
+    await assertThrows(
+      () =>
+        updateContactIdentifier(
+          "",
+          "11111111-1111-4111-8111-111111111111",
+          { phoneNormalised: "+61400000000" },
+          { store },
+        ),
+      "tenantId is required",
+      "empty tenantId",
+    );
+    await assertThrows(
+      () =>
+        updateContactIdentifier(
+          TENANT_A,
+          "bad",
+          { phoneNormalised: "+61400000000" },
+          { store },
+        ),
+      "contactId must be a UUID",
+      "bad contactId",
+    );
+    await assertThrows(
+      () =>
+        updateContactIdentifier(
+          TENANT_A,
+          "11111111-1111-4111-8111-111111111111",
+          {},
+          { store },
+        ),
+      "at least one of",
+      "empty payload",
     );
   });
 

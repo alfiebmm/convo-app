@@ -157,6 +157,18 @@ export interface UpsertContactInput {
   privacyNoticeVersion?: string | null;
 }
 
+export interface UpdateContactIdentifierInput {
+  /**
+   * Lowercased + trimmed e-mail. Caller normalises; the store just stores.
+   */
+  emailNormalised?: string | null;
+  /**
+   * E.164 phone. Caller normalises; the store just stores.
+   */
+  phoneNormalised?: string | null;
+  attributes?: Record<string, unknown>;
+}
+
 export interface ConversationContactLinkRow {
   tenantId: string;
   conversationId: string;
@@ -199,6 +211,12 @@ export interface ContactsStore {
     tenantId: string,
     contactId: string,
     displayName: string,
+  ): Promise<ContactRow | null>;
+
+  updateContactIdentifier(
+    tenantId: string,
+    contactId: string,
+    input: UpdateContactIdentifierInput,
   ): Promise<ContactRow | null>;
 
   listContactsByTenant(
@@ -328,6 +346,22 @@ export function createDrizzleContactsStore(
         .update(contacts)
         .set({
           displayName,
+          lastSeenAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(contacts.tenantId, tenantId), eq(contacts.id, contactId)))
+        .returning();
+      return (updated as ContactRow) ?? null;
+    },
+
+    async updateContactIdentifier(tenantId, contactId, input) {
+      const now = new Date();
+      const [updated] = await db
+        .update(contacts)
+        .set({
+          emailNormalised: sql`COALESCE(${contacts.emailNormalised}, ${input.emailNormalised ?? null})`,
+          phoneNormalised: sql`COALESCE(${contacts.phoneNormalised}, ${input.phoneNormalised ?? null})`,
+          attributes: sql`COALESCE(${contacts.attributes}, '{}'::jsonb) || ${JSON.stringify(input.attributes ?? {})}::jsonb`,
           lastSeenAt: now,
           updatedAt: now,
         })
