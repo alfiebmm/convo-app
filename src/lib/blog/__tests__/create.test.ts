@@ -315,6 +315,9 @@ test("buildSystemPrompt injects keyword, banned terms, and section contract", as
   assert.match(prompt, /\bjourney\b/);
   assert.match(prompt, /\brobust\b/);
   assert.match(prompt, /`heading` string and a `blocks` array/);
+  assert.match(prompt, /NEVER use the tenant logo URL as the hero image/);
+  assert.match(prompt, /omit `hero\.url` entirely/);
+  assert.match(prompt, /gradient placeholder/);
 });
 
 test("createArticle renders HTML and persists full post metadata", async () => {
@@ -357,6 +360,162 @@ test("createArticle preserves a valid HTTPS hero URL from the generated post", a
 
   assert.equal((inserts[0].metadata as BlogPostJson).hero.url, heroUrl);
   assert.match(inserts[0].content, new RegExp(heroUrl));
+});
+
+test("normalisePostHero rejects exact brand logo hero URL and logs the reason", () => {
+  const brandJson = validBrand();
+  const logo = brandJson.logo as Record<string, unknown>;
+  logo.url = "https://assets.example.com/logo.png";
+  const brief = __testing.buildBrief(CONVERSATION_ID, decision(), {
+    tenant: {
+      id: TENANT_ID,
+      name: "Chemist2U",
+      slug: "chemist2u",
+      domain: "chemist2u.com.au",
+      settings: {
+        brandJson,
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    },
+    messages: [],
+  });
+  const warnings: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+
+  try {
+    const post = __testing.normalisePostHero(
+      validPost({ hero: { url: "https://assets.example.com/logo.png", alt: "Logo" } }),
+      brief
+    );
+
+    assert.equal(
+      post.hero.url,
+      "https://convoapp.com.au/hero-placeholders/gradient-orange.jpg"
+    );
+    assert.equal(
+      (warnings[0]?.[1] as Record<string, unknown>)?.reason,
+      "matched_brand_logo_url"
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("normalisePostHero rejects brand logo hero URL with trailing slash", () => {
+  const brandJson = validBrand();
+  const logo = brandJson.logo as Record<string, unknown>;
+  logo.url = "https://assets.example.com/logo.png";
+  const brief = __testing.buildBrief(CONVERSATION_ID, decision(), {
+    tenant: {
+      id: TENANT_ID,
+      name: "Chemist2U",
+      slug: "chemist2u",
+      domain: "chemist2u.com.au",
+      settings: {
+        brandJson,
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    },
+    messages: [],
+  });
+
+  const post = __testing.normalisePostHero(
+    validPost({ hero: { url: "https://assets.example.com/logo.png/", alt: "Logo" } }),
+    brief
+  );
+
+  assert.equal(
+    post.hero.url,
+    "https://convoapp.com.au/hero-placeholders/gradient-orange.jpg"
+  );
+});
+
+test("normalisePostHero rejects brand logo hero URL with different host casing", () => {
+  const brandJson = validBrand();
+  const logo = brandJson.logo as Record<string, unknown>;
+  logo.url = "https://assets.example.com/logo.png";
+  const brief = __testing.buildBrief(CONVERSATION_ID, decision(), {
+    tenant: {
+      id: TENANT_ID,
+      name: "Chemist2U",
+      slug: "chemist2u",
+      domain: "chemist2u.com.au",
+      settings: {
+        brandJson,
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    },
+    messages: [],
+  });
+
+  const post = __testing.normalisePostHero(
+    validPost({ hero: { url: "https://ASSETS.EXAMPLE.COM/logo.png", alt: "Logo" } }),
+    brief
+  );
+
+  assert.equal(
+    post.hero.url,
+    "https://convoapp.com.au/hero-placeholders/gradient-orange.jpg"
+  );
+});
+
+test("normalisePostHero rejects brand logo hero URL with query string and fragment", () => {
+  const brandJson = validBrand();
+  const logo = brandJson.logo as Record<string, unknown>;
+  logo.url = "https://assets.example.com/logo.png?width=400#brand";
+  const brief = __testing.buildBrief(CONVERSATION_ID, decision(), {
+    tenant: {
+      id: TENANT_ID,
+      name: "Chemist2U",
+      slug: "chemist2u",
+      domain: "chemist2u.com.au",
+      settings: {
+        brandJson,
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    },
+    messages: [],
+  });
+
+  const post = __testing.normalisePostHero(
+    validPost({ hero: { url: "https://assets.example.com/logo.png", alt: "Logo" } }),
+    brief
+  );
+
+  assert.equal(
+    post.hero.url,
+    "https://convoapp.com.au/hero-placeholders/gradient-orange.jpg"
+  );
+});
+
+test("normalisePostHero preserves a distinct HTTPS hero URL", () => {
+  const brandJson = validBrand();
+  const logo = brandJson.logo as Record<string, unknown>;
+  logo.url = "https://assets.example.com/logo.png";
+  const brief = __testing.buildBrief(CONVERSATION_ID, decision(), {
+    tenant: {
+      id: TENANT_ID,
+      name: "Chemist2U",
+      slug: "chemist2u",
+      domain: "chemist2u.com.au",
+      settings: {
+        brandJson,
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    },
+    messages: [],
+  });
+  const heroUrl = "https://assets.example.com/articles/pharmacy-care.jpg";
+
+  const post = __testing.normalisePostHero(
+    validPost({ hero: { url: heroUrl, alt: "Pharmacy care" } }),
+    brief
+  );
+
+  assert.equal(post.hero.url, heroUrl);
 });
 
 test("createArticle uses configured hero placeholder when generated hero URL is missing", async () => {
