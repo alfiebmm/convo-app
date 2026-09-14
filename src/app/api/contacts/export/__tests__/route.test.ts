@@ -132,8 +132,8 @@ function makeDeps(
     canExportPii: () => canExportPii,
     listContacts: async (tenantId, filters) => {
       seen.tenantIds.push(tenantId);
-      seen.q.push(filters.q);
-      seen.statuses.push(filters.caseStatus);
+      seen.q.push(filters?.q);
+      seen.statuses.push(filters?.caseStatus);
       const scoped = rows.filter((row) => row.tenantId === tenantId);
       return { rows: scoped, totalCount: scoped.length };
     },

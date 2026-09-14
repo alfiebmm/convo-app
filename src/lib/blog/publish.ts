@@ -1,14 +1,19 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { getDecryptedWordPressConnectorForTenant } from "@/lib/blog/connectors/wordpress-settings-actions";
 import {
   publishArticle,
   type WordPressConfig,
 } from "@/lib/blog/connectors/wordpress";
+import {
+  runPrePublishChecklist,
+  type PrePublishChecklistResult,
+} from "@/lib/blog/pre-publish-checklist";
 import type { BlogPostDetail, BlogPostStatus } from "@/lib/blog/queries";
 import { assertTenantId } from "@/lib/cases/tenant-guard";
 import { db } from "@/lib/db";
-import { blogPosts, tenants } from "@/lib/db/schema";
+import { blogPosts, messages, tenants } from "@/lib/db/schema";
+import type { TenantSettings } from "@/lib/publishing";
 
 /*
  * draft | approved | update_pending | published | publish_failed
@@ -28,8 +33,13 @@ export type PublishBlogPostContext = {
 };
 
 export type PublishBlogPostResult =
-  | { ok: true; wpPostId: number; wpPostUrl: string }
-  | { ok: false; error: string };
+  | {
+      ok: true;
+      wpPostId: number;
+      wpPostUrl: string;
+      preflight: PrePublishChecklistResult | null;
+    }
+  | { ok: false; error: string; preflight: PrePublishChecklistResult | null };
 
 type BlogPostUpdate = {
   status: BlogPostStatus;
@@ -40,6 +50,14 @@ type BlogPostUpdate = {
 
 export type PublishBlogPostDeps = {
   getBlogPost: (blogPostId: string, tenantId: string) => Promise<BlogPostDetail | null>;
+  getPrePublishChecklistTenant: (
+    post: BlogPostDetail,
+  ) => Promise<{
+    settings: TenantSettings;
+    brandJson: unknown;
+    domain?: string | null;
+    sourceMessages?: Array<{ content: string | null }>;
+  }>;
   getDecryptedWordPressConnectorForTenant: (
     tenantId: string,
   ) => Promise<WordPressConfig | null>;
@@ -111,6 +129,32 @@ function buildPublishBlogPostDeps(): PublishBlogPostDeps {
           tenant ? ((tenant.settings ?? {}) as Record<string, unknown>) : null,
       });
     },
+    async getPrePublishChecklistTenant(post) {
+      const [tenant] = await db
+        .select({
+          settings: tenants.settings,
+          domain: tenants.domain,
+        })
+        .from(tenants)
+        .where(eq(tenants.id, post.tenantId))
+        .limit(1);
+
+      const settings = (tenant?.settings ?? {}) as TenantSettings;
+      const sourceMessages = post.threadId
+        ? await db
+            .select({ content: messages.content })
+            .from(messages)
+            .where(eq(messages.conversationId, post.threadId))
+            .orderBy(asc(messages.createdAt))
+        : [];
+
+      return {
+        settings,
+        brandJson: metadataRecord(settings).brandJson ?? {},
+        domain: tenant?.domain ?? null,
+        sourceMessages,
+      };
+    },
     async updateBlogPost(blogPostId, tenantId, update) {
       await db
         .update(blogPosts)
@@ -135,12 +179,13 @@ export async function publishBlogPost(
   try {
     assertTenantId(context.tenantId);
     const post = await deps.getBlogPost(blogPostId, context.tenantId);
-    if (!post) return { ok: false, error: "Blog post not found" };
+    if (!post) return { ok: false, error: "Blog post not found", preflight: null };
 
     if (!publishableStatuses.has(post.status)) {
       return {
         ok: false,
         error: `Blog post cannot be published from ${post.status} status`,
+        preflight: null,
       };
     }
 
@@ -148,13 +193,52 @@ export async function publishBlogPost(
       context.tenantId,
     );
     if (!config) {
-      return { ok: false, error: "WordPress connection not configured" };
+      return {
+        ok: false,
+        error: "WordPress connection not configured",
+        preflight: null,
+      };
     }
 
     const baseMetadata = metadataRecord(post.metadata);
+    const checklistTenant = await deps.getPrePublishChecklistTenant(post);
+    const checklist = runPrePublishChecklist(post, checklistTenant);
+    const metadataWithChecklist: Record<string, unknown> = {
+      ...baseMetadata,
+      prePublishChecklist: checklist,
+    };
+
+    if (!checklist.ok) {
+      const failedAt = deps.now();
+      const failedItems = checklist.items
+        .filter((item) => item.status === "fail")
+        .map((item) => item.id);
+      await deps.updateBlogPost(blogPostId, context.tenantId, {
+        status: "publish_failed",
+        publishedAt: post.publishedAt,
+        lastModified: failedAt,
+        metadata: {
+          ...metadataWithChecklist,
+          publish_error: {
+            code: "CHECKLIST_FAILED",
+            failedItems,
+            at: failedAt.toISOString(),
+          },
+        },
+      });
+      return {
+        ok: false,
+        error: `Pre-publish checklist failed: ${checklist.items
+          .filter((item) => item.status === "fail")
+          .map((item) => item.label)
+          .join(", ")}`,
+        preflight: checklist,
+      };
+    }
+
     await deps.updateBlogPost(blogPostId, context.tenantId, {
       status: "publishing",
-      metadata: baseMetadata,
+      metadata: metadataWithChecklist,
       publishedAt: post.publishedAt,
       lastModified: deps.now(),
     });
@@ -162,7 +246,7 @@ export async function publishBlogPost(
     const publishPost: BlogPostDetail = {
       ...post,
       status: "publishing",
-      metadata: baseMetadata,
+      metadata: metadataWithChecklist,
     };
     const publishResult = await deps.publishArticle(
       config,
@@ -177,18 +261,18 @@ export async function publishBlogPost(
         publishedAt: post.publishedAt,
         lastModified: failedAt,
         metadata: {
-          ...baseMetadata,
+          ...metadataWithChecklist,
           publish_error: {
             message: publishResult.error,
             at: failedAt.toISOString(),
           },
         },
       });
-      return { ok: false, error: publishResult.error };
+      return { ok: false, error: publishResult.error, preflight: checklist };
     }
 
     const publishedAt = deps.now();
-    const { publish_error: _publishError, ...successfulMetadata } = baseMetadata;
+    const { publish_error: _publishError, ...successfulMetadata } = metadataWithChecklist;
     void _publishError;
 
     await deps.updateBlogPost(blogPostId, context.tenantId, {
@@ -210,8 +294,9 @@ export async function publishBlogPost(
       ok: true,
       wpPostId: publishResult.wpPostId,
       wpPostUrl: publishResult.wpPostUrl,
+      preflight: checklist,
     };
   } catch (error) {
-    return { ok: false, error: publicErrorMessage(error) };
+    return { ok: false, error: publicErrorMessage(error), preflight: null };
   }
 }

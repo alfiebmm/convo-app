@@ -5,7 +5,20 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import type { PrePublishChecklistResult } from "@/lib/blog/pre-publish-checklist";
 import { PublishBlogPostButton } from "../publish-blog-post-button";
+
+const PASSING_CHECKLIST = {
+  ok: true,
+  ranAt: "2026-09-10T00:00:00.000Z",
+  items: [{ id: "word_count", label: "Word count gates", status: "pass" }],
+} as PrePublishChecklistResult;
+
+const FAILING_CHECKLIST = {
+  ok: false,
+  ranAt: "2026-09-10T00:00:00.000Z",
+  items: [{ id: "word_count", label: "Word count gates", status: "fail", message: "Too short" }],
+} as PrePublishChecklistResult;
 
 function buttonMarkup(props: Parameters<typeof PublishBlogPostButton>[0]) {
   return renderToStaticMarkup(React.createElement(PublishBlogPostButton, props));
@@ -69,11 +82,24 @@ test("publish button is disabled when status is not publishable", () => {
   const markup = buttonMarkup({
     postId: "post-1",
     status: "rejected",
+    prePublishChecklist: PASSING_CHECKLIST,
     wordpressSiteUrl: "https://doggo.com.au",
   });
 
   assert.match(markup, /disabled/);
   assert.match(markup, /Cannot publish from rejected status/);
+});
+
+test("publish button is disabled when checklist has failing items", () => {
+  const markup = buttonMarkup({
+    postId: "post-1",
+    status: "approved",
+    prePublishChecklist: FAILING_CHECKLIST,
+    wordpressSiteUrl: "https://doggo.com.au",
+  });
+
+  assert.match(markup, /disabled/);
+  assert.match(markup, /Fix 1 failing pre-publish checks before publishing/);
 });
 
 test("confirm modal renders the WordPress site URL", async () => {
@@ -83,6 +109,7 @@ test("confirm modal renders the WordPress site URL", async () => {
       React.createElement(PublishBlogPostButton, {
         postId: "post-1",
         status: "approved",
+        prePublishChecklist: PASSING_CHECKLIST,
         wordpressSiteUrl: "https://doggo.com.au",
       }),
     );
@@ -124,6 +151,7 @@ test("success and failure notices show WordPress URL and exact error", async () 
       React.createElement(PublishBlogPostButton, {
         postId: "post-1",
         status: "approved",
+        prePublishChecklist: PASSING_CHECKLIST,
         wordpressSiteUrl: "https://doggo.com.au",
         onPublished: () => undefined,
       }),

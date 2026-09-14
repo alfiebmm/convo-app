@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { marked } from "marked";
 
+import type { PrePublishChecklistResult } from "@/lib/blog/pre-publish-checklist";
 import type { BlogPostDetail } from "@/lib/blog/queries";
 
 import { BlogPostStatusPill } from "../content-list";
+import { revalidatePrePublishChecklist } from "./actions";
 import { PublishBlogPostButton } from "./publish-blog-post-button";
 
 type JsonRecord = Record<string, unknown>;
@@ -250,14 +252,20 @@ function FailureState({ post }: { post: BlogPostDetail }) {
 }
 
 export async function ArticleDetailView({ post }: { post: BlogPostDetail }) {
-  return ArticleDetailViewWithPublishing({ post, wordpressSiteUrl: null });
+  return ArticleDetailViewWithPublishing({
+    post,
+    checklist: readChecklist(post.metadata),
+    wordpressSiteUrl: null,
+  });
 }
 
 export async function ArticleDetailViewWithPublishing({
   post,
+  checklist,
   wordpressSiteUrl,
 }: {
   post: BlogPostDetail;
+  checklist: PrePublishChecklistResult | null;
   wordpressSiteUrl: string | null;
 }) {
   if (post.status === "generation_failed") {
@@ -354,6 +362,10 @@ export async function ArticleDetailViewWithPublishing({
         </a>
       ) : null}
 
+      {checklist ? (
+        <PrePublishChecklistPanel postId={post.id} checklist={checklist} />
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         {["Approve", "Reject", "Edit"].map((action) => (
           <DisabledAction key={action} tooltip="Coming in CON-107 / CON-111">
@@ -363,6 +375,7 @@ export async function ArticleDetailViewWithPublishing({
         <PublishBlogPostButton
           postId={post.id}
           status={post.status}
+          prePublishChecklist={readChecklist(post.metadata)}
           wordpressSiteUrl={wordpressSiteUrl}
         />
       </div>
@@ -370,7 +383,71 @@ export async function ArticleDetailViewWithPublishing({
   );
 }
 
+function PrePublishChecklistPanel({
+  postId,
+  checklist,
+}: {
+  postId: string;
+  checklist: PrePublishChecklistResult;
+}) {
+  const passed = checklist.items.filter((item) => item.status === "pass").length;
+  const action = async () => {
+    "use server";
+    await revalidatePrePublishChecklist(postId);
+  };
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Pre-publish checklist
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {passed} / {checklist.items.length} checks passed
+          </p>
+        </div>
+        <form action={action}>
+          <button
+            type="submit"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Re-run checklist
+          </button>
+        </form>
+      </div>
+      <ul className="mt-4 divide-y divide-slate-100">
+        {checklist.items.map((item) => (
+          <li key={item.id} className="flex gap-3 py-3 text-sm">
+            <span
+              aria-hidden="true"
+              className={item.status === "pass" ? "text-green-700" : "text-red-700"}
+            >
+              {item.status === "pass" ? "✓" : "×"}
+            </span>
+            <span>
+              <span className="font-medium text-slate-900">{item.label}</span>
+              {item.status === "fail" && item.message ? (
+                <span className="mt-1 block text-slate-600">{item.message}</span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function publishedUrl(post: BlogPostDetail) {
   const published = nestedRecord(post.metadata, "published");
   return stringValue(published.wp_post_url);
+}
+
+function readChecklist(metadata: JsonRecord): PrePublishChecklistResult | null {
+  const checklist = metadata.prePublishChecklist;
+  if (!isRecord(checklist) || !Array.isArray(checklist.items)) return null;
+  if (typeof checklist.ok !== "boolean" || typeof checklist.ranAt !== "string") {
+    return null;
+  }
+  return checklist as PrePublishChecklistResult;
 }

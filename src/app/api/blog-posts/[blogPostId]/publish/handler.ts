@@ -49,7 +49,8 @@ function statusForPublishError(error: string) {
   if (error === "Blog post not found") return 404;
   if (
     error === "WordPress connection not configured" ||
-    error.startsWith("Blog post cannot be published")
+    error.startsWith("Blog post cannot be published") ||
+    error.startsWith("Pre-publish checklist failed")
   ) {
     return 400;
   }
