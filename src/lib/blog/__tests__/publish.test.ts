@@ -190,6 +190,7 @@ test("no config returns not configured and does not transition status", async ()
   assert.deepEqual(result, {
     ok: false,
     error: "WordPress connection not configured",
+    preflight: null,
   });
   assert.equal(deps.updates.length, 0);
   assert.equal(deps.publishCalls.length, 0);
@@ -203,6 +204,7 @@ test("invalid status rejects with a clear error", async () => {
   assert.deepEqual(result, {
     ok: false,
     error: "Blog post cannot be published from generation_failed status",
+    preflight: null,
   });
   assert.equal(deps.updates.length, 0);
 });
@@ -216,7 +218,9 @@ test("success publishes article and persists WordPress metadata", async () => {
     ok: true,
     wpPostId: 123,
     wpPostUrl: "https://doggo.com.au/how-to-choose-a-puppy-school/",
+    preflight: result.preflight,
   });
+  assert.equal(result.preflight?.ok, true);
   assert.equal(deps.publishCalls.length, 1);
   assert.equal(deps.publishCalls[0][0].applicationPassword, "secret app password");
   assert.equal(deps.updates[0][2].status, "publishing");
@@ -284,7 +288,9 @@ test("failure transitions to publish_failed and stores exact error", async () =>
   assert.deepEqual(result, {
     ok: false,
     error: "WordPress credentials were rejected",
+    preflight: result.ok ? null : result.preflight,
   });
+  assert.equal(result.preflight?.ok, true);
   assert.equal(deps.updates[1][2].status, "publish_failed");
   assert.deepEqual(deps.updates[1][2].metadata.publish_error, {
     message: "WordPress credentials were rejected",
@@ -325,6 +331,7 @@ test("checklist failure blocks WordPress and stores CHECKLIST_FAILED", async () 
 
   assert.equal(result.ok, false);
   assert.match(result.error, /Pre-publish checklist failed/);
+  assert.equal(result.preflight?.ok, false);
   assert.equal(deps.publishCalls.length, 0);
   assert.equal(deps.updates[0][2].status, "publish_failed");
   assert.deepEqual(

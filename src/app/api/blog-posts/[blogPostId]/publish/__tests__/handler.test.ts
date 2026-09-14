@@ -41,11 +41,16 @@ function makeDeps(options: {
     },
     publishBlogPost: async () =>
       options.publishOk === false
-        ? { ok: false, error: "WordPress connection not configured" }
+        ? {
+            ok: false,
+            error: "WordPress connection not configured",
+            preflight: null,
+          }
         : {
             ok: true,
             wpPostId: 123,
             wpPostUrl: "https://doggo.com.au/article/",
+            preflight: null,
           },
   };
 }
@@ -78,5 +83,6 @@ test("returns 200 on success", async () => {
     ok: true,
     wpPostId: 123,
     wpPostUrl: "https://doggo.com.au/article/",
+    preflight: null,
   });
 });

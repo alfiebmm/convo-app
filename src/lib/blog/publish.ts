@@ -7,6 +7,7 @@ import {
 } from "@/lib/blog/connectors/wordpress";
 import {
   runPrePublishChecklist,
+  type PrePublishChecklistResult,
 } from "@/lib/blog/pre-publish-checklist";
 import type { BlogPostDetail, BlogPostStatus } from "@/lib/blog/queries";
 import { assertTenantId } from "@/lib/cases/tenant-guard";
@@ -32,8 +33,13 @@ export type PublishBlogPostContext = {
 };
 
 export type PublishBlogPostResult =
-  | { ok: true; wpPostId: number; wpPostUrl: string }
-  | { ok: false; error: string };
+  | {
+      ok: true;
+      wpPostId: number;
+      wpPostUrl: string;
+      preflight: PrePublishChecklistResult | null;
+    }
+  | { ok: false; error: string; preflight: PrePublishChecklistResult | null };
 
 type BlogPostUpdate = {
   status: BlogPostStatus;
@@ -173,12 +179,13 @@ export async function publishBlogPost(
   try {
     assertTenantId(context.tenantId);
     const post = await deps.getBlogPost(blogPostId, context.tenantId);
-    if (!post) return { ok: false, error: "Blog post not found" };
+    if (!post) return { ok: false, error: "Blog post not found", preflight: null };
 
     if (!publishableStatuses.has(post.status)) {
       return {
         ok: false,
         error: `Blog post cannot be published from ${post.status} status`,
+        preflight: null,
       };
     }
 
@@ -186,7 +193,11 @@ export async function publishBlogPost(
       context.tenantId,
     );
     if (!config) {
-      return { ok: false, error: "WordPress connection not configured" };
+      return {
+        ok: false,
+        error: "WordPress connection not configured",
+        preflight: null,
+      };
     }
 
     const baseMetadata = metadataRecord(post.metadata);
@@ -221,6 +232,7 @@ export async function publishBlogPost(
           .filter((item) => item.status === "fail")
           .map((item) => item.label)
           .join(", ")}`,
+        preflight: checklist,
       };
     }
 
@@ -256,7 +268,7 @@ export async function publishBlogPost(
           },
         },
       });
-      return { ok: false, error: publishResult.error };
+      return { ok: false, error: publishResult.error, preflight: checklist };
     }
 
     const publishedAt = deps.now();
@@ -282,8 +294,9 @@ export async function publishBlogPost(
       ok: true,
       wpPostId: publishResult.wpPostId,
       wpPostUrl: publishResult.wpPostUrl,
+      preflight: checklist,
     };
   } catch (error) {
-    return { ok: false, error: publicErrorMessage(error) };
+    return { ok: false, error: publicErrorMessage(error), preflight: null };
   }
 }
