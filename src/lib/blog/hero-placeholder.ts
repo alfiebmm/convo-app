@@ -1,3 +1,5 @@
+import { APP_CONFIG } from "@/config/app";
+
 export type HeroPlaceholderColour = "orange" | "blue" | "green" | "neutral";
 
 type Rgb = {
@@ -88,4 +90,53 @@ export function isHttpsUrl(value: string | null): value is string {
   } catch {
     return false;
   }
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function readBrandPrimaryColour(brand: Record<string, unknown>): string {
+  const colors = isRecord(brand.colors) ? brand.colors : {};
+  return readString(colors.primary) ?? "#71717A";
+}
+
+export function heroPlaceholderUrlForBrand(brand: Record<string, unknown>): string {
+  const colour = pickHeroPlaceholderColour(readBrandPrimaryColour(brand));
+  return new URL(`/hero-placeholders/gradient-${colour}.jpg`, APP_CONFIG.url).toString();
+}
+
+export function normaliseComparableHeroUrl(value: string | null): string | null {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    const pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return `${url.origin}${pathname}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export function heroUrlMatchesBrandLogo({
+  heroUrl,
+  brand,
+}: {
+  heroUrl: string | null;
+  brand: Record<string, unknown>;
+}): boolean {
+  const logo = isRecord(brand.logo) ? brand.logo : {};
+  const logoUrl = readString(logo.url);
+  const comparableHeroUrl = normaliseComparableHeroUrl(heroUrl);
+  const comparableLogoUrl = normaliseComparableHeroUrl(logoUrl);
+
+  return Boolean(
+    comparableHeroUrl &&
+      comparableLogoUrl &&
+      comparableHeroUrl === comparableLogoUrl
+  );
 }

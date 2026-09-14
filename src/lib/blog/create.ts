@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { and, asc, eq } from "drizzle-orm";
 import type OpenAI from "openai";
 
-import { APP_CONFIG } from "@/config/app";
 import { db } from "@/lib/db";
 import {
   blogDecisionLogs,
@@ -17,7 +16,11 @@ import {
 import { getOpenAIClient } from "@/lib/openai";
 
 import type { DecisionResult } from "./decision";
-import { isHttpsUrl, pickHeroPlaceholderColour } from "./hero-placeholder";
+import {
+  heroPlaceholderUrlForBrand,
+  heroUrlMatchesBrandLogo,
+  isHttpsUrl,
+} from "./hero-placeholder";
 import brandSchema from "./schemas/brand.schema.json";
 import postSchema from "./schemas/post.schema.json";
 import { generateSlug, validateSeoMetadata, type SeoValidationResult } from "./seo";
@@ -173,7 +176,8 @@ Return only JSON matching the supplied post schema. Do not include markdown fenc
 
 Article requirements:
 - H1 is post.title.
-- Include a one-sentence dek, a direct intro paragraph, exactly 3 toc items, at least 3 FAQs, and hero.url plus hero.alt.
+- Include a one-sentence dek, a direct intro paragraph, exactly 3 toc items, at least 3 FAQs, and hero.url plus hero.alt. Prefer omitting hero.url so the system can supply a gradient placeholder over using a wrong image.
+- \`hero.url\` MUST be a topical article image URL. NEVER use the tenant logo URL as the hero image. If no suitable image is available, omit \`hero.url\` entirely and the system will supply a gradient placeholder.
 - Your \`post.sections\` array MUST contain between 4 and 10 items (inclusive). Fewer than 4 or more than 10 will be REJECTED. Aim for 5-7 sections for best structure.
 - Every item in \`post.sections\` MUST be an object with a non-empty \`heading\` string and a \`blocks\` array. Every \`section.blocks\` array MUST contain valid block objects matching the schema.
 - Each section MUST contain at least 3 paragraph blocks (block.type = "p").
@@ -236,14 +240,8 @@ function siteBaseUrl(tenant: TenantRecord): string {
   return `https://${tenant.slug}.convoapp.com.au`;
 }
 
-function readBrandPrimaryColour(brand: BrandJson): string {
-  const colors = isRecord(brand.colors) ? brand.colors : {};
-  return readString(colors.primary) ?? "#71717A";
-}
-
 function heroPlaceholderUrl(brand: BrandJson): string {
-  const colour = pickHeroPlaceholderColour(readBrandPrimaryColour(brand));
-  return new URL(`/hero-placeholders/gradient-${colour}.jpg`, APP_CONFIG.url).toString();
+  return heroPlaceholderUrlForBrand(brand);
 }
 
 function normalisePostHero<
@@ -254,7 +252,11 @@ function normalisePostHero<
 ): T & { hero: BlogPostJson["hero"] } {
   const hero: Record<string, unknown> = isRecord(post.hero) ? post.hero : {};
   const heroUrl = readString(hero.url);
-  if (isHttpsUrl(heroUrl)) {
+  const matchedBrandLogoUrl = heroUrlMatchesBrandLogo({
+    heroUrl,
+    brand: brief.tenant.brandJson,
+  });
+  if (isHttpsUrl(heroUrl) && !matchedBrandLogoUrl) {
     return {
       ...post,
       hero: {
@@ -273,7 +275,11 @@ function normalisePostHero<
     tenantId: brief.tenant.id,
     conversationId: brief.source.conversationId,
     placeholderUrl,
-    reason: heroUrl ? "invalid_or_non_https_url" : "missing_url",
+    reason: matchedBrandLogoUrl
+      ? "matched_brand_logo_url"
+      : heroUrl
+        ? "invalid_or_non_https_url"
+        : "missing_url",
   });
 
   return {
