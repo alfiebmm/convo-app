@@ -3,17 +3,20 @@
 -- Rebuild the enum instead of ALTER TYPE ADD VALUE so later statements in the
 -- same Drizzle migration transaction can safely use the new values.
 
-CREATE TYPE "public"."blog_post_status_new" AS ENUM (
-  'draft',
-  'in_review',
-  'approved',
-  'publishing',
-  'published',
-  'publish_failed',
-  'rejected',
-  'generation_failed',
-  'update_pending'
-);
+DO $$ BEGIN
+  CREATE TYPE "public"."blog_post_status_new" AS ENUM (
+    'draft',
+    'in_review',
+    'approved',
+    'publishing',
+    'published',
+    'publish_failed',
+    'rejected',
+    'generation_failed',
+    'update_pending'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 --> statement-breakpoint
 
 ALTER TABLE "blog_posts"
@@ -34,11 +37,14 @@ ALTER TABLE "blog_posts"
   END;
 --> statement-breakpoint
 
-DROP TYPE "public"."blog_post_status";
+DROP TYPE IF EXISTS "public"."blog_post_status";
 --> statement-breakpoint
 
-ALTER TYPE "public"."blog_post_status_new"
-  RENAME TO "blog_post_status";
+DO $$ BEGIN
+  ALTER TYPE "public"."blog_post_status_new"
+    RENAME TO "blog_post_status";
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 --> statement-breakpoint
 
 ALTER TABLE "blog_posts"

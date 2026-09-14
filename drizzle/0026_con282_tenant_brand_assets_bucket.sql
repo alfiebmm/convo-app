@@ -9,8 +9,11 @@ VALUES ('tenant-brand-assets', 'tenant-brand-assets', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 --> statement-breakpoint
 
-CREATE POLICY "tenant_brand_assets_public_read"
-ON storage.objects
-FOR SELECT
-TO anon, authenticated
-USING (bucket_id = 'tenant-brand-assets');
+DO $$ BEGIN
+  CREATE POLICY "tenant_brand_assets_public_read"
+  ON storage.objects
+  FOR SELECT
+  TO anon, authenticated
+  USING (bucket_id = 'tenant-brand-assets');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
