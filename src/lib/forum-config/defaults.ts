@@ -142,7 +142,7 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
   },
 
   blog: {
-    idleMinutes: 60,
+    idleMinutes: 10,
   },
 
   connectors: {

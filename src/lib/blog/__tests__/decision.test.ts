@@ -354,3 +354,31 @@ test("decide skips when tenant exclusion list matches", async () => {
   assert.match(result.reason, /tenant exclusion list/);
   assertLogged(store, "skip");
 });
+
+test("decide creates for AgPages-style shearing livestock and agronomy topics", async () => {
+  const { service, store } = makeService({
+    messages: [
+      {
+        role: "user",
+        content:
+          "I need advice on preparing merino sheep for shearing, managing livestock stress, planning crutching timing, and checking paddock feed before the contractor arrives.",
+      },
+      {
+        role: "assistant",
+        content:
+          "We covered shearing preparation, livestock handling, agronomy conditions, pasture checks, contractor access, and when to adjust the shearing plan for weather.",
+      },
+    ],
+    extracted: {
+      primary_keyword: "shearing preparation livestock",
+      intent: "educational",
+    },
+    minWordCount: 30,
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "create");
+  assert.match(result.reason, /No existing blog post/);
+  assertLogged(store, "create");
+});

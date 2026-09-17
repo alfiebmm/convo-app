@@ -39,6 +39,7 @@ test("conversation list: no-case row maps to placeholder display values", () => 
       latestMessageAt: new Date("2026-07-01T00:01:00.000Z"),
       latestCaseEventAt: null,
       lastActivityAt: new Date("2026-07-01T00:01:00.000Z"),
+      latestBlogDecision: null,
     },
     case: null,
   };
@@ -49,6 +50,7 @@ test("conversation list: no-case row maps to placeholder display values", () => 
   assertEq(display.priority, "—", "priority placeholder");
   assertEq(display.followUpRequired, false, "follow-up is not required");
   assertEq(display.contact, "—", "contact placeholder");
+  assertEq(display.blog, "Not evaluated", "blog placeholder");
 });
 
 console.log(`${passed} passed`);

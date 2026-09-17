@@ -338,6 +338,7 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
               latestMessageAt,
               latestCaseEventAt,
               lastActivityAt,
+              latestBlogDecision: null,
             },
             case: caseListItem,
           };
@@ -507,7 +508,11 @@ export function createInMemoryCasesStore(): InMemoryCasesStore {
       );
       if (!conversation) return null;
       return {
-        conversation: { ...conversation, metadata: { ...conversation.metadata } },
+        conversation: {
+          ...conversation,
+          metadata: { ...conversation.metadata },
+          latestBlogDecision: null,
+        },
         messages: messages
           .filter((message) => message.conversationId === conversationId)
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())

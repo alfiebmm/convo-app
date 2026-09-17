@@ -1,6 +1,6 @@
 import type { ForumConfig } from "@/lib/forum-config/types";
 
-const DEFAULT_IDLE_MINUTES = 60;
+const DEFAULT_IDLE_MINUTES = 10;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));

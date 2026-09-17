@@ -1,39 +1,35 @@
-/**
- * POST /api/pipeline/trigger
- *
- * Legacy endpoint retained for old widgets.
- * Delegates to the blog pipeline instead of the old content pipeline.
- *
- * Accepts: { conversationId, tenantId, visitorId }
- */
 import { after, NextRequest, NextResponse } from "next/server";
+
 import { requestBlogPipeline } from "@/lib/blog/trigger";
 import { getConversationForVisitor } from "@/lib/conversations";
+import { withApiErrorLogging } from "@/lib/errors/wrap";
 
-type TriggerConversation = {
+export const runtime = "nodejs";
+
+type EnqueueConversation = {
   id: string;
   status: string;
 };
 
-export type PipelineTriggerDeps = {
+export type BlogEnqueueDeps = {
   getConversationForVisitor: (
     conversationId: string,
     tenantId: string,
     visitorId: string
-  ) => Promise<TriggerConversation | null>;
+  ) => Promise<EnqueueConversation | null>;
   requestBlogPipeline: typeof requestBlogPipeline;
   schedule: (task: () => Promise<void>) => void;
 };
 
-const defaultDeps: PipelineTriggerDeps = {
+const defaultDeps: BlogEnqueueDeps = {
   getConversationForVisitor,
   requestBlogPipeline,
   schedule: (task) => after(task),
 };
 
-export async function handlePipelineTrigger(
+export async function handleBlogEnqueue(
   req: { json: () => Promise<unknown> },
-  deps: PipelineTriggerDeps = defaultDeps
+  deps: BlogEnqueueDeps = defaultDeps
 ) {
   try {
     const body = await req.json();
@@ -69,6 +65,7 @@ export async function handlePipelineTrigger(
       markCompleted: true,
       schedule: deps.schedule,
     });
+
     return NextResponse.json(result);
   } catch {
     return NextResponse.json(
@@ -78,9 +75,13 @@ export async function handlePipelineTrigger(
   }
 }
 
-export async function POST(req: NextRequest) {
-  return handlePipelineTrigger(req);
+async function postImpl(req: NextRequest) {
+  return handleBlogEnqueue(req);
 }
+
+export const POST = withApiErrorLogging(postImpl, {
+  route: "/api/blog/enqueue",
+});
 
 /** Handle CORS preflight for widget cross-origin requests */
 export async function OPTIONS() {
