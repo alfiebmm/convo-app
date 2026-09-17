@@ -42,6 +42,35 @@ function truncateReason(reason: string | null) {
   return reason.length > 80 ? `${reason.slice(0, 80).trimEnd()}...` : reason;
 }
 
+function blogDecisionLabel(row: ConversationListItemRow) {
+  const decision = row.conversation.latestBlogDecision;
+  if (!decision) return "Not evaluated";
+  if (decision.action === "skip") return `Skipped: ${summariseSkipReason(decision.reason)}`;
+  return formatLabel(decision.action);
+}
+
+function blogDecisionColor(row: ConversationListItemRow) {
+  const action = row.conversation.latestBlogDecision?.action;
+  if (action === "skip") return "bg-amber-100 text-amber-800";
+  if (action === "create" || action === "update") return "bg-green-100 text-green-800";
+  return "bg-slate-100 text-slate-700";
+}
+
+function summariseSkipReason(reason: string) {
+  const lower = reason.toLowerCase();
+  if (lower.includes("duplicate")) return "duplicate";
+  if (lower.includes("below minimum") || lower.includes("word count")) {
+    return "too short";
+  }
+  if (lower.includes("exclusion list")) return "excluded topic";
+  if (lower.includes("insufficient keyword") || lower.includes("intent")) {
+    return "insufficient signal";
+  }
+  if (lower.includes("similar")) return "similar existing post";
+  if (lower.includes("generation failure")) return "generation failure";
+  return truncateReason(reason).toLowerCase();
+}
+
 function isFollowUpRequired(kase: CaseListItemRow | null) {
   return Boolean(
     kase && kase.status !== "resolved" && kase.status !== "dismissed"
@@ -87,6 +116,7 @@ export function getConversationListItemDisplay(row: ConversationListItemRow) {
     reason: kase ? truncateReason(kase.reason) : "Conversation only",
     contact: kase ? kase.contactDisplayName ?? "No contact" : "—",
     owner: kase ? kase.assignedOwnerName ?? "Unassigned" : "—",
+    blog: blogDecisionLabel(row),
   };
 }
 
@@ -164,6 +194,9 @@ export default function ConversationList({
                   >
                     {display.status}
                   </Pill>
+                  <Pill className={blogDecisionColor(row)}>
+                    {display.blog}
+                  </Pill>
                 </div>
                 <p className="mt-2 text-sm font-medium text-slate-900">
                   {display.contact}
@@ -208,6 +241,15 @@ export default function ConversationList({
                   )}
                 </dd>
               </div>
+              <div className="col-span-2">
+                <dt className="text-slate-400">Blog</dt>
+                <dd
+                  className="mt-0.5 text-slate-700"
+                  title={row.conversation.latestBlogDecision?.reason ?? undefined}
+                >
+                  {display.blog}
+                </dd>
+              </div>
             </dl>
             </button>
           );
@@ -215,7 +257,7 @@ export default function ConversationList({
       </div>
 
       <div className="hidden overflow-x-auto md:block">
-        <table className="min-w-[1180px] divide-y divide-slate-200 text-sm">
+        <table className="min-w-[1300px] divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr className="text-left text-xs font-medium uppercase tracking-wide text-slate-500">
               <th className="px-4 py-3">Follow-up required</th>
@@ -226,6 +268,7 @@ export default function ConversationList({
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Owner</th>
               <th className="px-4 py-3">External sync</th>
+              <th className="px-4 py-3">Blog</th>
               <th className="px-4 py-3">Last activity</th>
             </tr>
           </thead>
@@ -304,6 +347,14 @@ export default function ConversationList({
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
+                </td>
+                <td
+                  className="max-w-[220px] px-4 py-3"
+                  title={row.conversation.latestBlogDecision?.reason ?? undefined}
+                >
+                  <Pill className={blogDecisionColor(row)}>
+                    {display.blog}
+                  </Pill>
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
                   {formatDate(row.conversation.lastActivityAt)}

@@ -53,10 +53,11 @@ function deps(
       visitorId === VISITOR_ID
         ? { id: CONVERSATION_ID, status: "active" }
         : null,
-    processConversation: async (conversationId: string) => ({
-      success: true,
+    requestBlogPipeline: async (conversationId: string) => ({
+      status: "queued",
       conversationId,
     }),
+    schedule: () => {},
     ...overrides,
   };
 }
@@ -86,7 +87,8 @@ async function run() {
     assertEq(res.status, 404, "status");
   });
 
-  await test("completed conversation returns idempotent 200", async () => {
+  await test("completed conversation still delegates idempotency to blog trigger", async () => {
+    let delegated = false;
     const res = await handlePipelineTrigger(
       req({
         conversationId: CONVERSATION_ID,
@@ -98,15 +100,22 @@ async function run() {
           id: CONVERSATION_ID,
           status: "completed",
         }),
+        requestBlogPipeline: async (conversationId) => {
+          delegated = true;
+          return { status: "skipped", conversationId, reason: "already_triggered" };
+        },
       })
     );
     assertEq(res.status, 200, "status");
-    const body = (await readJson(res)) as { message?: string };
-    assertEq(body.message, "Conversation already processed", "message");
+    const body = (await readJson(res)) as { status?: string };
+    assertEq(delegated, true, "delegated to blog pipeline");
+    assertEq(body.status, "skipped", "status body");
   });
 
-  await test("valid scoped trigger processes the conversation", async () => {
-    let processed: string | null = null;
+  await test("valid scoped trigger requests the blog pipeline", async () => {
+    let requested: string | null = null;
+    let markedCompleted: boolean | null = null;
+    let source: string | null = null;
     const res = await handlePipelineTrigger(
       req({
         conversationId: CONVERSATION_ID,
@@ -114,14 +123,18 @@ async function run() {
         visitorId: VISITOR_ID,
       }),
       deps({
-        processConversation: async (conversationId: string) => {
-          processed = conversationId;
-          return { success: true, conversationId };
+        requestBlogPipeline: async (conversationId, options) => {
+          requested = conversationId;
+          markedCompleted = options.markCompleted ?? null;
+          source = options.source;
+          return { status: "queued", conversationId };
         },
       })
     );
     assertEq(res.status, 200, "status");
-    assertEq(processed, CONVERSATION_ID, "processed conversation");
+    assertEq(requested, CONVERSATION_ID, "requested conversation");
+    assertEq(markedCompleted, true, "mark completed");
+    assertEq(source, "idle", "trigger source");
   });
 
   console.log(`Results: ${passed} passed, ${failed} failed`);

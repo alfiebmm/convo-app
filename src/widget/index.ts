@@ -2430,7 +2430,7 @@ class ConvoWidget {
   }
 
   /**
-   * Trigger the content pipeline for the current conversation.
+   * Trigger the blog pipeline for the current conversation.
    * Called when: (1) widget is closed after messages, (2) idle timeout.
    * Fire-and-forget — never blocks the UI.
    */
@@ -2439,7 +2439,7 @@ class ConvoWidget {
     this.pipelineTriggered = true;
     this.clearIdleTimer();
 
-    fetch(`${this.config.apiBase}/api/pipeline/trigger`, {
+    fetch(`${this.config.apiBase}/api/blog/enqueue`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

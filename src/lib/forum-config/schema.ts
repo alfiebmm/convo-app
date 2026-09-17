@@ -124,7 +124,7 @@ export const seoDefaultsSchema = z.object({
 // ============================================================
 
 export const blogConfigSchema = z.object({
-  idleMinutes: z.number().int().positive().default(60),
+  idleMinutes: z.number().int().positive().default(10),
 });
 
 // ============================================================

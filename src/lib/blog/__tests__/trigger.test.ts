@@ -46,6 +46,7 @@ function createDeps(
     hasBlogPostForThread: async () => false,
     saveTriggerState: async () => {},
     runBlogPipeline: async () => null,
+    logDecisionSkip: async () => {},
     ...overrides,
   };
 }
@@ -117,11 +118,15 @@ async function run() {
 
   await test("trigger skips when a blog post already exists for thread_id", async () => {
     const tasks: Array<() => Promise<void>> = [];
+    const skipReasons: string[] = [];
     const res = await requestBlogPipeline("conversation-a", {
       source: "manual",
       schedule: immediateSchedule(tasks),
       deps: createDeps({
         hasBlogPostForThread: async () => true,
+        logDecisionSkip: async ({ reason }) => {
+          skipReasons.push(reason);
+        },
       }),
     });
 
@@ -132,10 +137,12 @@ async function run() {
       "skip reason"
     );
     assertEq(tasks.length, 0, "background task count");
+    assertEq(skipReasons[0], "Duplicate: blog post already exists for this conversation.", "logged skip reason");
   });
 
   await test("trigger skips when metadata already marks blog conversion", async () => {
     const tasks: Array<() => Promise<void>> = [];
+    const skipReasons: string[] = [];
     const res = await requestBlogPipeline("conversation-a", {
       source: "idle",
       schedule: immediateSchedule(tasks),
@@ -147,6 +154,9 @@ async function run() {
           metadata: { blogConversion: { state: "converted_to_blog" } },
           completedAt: new Date("2026-07-16T00:00:00.000Z"),
         }),
+        logDecisionSkip: async ({ reason }) => {
+          skipReasons.push(reason);
+        },
       }),
     });
 
@@ -157,6 +167,7 @@ async function run() {
       "skip reason"
     );
     assertEq(tasks.length, 0, "background task count");
+    assertEq(skipReasons[0], "Duplicate: conversation is already marked converted to blog.", "logged skip reason");
   });
 
   await test("idle timer reads forumConfig.blog.idleMinutes", () => {
@@ -164,6 +175,35 @@ async function run() {
       forumConfig: { blog: { idleMinutes: 15 } },
     });
     assertEq(minutes, 15, "idle minutes");
+  });
+
+  await test("idle timer defaults to near-real-time ten minute window", () => {
+    assertEq(resolveBlogIdleMinutes({}), 10, "idle minutes");
+  });
+
+  await test("pipeline failure writes a decision log skip reason", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    const skipReasons: string[] = [];
+    const res = await requestBlogPipeline("conversation-a", {
+      source: "idle",
+      schedule: immediateSchedule(tasks),
+      deps: createDeps({
+        runBlogPipeline: async () => {
+          throw new Error("article generation timed out");
+        },
+        logDecisionSkip: async ({ reason }) => {
+          skipReasons.push(reason);
+        },
+      }),
+    });
+
+    assertEq(res.status, "queued", "status");
+    await tasks[0]();
+    assertEq(
+      skipReasons[0],
+      "Generation failure: article generation timed out",
+      "logged failure reason"
+    );
   });
 
   await test("idle trigger can scan one tenant by tenantId", async () => {

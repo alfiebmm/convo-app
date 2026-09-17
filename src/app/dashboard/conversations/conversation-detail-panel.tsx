@@ -23,6 +23,21 @@ function formatLabel(value: string | null | undefined) {
     .join(" ");
 }
 
+function summariseSkipReason(reason: string) {
+  const lower = reason.toLowerCase();
+  if (lower.includes("duplicate")) return "Skipped: duplicate";
+  if (lower.includes("below minimum") || lower.includes("word count")) {
+    return "Skipped: too short";
+  }
+  if (lower.includes("exclusion list")) return "Skipped: excluded topic";
+  if (lower.includes("insufficient keyword") || lower.includes("intent")) {
+    return "Skipped: insufficient signal";
+  }
+  if (lower.includes("similar")) return "Skipped: similar existing post";
+  if (lower.includes("generation failure")) return "Skipped: generation failure";
+  return "Skipped";
+}
+
 function Section({
   title,
   children,
@@ -44,6 +59,7 @@ export default function ConversationDetailPanel({
   detail: ConversationDetailRow;
 }) {
   const blogState = getBlogConversionState(detail.conversation.metadata);
+  const latestBlogDecision = detail.conversation.latestBlogDecision;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35">
@@ -97,6 +113,27 @@ export default function ConversationDetailPanel({
           </Section>
 
           <Section title="Blog">
+            {latestBlogDecision && (
+              <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      latestBlogDecision.action === "skip"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-green-100 text-green-800"
+                    }`}
+                  >
+                    {latestBlogDecision.action === "skip"
+                      ? summariseSkipReason(latestBlogDecision.reason)
+                      : formatLabel(latestBlogDecision.action)}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {formatDateTime(latestBlogDecision.createdAt)}
+                  </span>
+                </div>
+                <p className="mt-2 text-slate-700">{latestBlogDecision.reason}</p>
+              </div>
+            )}
             <ConvertToBlogButton
               conversationId={detail.conversation.id}
               initialState={blogState}

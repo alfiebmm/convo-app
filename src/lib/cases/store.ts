@@ -25,6 +25,7 @@ import { db as defaultDb } from "@/lib/db";
 import {
   connectorOutbox,
   contacts,
+  blogDecisionLogs,
   conversations,
   followUpCaseAttributes,
   followUpCases,
@@ -139,8 +140,17 @@ export interface ConversationListItemRow {
     latestMessageAt: Date | null;
     latestCaseEventAt: Date | null;
     lastActivityAt: Date;
+    latestBlogDecision: BlogDecisionSummary | null;
   };
   case: CaseListItemRow | null;
+}
+
+export interface BlogDecisionSummary {
+  action: string;
+  reason: string;
+  primaryKeyword: string | null;
+  intent: string | null;
+  createdAt: Date;
 }
 
 export interface ConversationFilterOptionsRow {
@@ -222,6 +232,7 @@ export interface ConversationDetailRow {
     startedAt: Date;
     completedAt: Date | null;
     createdAt: Date;
+    latestBlogDecision: BlogDecisionSummary | null;
   };
   messages: CaseDetailMessageRow[];
 }
@@ -564,6 +575,18 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
            WHERE ${connectorOutbox.tenantId} = ${tenantId}
            ORDER BY ${connectorOutbox.caseId}, ${connectorOutbox.createdAt} DESC
         ),
+        latest_blog_decisions AS (
+          SELECT DISTINCT ON (${blogDecisionLogs.conversationId})
+                 ${blogDecisionLogs.conversationId} AS conversation_id,
+                 ${blogDecisionLogs.action} AS action,
+                 ${blogDecisionLogs.reason} AS reason,
+                 ${blogDecisionLogs.primaryKeyword} AS primary_keyword,
+                 ${blogDecisionLogs.intent} AS intent,
+                 ${blogDecisionLogs.createdAt} AS created_at
+            FROM ${blogDecisionLogs}
+           WHERE ${blogDecisionLogs.tenantId} = ${tenantId}
+           ORDER BY ${blogDecisionLogs.conversationId}, ${blogDecisionLogs.createdAt} DESC
+        ),
         case_attributes AS (
           SELECT ${followUpCaseAttributes.caseId} AS case_id,
                  MAX(${followUpCaseAttributes.value} #>> '{}')
@@ -611,6 +634,11 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  latest_connectors.connector_type AS "latest_connector_type",
                  latest_connectors.destination_id AS "latest_connector_destination_id",
                  latest_connectors.status AS "latest_connector_status",
+                 latest_blog_decisions.action AS "latest_blog_decision_action",
+                 latest_blog_decisions.reason AS "latest_blog_decision_reason",
+                 latest_blog_decisions.primary_keyword AS "latest_blog_decision_primary_keyword",
+                 latest_blog_decisions.intent AS "latest_blog_decision_intent",
+                 latest_blog_decisions.created_at AS "latest_blog_decision_created_at",
                  case_attributes.persona AS "persona",
                  case_attributes.topic AS "topic"
             FROM ${followUpCases}
@@ -628,6 +656,8 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
               ON ${users.id} = ${followUpCases.assignedTo}
             LEFT JOIN latest_connectors
               ON latest_connectors.case_id = ${followUpCases.id}
+            LEFT JOIN latest_blog_decisions
+              ON latest_blog_decisions.conversation_id = ${conversations.id}
             LEFT JOIN case_attributes
               ON case_attributes.case_id = ${followUpCases.id}
            WHERE ${followUpCases.tenantId} = ${tenantId}
@@ -871,6 +901,19 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
             ? new Date(String(row.latest_case_event_at))
             : null,
           lastActivityAt: new Date(String(row.last_activity_at)),
+          latestBlogDecision: row.latest_blog_decision_created_at
+            ? {
+                action: String(row.latest_blog_decision_action),
+                reason: String(row.latest_blog_decision_reason),
+                primaryKeyword:
+                  (row.latest_blog_decision_primary_keyword as string | null) ??
+                  null,
+                intent: (row.latest_blog_decision_intent as string | null) ?? null,
+                createdAt: new Date(
+                  String(row.latest_blog_decision_created_at)
+                ),
+              }
+            : null,
         };
 
         if (!row.id) {
@@ -1284,6 +1327,24 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
         .where(eq(messages.conversationId, conversationId))
         .orderBy(messages.createdAt);
 
+      const [latestBlogDecision] = await db
+        .select({
+          action: blogDecisionLogs.action,
+          reason: blogDecisionLogs.reason,
+          primaryKeyword: blogDecisionLogs.primaryKeyword,
+          intent: blogDecisionLogs.intent,
+          createdAt: blogDecisionLogs.createdAt,
+        })
+        .from(blogDecisionLogs)
+        .where(
+          and(
+            eq(blogDecisionLogs.tenantId, tenantId),
+            eq(blogDecisionLogs.conversationId, conversationId)
+          )
+        )
+        .orderBy(desc(blogDecisionLogs.createdAt))
+        .limit(1);
+
       const asRecord = (value: unknown): Record<string, unknown> =>
         value && typeof value === "object" && !Array.isArray(value)
           ? (value as Record<string, unknown>)
@@ -1300,6 +1361,15 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
           startedAt: conversationRow.startedAt,
           completedAt: conversationRow.completedAt,
           createdAt: conversationRow.createdAt,
+          latestBlogDecision: latestBlogDecision
+            ? {
+                action: latestBlogDecision.action,
+                reason: latestBlogDecision.reason,
+                primaryKeyword: latestBlogDecision.primaryKeyword,
+                intent: latestBlogDecision.intent,
+                createdAt: latestBlogDecision.createdAt,
+              }
+            : null,
         },
         messages: messageRows.map((message) => ({
           id: message.id,

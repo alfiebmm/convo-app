@@ -3,7 +3,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { resolveBlogIdleMinutes } from "@/lib/blog/config";
 import { runBlogPipeline, type BlogPipelineResult } from "@/lib/blog/pipeline";
 import { db } from "@/lib/db";
-import { blogPosts, conversations, messages, tenants } from "@/lib/db/schema";
+import {
+  blogDecisionLogs,
+  blogPosts,
+  conversations,
+  messages,
+  tenants,
+} from "@/lib/db/schema";
 
 export type BlogTriggerSource = "manual" | "idle" | "backfill";
 
@@ -40,6 +46,13 @@ export type BlogTriggerDeps = {
     blogPostId?: string | null
   ) => Promise<void>;
   runBlogPipeline: (conversationId: string) => Promise<BlogPipelineResult | null>;
+  logDecisionSkip: (input: {
+    tenantId: string;
+    conversationId: string;
+    reason: string;
+    source: BlogTriggerSource;
+    metadata?: Record<string, unknown>;
+  }) => Promise<void>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -89,6 +102,20 @@ const defaultDeps: BlogTriggerDeps = {
       .where(eq(blogPosts.threadId, conversationId))
       .limit(1);
     return Boolean(post);
+  },
+
+  async logDecisionSkip(input) {
+    await db.insert(blogDecisionLogs).values({
+      tenantId: input.tenantId,
+      conversationId: input.conversationId,
+      action: "skip",
+      reason: input.reason,
+      similarPosts: [],
+      metadata: {
+        source: input.source,
+        ...(input.metadata ?? {}),
+      },
+    });
   },
 
   async saveTriggerState(
@@ -143,6 +170,13 @@ export async function requestBlogPipeline(
   if (!conversation) return { status: "not_found", conversationId };
 
   if (await deps.hasBlogPostForThread(conversationId)) {
+    await deps.logDecisionSkip({
+      tenantId: conversation.tenantId,
+      conversationId,
+      source,
+      reason: "Duplicate: blog post already exists for this conversation.",
+      metadata: { skipReason: "duplicate_thread_id" },
+    });
     console.info("[blog] trigger skipped", {
       conversationId,
       reason: "duplicate_thread_id",
@@ -151,6 +185,13 @@ export async function requestBlogPipeline(
   }
 
   if (getBlogConversionState(conversation.metadata) === "converted_to_blog") {
+    await deps.logDecisionSkip({
+      tenantId: conversation.tenantId,
+      conversationId,
+      source,
+      reason: "Duplicate: conversation is already marked converted to blog.",
+      metadata: { skipReason: "already_triggered" },
+    });
     console.info("[blog] trigger skipped", {
       conversationId,
       reason: "already_triggered",
@@ -171,6 +212,15 @@ export async function requestBlogPipeline(
         result.blogPostId
       );
     } catch (error) {
+      await deps.logDecisionSkip({
+        tenantId: conversation.tenantId,
+        conversationId,
+        source,
+        reason: `Generation failure: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        metadata: { skipReason: "generation_failure" },
+      });
       console.error("[blog] pipeline failed", {
         conversationId,
         error: error instanceof Error ? error.message : String(error),
