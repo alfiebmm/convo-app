@@ -131,9 +131,14 @@ export function createInMemoryContactsStore(): InMemoryContactsStore {
 
   return {
     async upsertContact(tenantId, input: UpsertContactInput) {
-      // Match precedence: email > phone.
+      // Match precedence: explicit contact > email > phone.
       let existing: ContactRow | undefined;
-      if (input.emailNormalised) {
+      if (input.contactId) {
+        existing = contacts.find(
+          (c) => c.tenantId === tenantId && c.id === input.contactId,
+        );
+      }
+      if (!existing && input.emailNormalised) {
         existing = contacts.find(
           (c) =>
             c.tenantId === tenantId &&

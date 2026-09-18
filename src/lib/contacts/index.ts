@@ -120,6 +120,9 @@ export async function upsertContact(
       "upsertContact requires at least one of emailNormalised, phoneNormalised, or displayName",
     );
   }
+  if (input.contactId) {
+    assertUuid(input.contactId, "contactId");
+  }
 
   const store = resolveStore(opts);
   const result = await store.upsertContact(tenantId, input);

@@ -143,6 +143,11 @@ export interface ContactDetailRow {
 
 export interface UpsertContactInput {
   /**
+   * Existing contact to merge onto. When supplied, lookup is tenant-scoped
+   * by (tenant_id, id) before falling back to identifier matching.
+   */
+  contactId?: string | null;
+  /**
    * Lowercased + trimmed e-mail. Caller normalises; the store just stores.
    */
   emailNormalised?: string | null;
@@ -233,11 +238,24 @@ export function createDrizzleContactsStore(
 ): ContactsStore {
   return {
     async upsertContact(tenantId, input) {
-      // Match precedence: email > phone. Both lookups are tenant-scoped via
-      // the `contacts_tenant_email_idx` / `contacts_tenant_phone_idx`
+      // Match precedence: explicit contact > email > phone. All lookups are
+      // tenant-scoped via the PK + tenant predicate or the contact identifier
       // indexes (see schema).
       let existing: ContactRow | null = null;
-      if (input.emailNormalised) {
+      if (input.contactId) {
+        const [row] = await db
+          .select()
+          .from(contacts)
+          .where(
+            and(
+              eq(contacts.tenantId, tenantId),
+              eq(contacts.id, input.contactId),
+            ),
+          )
+          .limit(1);
+        existing = (row as ContactRow) ?? null;
+      }
+      if (!existing && input.emailNormalised) {
         const [row] = await db
           .select()
           .from(contacts)
