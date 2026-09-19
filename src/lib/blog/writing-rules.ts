@@ -326,6 +326,7 @@ export function validatePrimaryKeywordPlacement(
       label: "at least one H2 section heading",
       value: post.sections.map((section) => section.heading).join(" "),
     },
+    { label: "seo.metaTitle", value: post.seo?.metaTitle ?? "" },
     { label: "seo.metaDescription", value: post.seo?.metaDescription ?? "" },
   ];
 
