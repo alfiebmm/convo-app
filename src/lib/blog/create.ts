@@ -28,6 +28,7 @@ import {
   enforceCtaConfig,
   findAustralianEnglishViolation,
   findBannedTerm,
+  paragraphCountGateWarning,
   slugIsValid,
   stripEmDashes,
   tenantBannedTerms,
@@ -40,6 +41,7 @@ import {
   type BlogPostJson,
   type WritingRuleViolation,
   type WordCountGateViolation,
+  type WordCountGateWarning,
 } from "./writing-rules";
 
 export type BrandJson = Record<string, unknown>;
@@ -500,10 +502,12 @@ export function retryInstruction(violation: WritingRuleViolation): string {
 export function validateCandidate(
   candidate: BlogPostJson,
   brief: BlogBrief,
-  validate: BlogValidator
+  validate: BlogValidator,
+  options: { allowParagraphCountWarning?: boolean } = {}
 ): {
   post: BlogPostJson;
   emDashReplacements: Array<{ before: string; after: string }>;
+  qualityWarnings: WordCountGateWarning[];
   wordCount: number;
 } {
   const schemaErrors = validate({ brand: brief.tenant.brandJson, post: candidate });
@@ -512,8 +516,29 @@ export function validateCandidate(
   const structure = validatePostStructure(candidate);
   if (structure) throw structure;
 
-  const wordCount = validateWordCountGates(candidate);
+  const qualityWarnings: WordCountGateWarning[] = [];
+  const paragraphWarning = paragraphCountGateWarning(candidate);
+  const wordCount = validateWordCountGates(candidate, {
+    enforceMinParagraphsPerSection: !options.allowParagraphCountWarning,
+  });
   if (wordCount) throw wordCount;
+  if (paragraphWarning && options.allowParagraphCountWarning) {
+    qualityWarnings.push(paragraphWarning);
+    console.warn("[blog] paragraph count below target; draft accepted for review", {
+      conversationId: brief.source.conversationId,
+      shortSections: paragraphWarning.stats.sections
+        .filter(
+          (section) =>
+            section.paragraphCount < paragraphWarning.stats.minParagraphsPerSection
+        )
+        .map((section) => ({
+          index: section.index,
+          heading: section.heading,
+          paragraphCount: section.paragraphCount,
+          minParagraphsPerSection: paragraphWarning.stats.minParagraphsPerSection,
+        })),
+    });
+  }
   const stats = wordCountGateStats(candidate);
 
   // CON-291: log a non-fatal warning when accepted drafts land under the
@@ -521,6 +546,7 @@ export function validateCandidate(
   // otherwise-usable articles.
   const warning = wordCountGateWarning(candidate);
   if (warning) {
+    qualityWarnings.push(warning);
     console.info("[blog] word count below target minimum", {
       conversationId: brief.source.conversationId,
       totalWordCount: warning.stats.totalWordCount,
@@ -567,6 +593,7 @@ export function validateCandidate(
   return {
     post,
     emDashReplacements: stripped.replacements,
+    qualityWarnings,
     wordCount: stats.totalWordCount,
   };
 }
@@ -699,6 +726,41 @@ export async function logQualityGateViolation(
   }
 }
 
+export async function logQualityGateWarning(
+  store: BlogCreateStore,
+  params: {
+    loaded: { conversation: ConversationRecord; tenant: TenantRecord };
+    decision: DecisionResult;
+    warning: WordCountGateWarning;
+    targetBlogPostId?: string;
+  }
+): Promise<void> {
+  if (!store.insertSeoValidationLog) return;
+
+  try {
+    await store.insertSeoValidationLog({
+      tenantId: params.loaded.tenant.id,
+      conversationId: params.loaded.conversation.id,
+      action: params.decision.action === "update" ? "update" : "create",
+      reason: params.warning.message,
+      primaryKeyword: params.decision.primary_keyword,
+      intent: params.decision.intent,
+      targetBlogPostId: params.targetBlogPostId,
+      metadata: {
+        phase: "quality_gate_word_count_warning",
+        code: params.warning.code,
+        stats: params.warning.stats,
+      },
+    });
+  } catch (error) {
+    console.warn("[blog] word-count quality gate warning logging failed", {
+      conversationId: params.loaded.conversation.id,
+      tenantId: params.loaded.tenant.id,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function persistFailure(
   store: BlogCreateStore,
   params: {
@@ -771,8 +833,46 @@ function buildCreateService(deps: BlogCreateDeps) {
       let finalHtml = "";
       let finalSemanticHtml = "";
       let finalWordCount: number | null = null;
+      let finalQualityWarnings: WordCountGateWarning[] = [];
       let failureReason = "Article generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
+
+      const acceptValidatedCandidate = async (validated: {
+        post: BlogPostJson;
+        emDashReplacements: Array<{ before: string; after: string }>;
+        qualityWarnings: WordCountGateWarning[];
+        wordCount: number;
+      }) => {
+        const slug = await uniqueGeneratedSlug(
+          deps.store,
+          brief.tenant.id,
+          validated.post.title
+        );
+        finalPost = { ...validated.post, slug };
+        finalWordCount = validated.wordCount;
+        finalQualityWarnings = validated.qualityWarnings;
+        const seoValidation = validateSeoMetadata(finalPost);
+        await logSeoValidation(deps.store, {
+          loaded,
+          decision,
+          post: finalPost,
+          result: seoValidation,
+        });
+        for (const warning of finalQualityWarnings) {
+          await logQualityGateWarning(deps.store, {
+            loaded,
+            decision,
+            warning,
+          });
+        }
+        finalHtml = stripRenderedEmDashes(
+          deps.render({ brand: brief.tenant.brandJson, post: finalPost })
+        );
+        finalSemanticHtml = stripRenderedEmDashes(
+          deps.renderSemantic({ brand: brief.tenant.brandJson, post: finalPost })
+        );
+        allEmDashReplacements.push(...validated.emDashReplacements);
+      };
 
       for (
         let generationAttempt = 1;
@@ -794,31 +894,13 @@ function buildCreateService(deps: BlogCreateDeps) {
 
         if (!raw) break;
 
+        let candidateWithHero: BlogPostJson | null = null;
+
         try {
           const candidate = parsePostJson(raw);
-          const candidateWithHero = normalisePostHero(candidate, brief);
+          candidateWithHero = normalisePostHero(candidate, brief);
           const validated = validateCandidate(candidateWithHero, brief, deps.validate);
-          const slug = await uniqueGeneratedSlug(
-            deps.store,
-            brief.tenant.id,
-            validated.post.title
-          );
-          finalPost = { ...validated.post, slug };
-          finalWordCount = validated.wordCount;
-          const seoValidation = validateSeoMetadata(finalPost);
-          await logSeoValidation(deps.store, {
-            loaded,
-            decision,
-            post: finalPost,
-            result: seoValidation,
-          });
-          finalHtml = stripRenderedEmDashes(
-            deps.render({ brand: brief.tenant.brandJson, post: finalPost })
-          );
-          finalSemanticHtml = stripRenderedEmDashes(
-            deps.renderSemantic({ brand: brief.tenant.brandJson, post: finalPost })
-          );
-          allEmDashReplacements.push(...validated.emDashReplacements);
+          await acceptValidatedCandidate(validated);
         } catch (error) {
           const violation =
             isRecord(error) && typeof error.code === "string"
@@ -853,6 +935,33 @@ function buildCreateService(deps: BlogCreateDeps) {
             retryCount > MAX_RETRIES_PER_CLASS ||
             generationAttempt >= MAX_GENERATION_ATTEMPTS
           ) {
+            const reviewCandidate = candidateWithHero;
+            if (violation.code === "word_count" && reviewCandidate) {
+              const paragraphWarning = paragraphCountGateWarning(reviewCandidate);
+              if (!paragraphWarning) break;
+
+              try {
+                const validated = validateCandidate(
+                  reviewCandidate,
+                  brief,
+                  deps.validate,
+                  { allowParagraphCountWarning: true }
+                );
+                await acceptValidatedCandidate(validated);
+              } catch (reviewError) {
+                const reviewViolation =
+                  isRecord(reviewError) && typeof reviewError.code === "string"
+                    ? (reviewError as WritingRuleViolation)
+                    : ({
+                        code: "schema",
+                        message:
+                          reviewError instanceof Error
+                            ? reviewError.message
+                            : `Invalid JSON: ${String(reviewError)}`,
+                      } satisfies WritingRuleViolation);
+                failureReason = reviewViolation.message;
+              }
+            }
             break;
           }
           retryInstructions.push(retryInstruction(violation));
@@ -869,18 +978,20 @@ function buildCreateService(deps: BlogCreateDeps) {
       if (finalWordCount === null) {
         throw new Error("Validated article is missing word count");
       }
+      const postToPersist = finalPost as BlogPostJson;
 
       const row = await deps.store.insertBlogPost({
         tenantId: loaded.tenant.id,
         threadId: conversationId,
-        title: finalPost.title,
-        slug: finalPost.slug,
+        title: postToPersist.title,
+        slug: postToPersist.slug,
         content: finalHtml,
         contentSemantic: finalSemanticHtml,
-        metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
+        metadata: buildBlogPostMetadata(postToPersist, finalWordCount, {
           generation: {
             decision,
             emDashReplacements: allEmDashReplacements,
+            qualityGateWarnings: finalQualityWarnings,
           },
         }),
         status: "draft",

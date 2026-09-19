@@ -703,6 +703,38 @@ test("word-count quality gate retries and logs rejection", async () => {
   assert.equal(seoValidationLogs[1].metadata.phase, "seo_validation");
 });
 
+test("paragraph-count gate saves a reviewable draft after bounded retries", async () => {
+  const twoParagraphPost = validPost({
+    sections: validPost().sections.map((section, sectionIndex) => ({
+      ...section,
+      blocks: [0, 1].map((paragraphIndex) => ({
+        type: "p" as const,
+        text: proseWords(60, `short${sectionIndex}p${paragraphIndex}`),
+      })),
+    })),
+  });
+  const { service, inserts, prompts, seoValidationLogs } = makeService([
+    twoParagraphPost,
+    twoParagraphPost,
+    twoParagraphPost,
+    twoParagraphPost,
+  ]);
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 4);
+  assert.equal(inserts[0].metadata.generation_failure, undefined);
+  assert.match(prompts[1], /has 2 paragraph block\(s\), below the required 3/);
+
+  const generation = inserts[0].metadata.generation as Record<string, unknown>;
+  const warnings = generation.qualityGateWarnings as Array<Record<string, unknown>>;
+  assert.equal(warnings[0].code, "paragraph_count_below_target");
+  assert.equal(seoValidationLogs.at(-1)?.metadata.phase, "quality_gate_word_count_warning");
+  assert.equal(seoValidationLogs.at(-1)?.metadata.code, "paragraph_count_below_target");
+});
+
 test("CTA blocks are overridden from tenant config", async () => {
   const { service, inserts } = makeService([validPost()]);
 

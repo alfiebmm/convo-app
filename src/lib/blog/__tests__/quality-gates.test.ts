@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  paragraphCountGateWarning,
   validateWordCountGates,
   wordCountGateStats,
   wordCountGateWarning,
@@ -206,4 +207,22 @@ test("word-count gates fail below paragraphs per section minimum", () => {
   assert.equal(violation?.code, "word_count");
   assert.match(violation?.message ?? "", /has 2 paragraph block\(s\)/);
   assert.equal(violation?.stats.sections[0].paragraphCount, 2);
+});
+
+test("paragraph-count gate can be downgraded to a warning after retries", () => {
+  const candidate = post([
+    [100, 100],
+    [100, 100, 100],
+    [100, 100, 100],
+    [100, 100, 100],
+  ]);
+  const violation = validateWordCountGates(candidate, {
+    enforceMinParagraphsPerSection: false,
+  });
+  const warning = paragraphCountGateWarning(candidate);
+
+  assert.equal(violation, null);
+  assert.equal(warning?.code, "paragraph_count_below_target");
+  assert.equal(warning?.stats.sections[0].paragraphCount, 2);
+  assert.match(warning?.message ?? "", /section 1 "Section 1" has 2/);
 });

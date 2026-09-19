@@ -74,6 +74,7 @@ export type WordCountGateOptions = {
   maxTotalWordCount?: number;
   hardFloorTotalWordCount?: number;
   minParagraphsPerSection?: number;
+  enforceMinParagraphsPerSection?: boolean;
 };
 
 export type WordCountGateStats = {
@@ -98,7 +99,7 @@ export type WordCountGateViolation = WritingRuleViolation & {
 };
 
 export type WordCountGateWarning = {
-  code: "word_count_below_target";
+  code: "word_count_below_target" | "paragraph_count_below_target";
   message: string;
   stats: WordCountGateStats;
 };
@@ -394,9 +395,12 @@ export function validateWordCountGates(
 ): WordCountGateViolation | null {
   const stats = wordCountGateStats(post, options);
 
-  const paragraphFailure = stats.sections.find(
-    (section) => section.paragraphCount < stats.minParagraphsPerSection
-  );
+  const paragraphFailure =
+    options.enforceMinParagraphsPerSection === false
+      ? null
+      : stats.sections.find(
+          (section) => section.paragraphCount < stats.minParagraphsPerSection
+        );
   if (paragraphFailure) {
     return {
       code: "word_count",
@@ -440,6 +444,31 @@ export function validateWordCountGates(
   }
 
   return null;
+}
+
+export function paragraphCountGateWarning(
+  post: BlogPostJson,
+  options: WordCountGateOptions = {}
+): WordCountGateWarning | null {
+  const stats = wordCountGateStats(post, options);
+  const shortSections = stats.sections.filter(
+    (section) => section.paragraphCount < stats.minParagraphsPerSection
+  );
+
+  if (shortSections.length === 0) return null;
+
+  const summary = shortSections
+    .map(
+      (section) =>
+        `section ${section.index + 1} "${section.heading}" has ${section.paragraphCount}`
+    )
+    .join("; ");
+
+  return {
+    code: "paragraph_count_below_target",
+    message: `Word-count warning: ${summary} paragraph block(s), below the ${stats.minParagraphsPerSection}-paragraph target. Draft accepted for review after retry attempts.`,
+    stats,
+  };
 }
 
 // CON-291: returns a non-fatal warning when an accepted draft lands under the
