@@ -35,7 +35,6 @@ import {
   validatePrimaryKeywordPlacement,
   validatePostStructure,
   wordCountGateStats,
-  wordCountGateWarning,
   validateWordCountGates,
   type BlogCtaConfig,
   type BlogPostJson,
@@ -515,19 +514,6 @@ export function validateCandidate(
   const wordCount = validateWordCountGates(candidate);
   if (wordCount) throw wordCount;
   const stats = wordCountGateStats(candidate);
-
-  // CON-291: log a non-fatal warning when accepted drafts land under the
-  // target minimum so we can retune the generation prompt without dropping
-  // otherwise-usable articles.
-  const warning = wordCountGateWarning(candidate);
-  if (warning) {
-    console.info("[blog] word count below target minimum", {
-      conversationId: brief.source.conversationId,
-      totalWordCount: warning.stats.totalWordCount,
-      minTotalWordCount: warning.stats.minTotalWordCount,
-      hardFloorTotalWordCount: warning.stats.hardFloorTotalWordCount,
-    });
-  }
 
   const stripped = stripEmDashes(candidate);
   for (const replacement of stripped.replacements) {

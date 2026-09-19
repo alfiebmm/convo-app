@@ -83,9 +83,9 @@ function validPostJson(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
         ? "How pharmacists support ongoing care"
         : `Medicine support step ${sectionIndex}`,
     blocks: [
-      { type: "p", text: proseWords(45, `s${sectionIndex}a`) },
-      { type: "p", text: proseWords(45, `s${sectionIndex}b`) },
-      { type: "p", text: proseWords(45, `s${sectionIndex}c`) },
+      { type: "p", text: proseWords(65, `s${sectionIndex}a`) },
+      { type: "p", text: proseWords(65, `s${sectionIndex}b`) },
+      { type: "p", text: proseWords(65, `s${sectionIndex}c`) },
     ],
   }));
   post.sections[0].blocks.push({
@@ -232,7 +232,7 @@ test("no_banned_terms fails when tenant banned words appear", () => {
   assert.equal(item("no_banned_terms", makePost(validPostJson({ dek: "A forbidden guide for patients." })))?.status, "fail");
 });
 
-test("word_count fails below the hard floor", () => {
+test("word_count fails below the target minimum", () => {
   const post = validPostJson();
   post.sections = post.sections.map((section) => ({
     ...section,

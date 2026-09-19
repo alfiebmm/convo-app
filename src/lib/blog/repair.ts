@@ -297,6 +297,18 @@ function sectionRepairPrompt(params: {
   sectionIndex: number;
   violation: WordCountGateViolation;
 }): { systemPrompt: string; userPrompt: string } {
+  const sectionStats = params.violation.stats.sections.find(
+    (section) => section.index === params.sectionIndex
+  );
+  const totalDeficit = Math.max(
+    0,
+    params.violation.stats.minTotalWordCount - params.violation.stats.totalWordCount
+  );
+  const targetSectionWordCount = Math.max(
+    params.violation.stats.minSectionWordCount,
+    (sectionStats?.wordCount ?? 0) + totalDeficit
+  );
+
   return {
     systemPrompt:
       "You repair one section of a Convo blog article. Return only JSON for the single repaired section object with heading and blocks. Do not return the whole post.",
@@ -309,6 +321,10 @@ function sectionRepairPrompt(params: {
         requirements: {
           minParagraphBlocks: params.violation.stats.minParagraphsPerSection,
           minSectionParagraphWords: params.violation.stats.minSectionWordCount,
+          targetSectionParagraphWords: targetSectionWordCount,
+          currentTotalWords: params.violation.stats.totalWordCount,
+          minTotalWords: params.violation.stats.minTotalWordCount,
+          additionalWordsNeededAcrossArticle: totalDeficit,
           paragraphLength: "80-150 words",
           australianEnglish: true,
           bannedTerms: params.brief.tenant.writingRules.bannedTerms,

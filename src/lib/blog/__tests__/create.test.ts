@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { __testing } from "../create";
 import type { DecisionResult } from "../decision";
-import type { BlogPostJson } from "../writing-rules";
+import { wordCountGateStats, type BlogPostJson } from "../writing-rules";
 import brandFixture from "../schemas/brand.example.chemist2u.json";
 import postFixture from "../schemas/post.example.chemist2u.json";
 
@@ -112,6 +112,41 @@ function richParagraphs(sectionIndex: number) {
     type: "p" as const,
     text: proseWords(45, `s${sectionIndex}p${paragraphIndex}`),
   }));
+}
+
+function paragraphBlocks(counts: number[], prefix: string) {
+  return counts.map((count, index) => ({
+    type: "p" as const,
+    text: proseWords(count, `${prefix}p${index}`),
+  }));
+}
+
+function fourSectionPostWithTotalWordCount(totalWordCount: number): BlogPostJson {
+  const post = validPost();
+  const introWordCount = wordCountGateStats(post).introWordCount;
+  const paragraphWords = totalWordCount - introWordCount;
+  const sectionCount = 4;
+  const baseSectionWords = Math.floor(paragraphWords / sectionCount);
+  let sectionRemainder = paragraphWords % sectionCount;
+
+  post.sections = post.sections.slice(0, sectionCount).map((section, sectionIndex) => {
+    const sectionWords = baseSectionWords + (sectionRemainder-- > 0 ? 1 : 0);
+    const baseParagraphWords = Math.floor(sectionWords / 3);
+    let paragraphRemainder = sectionWords % 3;
+
+    return {
+      ...section,
+      blocks: paragraphBlocks(
+        Array.from(
+          { length: 3 },
+          () => baseParagraphWords + (paragraphRemainder-- > 0 ? 1 : 0)
+        ),
+        `target${sectionIndex}`
+      ),
+    };
+  });
+
+  return post;
 }
 
 function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
@@ -703,13 +738,35 @@ test("primary keyword placement failure is repaired in-place", async () => {
   assert.match(inserts[0].title, /pharmacists/i);
 });
 
+test("700-word candidate repairs to target minimum before acceptance", async () => {
+  const bad = fourSectionPostWithTotalWordCount(700);
+  const repairedSection = {
+    ...bad.sections[0],
+    blocks: paragraphBlocks([90, 90, 90], "expanded-total"),
+  };
+  const { service, inserts, prompts, seoValidationLogs } = makeService([bad, repairedSection]);
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /Repair only this section/);
+  const metadata = inserts[0].metadata as BlogPostJson & {
+    stats?: { wordCount?: number };
+  };
+  assert.ok((metadata.stats?.wordCount ?? 0) >= 800);
+  assert.equal(seoValidationLogs[0].metadata.phase, "quality_gate_word_count");
+  assert.equal(seoValidationLogs[1].metadata.phase, "repair_loop");
+  assert.equal(seoValidationLogs.at(-1)?.metadata.phase, "seo_validation");
+});
+
 test("short section word count repairs only the affected section", async () => {
   const bad = validPost({
     sections: validPost().sections.map((section, index) =>
       index === 0
         ? {
             ...section,
-            blocks: [{ type: "p", text: "Too short for a useful article." }],
+            blocks: paragraphBlocks([25, 25, 25], "short-section"),
           }
         : section
     ),
@@ -725,6 +782,7 @@ test("short section word count repairs only the affected section", async () => {
   assert.equal(inserts[0].status, "draft");
   assert.equal(prompts.length, 2);
   assert.match(prompts[1], /Repair only this section/);
+  assert.match(prompts[1], /"targetSectionParagraphWords": 100/);
   assert.doesNotMatch(prompts[1], /Rewrite the full post\.json/);
   assert.equal(seoValidationLogs[0].metadata.phase, "quality_gate_word_count");
   assert.equal(seoValidationLogs.at(-1)?.metadata.phase, "seo_validation");

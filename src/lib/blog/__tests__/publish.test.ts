@@ -48,9 +48,9 @@ function validMetadata(): BlogPostJson & Record<string, unknown> {
   post.sections = [0, 1, 2, 3].map((index) => ({
     heading: index === 0 ? "How to choose a puppy school" : `Puppy school step ${index}`,
     blocks: [
-      { type: "p", text: proseWords(45, `s${index}a`) },
-      { type: "p", text: proseWords(45, `s${index}b`) },
-      { type: "p", text: proseWords(45, `s${index}c`) },
+      { type: "p", text: proseWords(65, `s${index}a`) },
+      { type: "p", text: proseWords(65, `s${index}b`) },
+      { type: "p", text: proseWords(65, `s${index}c`) },
     ],
   }));
   post.sections[0].blocks.push({
