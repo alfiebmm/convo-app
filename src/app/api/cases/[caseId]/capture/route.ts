@@ -547,8 +547,14 @@ async function handleSubmit(
 
     const upsertInput: UpsertContactInput =
       field === "email"
-        ? { emailNormalised: normaliseEmail(normalised) ?? undefined }
-        : { phoneNormalised: normalisePhone(normalised) ?? undefined };
+        ? {
+            contactId: kase.contactId ?? undefined,
+            emailNormalised: normaliseEmail(normalised) ?? undefined,
+          }
+        : {
+            contactId: kase.contactId ?? undefined,
+            phoneNormalised: normalisePhone(normalised) ?? undefined,
+          };
 
     if (personaAttr !== null) {
       upsertInput.attributes = {

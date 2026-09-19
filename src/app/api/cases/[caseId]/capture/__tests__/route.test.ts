@@ -237,7 +237,8 @@ function makeDeps(
       const existing = world.contacts.find(
         (c) =>
           c.tenantId === tenantId &&
-          ((input.emailNormalised &&
+          ((input.contactId && c.id === input.contactId) ||
+            (input.emailNormalised &&
             c.emailNormalised === input.emailNormalised) ||
             (input.phoneNormalised &&
               c.phoneNormalised === input.phoneNormalised)),
@@ -752,7 +753,7 @@ async function runAll() {
   );
 
   await test(
-    "CON-269 regression: submit email then mobile still upserts and audits identifiers",
+    "CON-298: submit email then mobile merges identifiers onto the case contact",
     async () => {
       const world = makeWorld();
       const deps = makeDeps(world);
@@ -785,18 +786,85 @@ async function runAll() {
       );
 
       assertEq(mobileRes.status, 200, "mobile status");
-      assertEq(world.contacts.length, 2, "mobile contact upsert still runs");
-      assertEq(world.contacts[1].phoneNormalised, "0400123456", "phone stored");
+      assertEq(world.contacts.length, 1, "no split contact");
+      assertEq(world.contacts[0].id, emailContactId, "same contact");
+      assertEq(
+        world.contacts[0].emailNormalised,
+        "blake@example.com",
+        "email preserved",
+      );
+      assertEq(world.contacts[0].phoneNormalised, "0400123456", "phone added");
       assertEq(
         world.cases[0].contactId,
         emailContactId,
         "existing case contact not overwritten",
       );
-      assertEq(world.links.length, 2, "both identifier submits link contacts");
+      assertEq(world.links.length, 2, "both identifier submits link contact");
+      assertEq(world.links[0].contactId, emailContactId, "email link contact");
+      assertEq(world.links[1].contactId, emailContactId, "mobile link contact");
       assert(
         typeof world.events[3].payload.value_hash === "string",
         "mobile audit has hash",
       );
+    },
+  );
+
+  await test(
+    "CON-298 regression: submit mobile then email creates one contact linked to case and conversation",
+    async () => {
+      const world = makeWorld();
+      const deps = makeDeps(world);
+
+      const mobileRes = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "mobile",
+          value: "0429 183 130",
+        }),
+        CASE_A,
+        deps,
+      );
+      assertEq(mobileRes.status, 200, "mobile status");
+      const contactId = world.contacts[0].id;
+      assertEq(world.cases[0].contactId, contactId, "case linked after mobile");
+
+      const emailRes = await handleCaptureSubmit(
+        mockReq({
+          tenantId: TENANT_A,
+          visitorId: VISITOR_A,
+          conversationId: CONVO_A,
+          action: "submit",
+          field: "email",
+          value: "test@gmail.com",
+        }),
+        CASE_A,
+        deps,
+      );
+
+      assertEq(emailRes.status, 200, "email status");
+      const body = await readJson(emailRes);
+      assertEq(world.contacts.length, 1, "one contact row");
+      assertEq(world.contacts[0].id, contactId, "same contact row");
+      assertEq(
+        world.contacts[0].emailNormalised,
+        "test@gmail.com",
+        "email added",
+      );
+      assertEq(
+        world.contacts[0].phoneNormalised,
+        "0429183130",
+        "phone preserved",
+      );
+      assertEq(world.cases[0].contactId, contactId, "case remains linked");
+      assertEq(world.caseContactPatches.length, 1, "case binding set once");
+      assertEq(world.links.length, 2, "conversation linked on both submits");
+      assertEq(world.links[0].contactId, contactId, "mobile link contact");
+      assertEq(world.links[1].contactId, contactId, "email link contact");
+      assertEq(body.contact_id, contactId, "response contact id");
+      assertEq(body.contact_created, undefined, "second submit is a merge");
     },
   );
 
