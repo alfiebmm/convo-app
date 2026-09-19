@@ -23,6 +23,7 @@ import {
 } from "./hero-placeholder";
 import brandSchema from "./schemas/brand.schema.json";
 import postSchema from "./schemas/post.schema.json";
+import { repairBlogPost, type RepairOperation } from "./repair";
 import { generateSlug, validateSeoMetadata, type SeoValidationResult } from "./seo";
 import {
   enforceCtaConfig,
@@ -34,7 +35,6 @@ import {
   validatePrimaryKeywordPlacement,
   validatePostStructure,
   wordCountGateStats,
-  wordCountGateWarning,
   validateWordCountGates,
   type BlogCtaConfig,
   type BlogPostJson,
@@ -156,8 +156,7 @@ export type RetryClass =
 
 const MAX_RATE_LIMIT_ATTEMPTS = 2;
 const RATE_LIMIT_RETRY_MS = 5_000;
-const MAX_RETRIES_PER_CLASS = 3;
-const MAX_GENERATION_ATTEMPTS = 6;
+const MAX_REPAIR_PASSES = 12;
 
 const AU_ENGLISH_RULE =
   "Write in Australian English. Use -ise, -our, -re spellings. Words: organisation, optimise, colour, centre, behaviour, favourite, honour, licence (noun), license (verb), programme (noun), analyse, realise.";
@@ -516,19 +515,6 @@ export function validateCandidate(
   if (wordCount) throw wordCount;
   const stats = wordCountGateStats(candidate);
 
-  // CON-291: log a non-fatal warning when accepted drafts land under the
-  // target minimum so we can retune the generation prompt without dropping
-  // otherwise-usable articles.
-  const warning = wordCountGateWarning(candidate);
-  if (warning) {
-    console.info("[blog] word count below target minimum", {
-      conversationId: brief.source.conversationId,
-      totalWordCount: warning.stats.totalWordCount,
-      minTotalWordCount: warning.stats.minTotalWordCount,
-      hardFloorTotalWordCount: warning.stats.hardFloorTotalWordCount,
-    });
-  }
-
   const stripped = stripEmDashes(candidate);
   for (const replacement of stripped.replacements) {
     console.info("[blog] stripped em dash from generated article", {
@@ -699,6 +685,48 @@ export async function logQualityGateViolation(
   }
 }
 
+export async function logRepairPass(
+  store: BlogCreateStore,
+  params: {
+    loaded: { conversation: ConversationRecord; tenant: TenantRecord };
+    decision: DecisionResult;
+    violation: WritingRuleViolation;
+    repairPass: number;
+    operations: RepairOperation[];
+    targetBlogPostId?: string;
+  }
+): Promise<void> {
+  if (!store.insertSeoValidationLog) return;
+
+  try {
+    await store.insertSeoValidationLog({
+      tenantId: params.loaded.tenant.id,
+      conversationId: params.loaded.conversation.id,
+      action: params.decision.action === "update" ? "update" : "create",
+      reason: `Article contract repaired: ${params.violation.message}`,
+      primaryKeyword: params.decision.primary_keyword,
+      intent: params.decision.intent,
+      targetBlogPostId: params.targetBlogPostId,
+      metadata: {
+        phase: "repair_loop",
+        repairPass: params.repairPass,
+        originalViolation: {
+          code: params.violation.code,
+          message: params.violation.message,
+          sentence: params.violation.sentence,
+        },
+        operations: params.operations,
+      },
+    });
+  } catch (error) {
+    console.warn("[blog] repair-pass logging failed", {
+      conversationId: params.loaded.conversation.id,
+      tenantId: params.loaded.tenant.id,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function persistFailure(
   store: BlogCreateStore,
   params: {
@@ -765,39 +793,49 @@ function buildCreateService(deps: BlogCreateDeps) {
         });
       }
 
-      const retryCounts = new Map<RetryClass, number>();
-      const retryInstructions: string[] = [];
       let finalPost: BlogPostJson | null = null;
       let finalHtml = "";
       let finalSemanticHtml = "";
       let finalWordCount: number | null = null;
       let failureReason = "Article generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
+      const repairOperations: RepairOperation[] = [];
 
-      for (
-        let generationAttempt = 1;
-        !finalPost && generationAttempt <= MAX_GENERATION_ATTEMPTS;
-        generationAttempt++
-      ) {
-        const raw = await generateWithRateLimitRetry(
-          deps.ai,
-          {
-            systemPrompt: buildSystemPrompt(brief),
-            userPrompt: buildUserPrompt(brief, retryInstructions),
-          },
-          deps.sleep
-        ).catch((error) => {
-          failureReason =
-            error instanceof Error ? error.message : `OpenAI failed: ${String(error)}`;
-          return null;
+      const raw = await generateWithRateLimitRetry(
+        deps.ai,
+        {
+          systemPrompt: buildSystemPrompt(brief),
+          userPrompt: buildUserPrompt(brief, []),
+        },
+        deps.sleep
+      ).catch((error) => {
+        failureReason =
+          error instanceof Error ? error.message : `OpenAI failed: ${String(error)}`;
+        return null;
+      });
+
+      if (!raw) {
+        return persistFailure(deps.store, {
+          loaded,
+          decision,
+          reason: failureReason,
         });
+      }
 
-        if (!raw) break;
+      let candidate: BlogPostJson;
+      try {
+        candidate = normalisePostHero(parsePostJson(raw), brief);
+      } catch (error) {
+        return persistFailure(deps.store, {
+          loaded,
+          decision,
+          reason: error instanceof Error ? error.message : `Invalid JSON: ${String(error)}`,
+        });
+      }
 
+      for (let repairPass = 0; !finalPost && repairPass <= MAX_REPAIR_PASSES; repairPass++) {
         try {
-          const candidate = parsePostJson(raw);
-          const candidateWithHero = normalisePostHero(candidate, brief);
-          const validated = validateCandidate(candidateWithHero, brief, deps.validate);
+          const validated = validateCandidate(candidate, brief, deps.validate);
           const slug = await uniqueGeneratedSlug(
             deps.store,
             brief.tenant.id,
@@ -837,25 +875,42 @@ function buildCreateService(deps: BlogCreateDeps) {
               violation: violation as WordCountGateViolation,
             });
           }
-          const retryClass = violation.code;
-          const retryCount = (retryCounts.get(retryClass) ?? 0) + 1;
-          retryCounts.set(retryClass, retryCount);
-          console.info("[blog] article generation retry", {
-            conversationId,
-            retryClass,
-            retryCount,
-            maxRetriesPerClass: MAX_RETRIES_PER_CLASS,
-            generationAttempt,
-            maxGenerationAttempts: MAX_GENERATION_ATTEMPTS,
-            violation: violation.message,
-          });
-          if (
-            retryCount > MAX_RETRIES_PER_CLASS ||
-            generationAttempt >= MAX_GENERATION_ATTEMPTS
-          ) {
+          if (repairPass >= MAX_REPAIR_PASSES) {
+            console.error("[blog] article repair loop exhausted", {
+              conversationId,
+              maxRepairPasses: MAX_REPAIR_PASSES,
+              violation: violation.message,
+              repairOperations,
+            });
             break;
           }
-          retryInstructions.push(retryInstruction(violation));
+
+          const repair = await repairBlogPost(candidate, brief, violation, deps.ai).catch(
+            (repairError) => {
+              failureReason =
+                repairError instanceof Error
+                  ? repairError.message
+                  : `Article repair failed: ${String(repairError)}`;
+              return null;
+            }
+          );
+          if (!repair) break;
+          candidate = normalisePostHero(repair.post, brief);
+          repairOperations.push(...repair.operations);
+          await logRepairPass(deps.store, {
+            loaded,
+            decision,
+            violation,
+            repairPass: repairPass + 1,
+            operations: repair.operations,
+          });
+          console.info("[blog] article contract repair applied", {
+            conversationId,
+            repairPass: repairPass + 1,
+            violationCode: violation.code,
+            violationMessage: violation.message,
+            operations: repair.operations,
+          });
         }
       }
 
@@ -881,6 +936,7 @@ function buildCreateService(deps: BlogCreateDeps) {
           generation: {
             decision,
             emDashReplacements: allEmDashReplacements,
+            repairOperations,
           },
         }),
         status: "draft",
@@ -1130,9 +1186,11 @@ export const __testing = {
   buildBrief,
   buildSystemPrompt,
   heroPlaceholderUrl,
+  logRepairPass,
   logSeoValidation,
   normalisePostHero,
   resolveCtaConfig,
   resolveBrandJson,
   uniqueGeneratedSlug,
+  validateCandidate,
 };

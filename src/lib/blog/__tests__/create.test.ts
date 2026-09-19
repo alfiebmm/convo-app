@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { __testing } from "../create";
 import type { DecisionResult } from "../decision";
-import type { BlogPostJson } from "../writing-rules";
+import { wordCountGateStats, type BlogPostJson } from "../writing-rules";
 import brandFixture from "../schemas/brand.example.chemist2u.json";
 import postFixture from "../schemas/post.example.chemist2u.json";
 
@@ -114,6 +114,41 @@ function richParagraphs(sectionIndex: number) {
   }));
 }
 
+function paragraphBlocks(counts: number[], prefix: string) {
+  return counts.map((count, index) => ({
+    type: "p" as const,
+    text: proseWords(count, `${prefix}p${index}`),
+  }));
+}
+
+function fourSectionPostWithTotalWordCount(totalWordCount: number): BlogPostJson {
+  const post = validPost();
+  const introWordCount = wordCountGateStats(post).introWordCount;
+  const paragraphWords = totalWordCount - introWordCount;
+  const sectionCount = 4;
+  const baseSectionWords = Math.floor(paragraphWords / sectionCount);
+  let sectionRemainder = paragraphWords % sectionCount;
+
+  post.sections = post.sections.slice(0, sectionCount).map((section, sectionIndex) => {
+    const sectionWords = baseSectionWords + (sectionRemainder-- > 0 ? 1 : 0);
+    const baseParagraphWords = Math.floor(sectionWords / 3);
+    let paragraphRemainder = sectionWords % 3;
+
+    return {
+      ...section,
+      blocks: paragraphBlocks(
+        Array.from(
+          { length: 3 },
+          () => baseParagraphWords + (paragraphRemainder-- > 0 ? 1 : 0)
+        ),
+        `target${sectionIndex}`
+      ),
+    };
+  });
+
+  return post;
+}
+
 function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   const post = structuredClone(postFixture) as BlogPostJson;
   const postRecord = post as unknown as Record<string, unknown>;
@@ -198,7 +233,7 @@ function validBrand(): Record<string, unknown> {
   return brand;
 }
 
-function makeService(responses: BlogPostJson[], options: MakeServiceOptions = {}) {
+function makeService(responses: unknown[], options: MakeServiceOptions = {}) {
   const inserts: InsertedPost[] = [];
   const seoValidationLogs: SeoValidationLog[] = [];
   const prompts: string[] = [];
@@ -569,96 +604,115 @@ test("createArticle uses brand-colour gradient placeholder instead of logo fallb
   assert.match(inserts[0].content, /hero-placeholders\/gradient-green\.jpg/);
 });
 
-test("schema validation retries once with schema errors", async () => {
+test("schema validation applies safe deterministic defaults", async () => {
   const invalid = validPost({ toc: ["Only one item"] });
-  const { service, inserts, prompts } = makeService([invalid, validPost()]);
+  const { service, inserts, prompts, seoValidationLogs } = makeService([invalid]);
 
   await service.createArticle(CONVERSATION_ID, decision());
 
   assert.equal(inserts[0].status, "draft");
-  assert.equal(prompts.length, 2);
-  assert.match(prompts[1], /post\.json failed schema validation/);
+  assert.equal(prompts.length, 1);
+  assert.deepEqual((inserts[0].metadata as BlogPostJson).toc.length, 3);
+  assert.equal(seoValidationLogs[0].metadata.phase, "repair_loop");
 });
 
-test("banned words retry once and then persist a clean draft", async () => {
+test("banned words are cleaned up deterministically before final save", async () => {
   const bad = validPost({
     intro:
       "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
   });
-  const { service, inserts, prompts } = makeService([bad, validPost()]);
+  const { service, inserts, prompts, seoValidationLogs } = makeService([bad]);
 
   await service.createArticle(CONVERSATION_ID, decision());
 
   assert.equal(inserts[0].status, "draft");
-  assert.equal(prompts.length, 2);
-  assert.match(prompts[1], /Banned term found: delve/);
-});
-
-test("banned words retry repeated same-class violations more than once", async () => {
-  const bad = validPost({
-    intro:
-      "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
-  });
-  const { service, inserts, prompts } = makeService([bad, bad, validPost()]);
-
-  await service.createArticle(CONVERSATION_ID, decision());
-
-  assert.equal(inserts[0].status, "draft");
-  assert.equal(prompts.length, 3);
-  assert.match(prompts[1], /Banned term found: delve/);
-  assert.match(prompts[2], /Banned term found: delve/);
-});
-
-test("banned words fail after three same-class retries and mark generation_failed", async () => {
-  const bad = validPost({
-    intro:
-      "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
-  });
-  const { service, inserts, prompts } = makeService([bad, bad, bad, bad]);
-
-  await service.createArticle(CONVERSATION_ID, decision());
-
-  assert.equal(inserts.length, 1);
-  assert.equal(inserts[0].status, "generation_failed");
-  assert.equal(prompts.length, 4);
-  assert.match(
-    String(
-      (
-        inserts[0].metadata.generation_failure as Record<string, unknown>
-      ).reason
-    ),
-    /Banned term found/
+  assert.equal(prompts.length, 1);
+  assert.doesNotMatch((inserts[0].metadata as BlogPostJson).intro, /\bdelve\b/i);
+  assert.equal(seoValidationLogs[0].metadata.phase, "repair_loop");
+  assert.deepEqual(
+    (
+      (seoValidationLogs[0].metadata.operations as Array<Record<string, unknown>>)[0]
+    ).action,
+    "replace_banned_terms"
   );
 });
 
-test("retry loop gives up after six total generation attempts", async () => {
-  const schemaBad = validPost({ toc: ["Only one item"] });
-  const bannedBad = validPost({
-    intro:
-      "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
+test("repeated H2 keyword miss is repaired instead of failing", async () => {
+  const bad = validPost({
+    sections: validPost().sections.map((section, index) => ({
+      ...section,
+      heading: `Ongoing medicine support ${index + 1}`,
+    })),
   });
-  const keywordBad = validPost({
-    title: "Ongoing medicine support in Australia",
-  });
-  const englishBad = validPost({
-    intro:
-      "Pharmacists help with ongoing care by answering medicine questions, checking color labels, and explaining side effects.",
-  });
-  const { service, inserts, prompts } = makeService([
-    schemaBad,
-    bannedBad,
-    keywordBad,
-    englishBad,
-    schemaBad,
-    bannedBad,
-    validPost(),
-  ]);
+  const { service, inserts, prompts } = makeService([bad]);
 
   await service.createArticle(CONVERSATION_ID, decision());
 
-  assert.equal(inserts.length, 1);
-  assert.equal(inserts[0].status, "generation_failed");
-  assert.equal(prompts.length, 6);
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 1);
+  assert.match((inserts[0].metadata as BlogPostJson).sections[0].heading, /pharmacists/i);
+});
+
+test("mungbeans-shaped keyword miss is repaired and passes the full contract", async () => {
+  const mungbeansDecision: DecisionResult = {
+    ...decision(),
+    primary_keyword: "grow mungbeans",
+    intent: "how to grow mungbeans",
+  };
+  const bad = validPost({
+    title: "How to plan a small crop",
+    intro:
+      "Practical crop planning starts with a clear site, clean notes, and a sensible schedule for each stage.",
+    seo: {
+      ...validPost().seo,
+      metaTitle: "How to plan a small crop in Australia",
+      metaDescription:
+        "Use practical crop planning steps to prepare a site, check timing, and keep notes clear before each growing stage.",
+      keywords: ["crop planning"],
+    },
+    sections: validPost().sections.map((section, index) => ({
+      ...section,
+      heading: index === 0 ? "Plan the growing area" : section.heading,
+    })),
+  });
+  const { service, inserts, prompts } = makeService([bad]);
+
+  await service.createArticle(CONVERSATION_ID, mungbeansDecision);
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 1);
+  const metadata = inserts[0].metadata as BlogPostJson;
+  const postForValidation = {
+    slug: metadata.slug,
+    category: metadata.category,
+    title: metadata.title,
+    dek: metadata.dek,
+    meta: metadata.meta,
+    seo: metadata.seo,
+    hero: metadata.hero,
+    stats: null as unknown as BlogPostJson["stats"],
+    toc: metadata.toc,
+    intro: metadata.intro,
+    sections: metadata.sections,
+    faqs: metadata.faqs,
+    related: metadata.related,
+  } satisfies BlogPostJson;
+  assert.equal(
+    __testing.validateCandidate(postForValidation, __testing.buildBrief(CONVERSATION_ID, mungbeansDecision, {
+      tenant: {
+        id: TENANT_ID,
+        name: "Chemist2U",
+        slug: "chemist2u",
+        domain: "chemist2u.com.au",
+        settings: {
+          brandJson: validBrand(),
+          blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+        },
+      },
+      messages: [],
+    }), validate).post.slug,
+    "how-plan-small-crop-grow-mungbeans"
+  );
 });
 
 test("em dashes are stripped from rendered content and metadata", async () => {
@@ -673,34 +727,65 @@ test("em dashes are stripped from rendered content and metadata", async () => {
   assert.doesNotMatch((inserts[0].metadata as BlogPostJson).dek, /[—–]/);
 });
 
-test("primary keyword placement failure retries once", async () => {
+test("primary keyword placement failure is repaired in-place", async () => {
   const bad = validPost({ title: "Ongoing medicine support in Australia" });
-  const { service, inserts, prompts } = makeService([bad, validPost()]);
+  const { service, inserts, prompts } = makeService([bad]);
 
   await service.createArticle(CONVERSATION_ID, decision());
 
   assert.equal(inserts[0].status, "draft");
-  assert.equal(prompts.length, 2);
-  assert.match(prompts[1], /missing from title/);
+  assert.equal(prompts.length, 1);
+  assert.match(inserts[0].title, /pharmacists/i);
 });
 
-test("word-count quality gate retries and logs rejection", async () => {
-  const bad = validPost({
-    sections: validPost().sections.map((section) => ({
-      ...section,
-      blocks: [{ type: "p", text: "Too short for a useful article." }],
-    })),
-  });
-  const { service, inserts, prompts, seoValidationLogs } = makeService([bad, validPost()]);
+test("700-word candidate repairs to target minimum before acceptance", async () => {
+  const bad = fourSectionPostWithTotalWordCount(700);
+  const repairedSection = {
+    ...bad.sections[0],
+    blocks: paragraphBlocks([90, 90, 90], "expanded-total"),
+  };
+  const { service, inserts, prompts, seoValidationLogs } = makeService([bad, repairedSection]);
 
   await service.createArticle(CONVERSATION_ID, decision());
 
   assert.equal(inserts[0].status, "draft");
   assert.equal(prompts.length, 2);
-  assert.match(prompts[1], /Word-count quality gate failed/);
-  assert.match(prompts[1], /Rewrite the full post\.json/);
+  assert.match(prompts[1], /Repair only this section/);
+  const metadata = inserts[0].metadata as BlogPostJson & {
+    stats?: { wordCount?: number };
+  };
+  assert.ok((metadata.stats?.wordCount ?? 0) >= 800);
   assert.equal(seoValidationLogs[0].metadata.phase, "quality_gate_word_count");
-  assert.equal(seoValidationLogs[1].metadata.phase, "seo_validation");
+  assert.equal(seoValidationLogs[1].metadata.phase, "repair_loop");
+  assert.equal(seoValidationLogs.at(-1)?.metadata.phase, "seo_validation");
+});
+
+test("short section word count repairs only the affected section", async () => {
+  const bad = validPost({
+    sections: validPost().sections.map((section, index) =>
+      index === 0
+        ? {
+            ...section,
+            blocks: paragraphBlocks([25, 25, 25], "short-section"),
+          }
+        : section
+    ),
+  });
+  const repairedSection = {
+    heading: bad.sections[0].heading,
+    blocks: richParagraphs(99),
+  };
+  const { service, inserts, prompts, seoValidationLogs } = makeService([bad, repairedSection]);
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /Repair only this section/);
+  assert.match(prompts[1], /"targetSectionParagraphWords": 100/);
+  assert.doesNotMatch(prompts[1], /Rewrite the full post\.json/);
+  assert.equal(seoValidationLogs[0].metadata.phase, "quality_gate_word_count");
+  assert.equal(seoValidationLogs.at(-1)?.metadata.phase, "seo_validation");
 });
 
 test("CTA blocks are overridden from tenant config", async () => {
@@ -720,16 +805,16 @@ test("CTA blocks are overridden from tenant config", async () => {
   assert.match(inserts[0].content, /Book a consult/);
 });
 
-test("Australian English violations retry once", async () => {
+test("Australian English violations are normalised before final save", async () => {
   const bad = validPost({
     intro:
       "Pharmacists help with ongoing care by answering medicine questions, checking color labels, and explaining side effects.",
   });
-  const { service, inserts, prompts } = makeService([bad, validPost()]);
+  const { service, inserts, prompts } = makeService([bad]);
 
   await service.createArticle(CONVERSATION_ID, decision());
 
   assert.equal(inserts[0].status, "draft");
-  assert.equal(prompts.length, 2);
-  assert.match(prompts[1], /US spelling found: color/);
+  assert.equal(prompts.length, 1);
+  assert.match((inserts[0].metadata as BlogPostJson).intro, /colour labels/);
 });
