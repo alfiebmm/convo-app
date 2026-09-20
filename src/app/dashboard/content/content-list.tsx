@@ -62,6 +62,16 @@ export function BlogPostStatusPill({ status }: { status: BlogPostStatus }) {
   return <Pill className={display.className}>{display.label}</Pill>;
 }
 
+export function BlogPostContentTypePill({ post }: { post: BlogPostListItem }) {
+  if (post.contentType === "generation_failure") {
+    return <Pill className="bg-red-100 text-red-800">Generation failure</Pill>;
+  }
+  if (post.contentType === "update_draft") {
+    return <Pill className="bg-blue-100 text-blue-800">Update draft</Pill>;
+  }
+  return <Pill className="bg-emerald-100 text-emerald-800">New article</Pill>;
+}
+
 export function FailedGenerationFilterChip({
   includeFailed,
   failedCount,
@@ -177,7 +187,10 @@ export default function ContentList({
             >
               <div className="flex items-start justify-between gap-3">
                 <ArticleTitle post={post} />
-                <BlogPostStatusPill status={post.status} />
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <BlogPostStatusPill status={post.status} />
+                  <BlogPostContentTypePill post={post} />
+                </div>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
                 <div>
@@ -198,6 +211,19 @@ export default function ContentList({
                     {formatDate(post.createdAt)}
                   </dd>
                 </div>
+                {post.updateOf && (
+                  <div className="col-span-2">
+                    <dt className="text-slate-400">Updates</dt>
+                    <dd className="mt-0.5">
+                      <a
+                        href={`/dashboard/content/${post.updateOf}`}
+                        className="text-blue-700 hover:text-blue-900"
+                      >
+                        {post.updateOf}
+                      </a>
+                    </dd>
+                  </div>
+                )}
               </dl>
             </button>
           ))}
@@ -211,6 +237,7 @@ export default function ContentList({
                 <th className="px-4 py-3">Topic</th>
                 <th className="px-4 py-3">Persona</th>
                 <th className="px-4 py-3">Word count</th>
+                <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Created</th>
               </tr>
@@ -233,6 +260,21 @@ export default function ContentList({
                   </td>
                   <td className="px-4 py-3 text-slate-700">
                     {formatWordCount(post.wordCount)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-1">
+                      <BlogPostContentTypePill post={post} />
+                      {post.updateOf && (
+                        <a
+                          href={`/dashboard/content/${post.updateOf}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="max-w-[180px] truncate text-xs font-medium text-blue-700 hover:text-blue-900"
+                          title={post.updateOf}
+                        >
+                          Updates {post.updateOf}
+                        </a>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <BlogPostStatusPill status={post.status} />

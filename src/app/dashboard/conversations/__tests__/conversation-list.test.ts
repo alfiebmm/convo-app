@@ -53,5 +53,78 @@ test("conversation list: no-case row maps to placeholder display values", () => 
   assertEq(display.blog, "Not evaluated", "blog placeholder");
 });
 
+function rowWithDecision(
+  action: string,
+  linked: Partial<NonNullable<ConversationListItemRow["conversation"]["latestBlogDecision"]>> = {},
+): ConversationListItemRow {
+  return {
+    conversation: {
+      id: "11111111-1111-4111-8111-111111111111",
+      tenantId: "22222222-2222-4222-8222-222222222222",
+      status: "active",
+      visitorId: null,
+      messageCount: 2,
+      startedAt: new Date("2026-07-01T00:00:00.000Z"),
+      latestMessageAt: new Date("2026-07-01T00:01:00.000Z"),
+      latestCaseEventAt: null,
+      lastActivityAt: new Date("2026-07-01T00:01:00.000Z"),
+      latestBlogDecision: {
+        action,
+        reason:
+          action === "failure"
+            ? "Generation failure: schema validation failed"
+            : "covered_by_existing_healthy_no_new_signal",
+        primaryKeyword: "puppy socialisation timeline",
+        intent: "educational",
+        targetBlogPostId: linked.targetBlogPostId ?? null,
+        selectedTargetPostId: linked.selectedTargetPostId ?? null,
+        generatedBlogPostId: linked.generatedBlogPostId ?? null,
+        updateDraftBlogPostId: linked.updateDraftBlogPostId ?? null,
+        failureBlogPostId: linked.failureBlogPostId ?? null,
+        failureReason: linked.failureReason ?? null,
+        createdAt: new Date("2026-07-01T00:02:00.000Z"),
+      },
+    },
+    case: null,
+  };
+}
+
+test("conversation list: blog outcome labels are explicit", () => {
+  assertEq(
+    getConversationListItemDisplay(
+      rowWithDecision("create", { generatedBlogPostId: "draft-1" }),
+    ).blog,
+    "Create",
+    "create label",
+  );
+  assertEq(
+    getConversationListItemDisplay(
+      rowWithDecision("update", {
+        targetBlogPostId: "article-1",
+        updateDraftBlogPostId: "draft-2",
+      }),
+    ).blog,
+    "Update",
+    "update label",
+  );
+  assertEq(
+    getConversationListItemDisplay(
+      rowWithDecision("skip-covered", { targetBlogPostId: "article-1" }),
+    ).blog,
+    "Skip-covered",
+    "skip-covered label",
+  );
+  assertEq(
+    getConversationListItemDisplay(
+      rowWithDecision("failure", {
+        failureBlogPostId: "failure-1",
+        failureReason: "schema validation failed",
+      }),
+    ).blog,
+    "Generation failure",
+    "failure label",
+  );
+});
+
 console.log(`${passed} passed`);
 if (failed > 0) process.exit(1);

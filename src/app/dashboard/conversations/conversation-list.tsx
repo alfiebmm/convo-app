@@ -22,7 +22,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 function formatLabel(value: string | null) {
   if (!value) return "None";
   return value
-    .split("_")
+    .split(/[_-]/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
@@ -45,13 +45,49 @@ function truncateReason(reason: string | null) {
 function blogDecisionLabel(row: ConversationListItemRow) {
   const decision = row.conversation.latestBlogDecision;
   if (!decision) return "Not evaluated";
-  if (decision.action === "skip") return `Skipped: ${summariseSkipReason(decision.reason)}`;
+  if (decision.action === "skip-covered") return "Skip-covered";
+  if (decision.action === "skip-nosignal" || decision.action === "skip") {
+    return `Skip-nosignal: ${summariseSkipReason(decision.reason)}`;
+  }
+  if (decision.action === "failure") return "Generation failure";
   return formatLabel(decision.action);
+}
+
+function shortId(id: string | null | undefined) {
+  return id ? id.slice(0, 8) : null;
+}
+
+function blogOutcomeLabel(row: ConversationListItemRow) {
+  const decision = row.conversation.latestBlogDecision;
+  if (!decision) return "No decision logged";
+  if (decision.action === "create") {
+    return shortId(decision.generatedBlogPostId ?? decision.targetBlogPostId)
+      ? `Draft ${shortId(decision.generatedBlogPostId ?? decision.targetBlogPostId)}`
+      : "Draft pending";
+  }
+  if (decision.action === "update") {
+    const target = shortId(decision.selectedTargetPostId ?? decision.targetBlogPostId);
+    const draft = shortId(decision.updateDraftBlogPostId);
+    return [target ? `Target ${target}` : null, draft ? `Draft ${draft}` : null]
+      .filter(Boolean)
+      .join(" / ") || "Update pending";
+  }
+  if (decision.action === "skip-covered") {
+    const existing = shortId(decision.selectedTargetPostId ?? decision.targetBlogPostId);
+    return existing ? `Existing ${existing}` : "Existing article";
+  }
+  if (decision.action === "failure") {
+    const failure = shortId(decision.failureBlogPostId);
+    return failure ? `Failure ${failure}` : "Failure logged";
+  }
+  return truncateReason(decision.reason);
 }
 
 function blogDecisionColor(row: ConversationListItemRow) {
   const action = row.conversation.latestBlogDecision?.action;
-  if (action === "skip") return "bg-amber-100 text-amber-800";
+  if (action === "skip-covered") return "bg-blue-100 text-blue-800";
+  if (action === "skip" || action === "skip-nosignal") return "bg-amber-100 text-amber-800";
+  if (action === "failure") return "bg-red-100 text-red-800";
   if (action === "create" || action === "update") return "bg-green-100 text-green-800";
   return "bg-slate-100 text-slate-700";
 }
@@ -117,6 +153,7 @@ export function getConversationListItemDisplay(row: ConversationListItemRow) {
     contact: kase ? kase.contactDisplayName ?? "No contact" : "—",
     owner: kase ? kase.assignedOwnerName ?? "Unassigned" : "—",
     blog: blogDecisionLabel(row),
+    blogOutcome: blogOutcomeLabel(row),
   };
 }
 
@@ -249,6 +286,7 @@ export default function ConversationList({
                 >
                   {display.blog}
                 </dd>
+                <dd className="mt-0.5 text-slate-500">{display.blogOutcome}</dd>
               </div>
             </dl>
             </button>
@@ -355,6 +393,9 @@ export default function ConversationList({
                   <Pill className={blogDecisionColor(row)}>
                     {display.blog}
                   </Pill>
+                  <span className="mt-1 block truncate text-xs text-slate-500">
+                    {display.blogOutcome}
+                  </span>
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
                   {formatDate(row.conversation.lastActivityAt)}

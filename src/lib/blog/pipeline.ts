@@ -18,8 +18,9 @@ type BlogPipelineDeps = {
   decide(conversationId: string): Promise<DecisionResult>;
   createArticle(conversationId: string, decision: DecisionResult): Promise<string>;
   updateArticle(conversationId: string, decision: DecisionResult): Promise<string>;
-  linkDecisionToBlogPost(
+  recordPipelineOutcome(
     decisionLogId: string | undefined,
+    decision: DecisionResult,
     blogPostId: string
   ): Promise<void>;
 };
@@ -51,31 +52,74 @@ function buildPipelineService(deps: BlogPipelineDeps) {
       }
 
       const decision = await deps.decide(conversationId);
-      if (decision.action === "skip") {
+      if (
+        decision.action === "skip" ||
+        decision.action === "skip-covered" ||
+        decision.action === "skip-nosignal"
+      ) {
         return { conversationId, decision, blogPostId: null };
       }
 
       if (decision.action === "update") {
         const blogPostId = await deps.updateArticle(conversationId, decision);
+        await deps.recordPipelineOutcome(decision.log_id, decision, blogPostId);
         return { conversationId, decision, blogPostId };
       }
 
       const blogPostId = await deps.createArticle(conversationId, decision);
-      await deps.linkDecisionToBlogPost(decision.log_id, blogPostId);
+      await deps.recordPipelineOutcome(decision.log_id, decision, blogPostId);
       return { conversationId, decision, blogPostId };
     },
   };
 }
 
-async function linkDecisionToBlogPost(
+function failureReasonFromMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const failure = (metadata as Record<string, unknown>).generation_failure;
+  if (!failure || typeof failure !== "object" || Array.isArray(failure)) return null;
+  const reason = (failure as Record<string, unknown>).reason;
+  return typeof reason === "string" && reason.trim() ? reason : null;
+}
+
+async function recordPipelineOutcome(
   decisionLogId: string | undefined,
+  decision: DecisionResult,
   blogPostId: string
 ): Promise<void> {
   if (!decisionLogId) return;
 
+  const [post] = await db
+    .select({
+      status: blogPosts.status,
+      metadata: blogPosts.metadata,
+    })
+    .from(blogPosts)
+    .where(eq(blogPosts.id, blogPostId))
+    .limit(1);
+
+  const isFailure = post?.status === "generation_failed";
+  const failureReason = isFailure
+    ? failureReasonFromMetadata(post.metadata) ?? "Blog generation failed."
+    : null;
+
   await db
     .update(blogDecisionLogs)
-    .set({ targetBlogPostId: blogPostId })
+    .set({
+      action: isFailure ? "failure" : decision.action,
+      targetBlogPostId:
+        decision.action === "create" ? blogPostId : decision.target_blog_post_id,
+      selectedTargetPostId:
+        decision.action === "update" || decision.action === "skip-covered"
+          ? decision.target_blog_post_id
+          : undefined,
+      generatedBlogPostId:
+        !isFailure && decision.action === "create" ? blogPostId : undefined,
+      updateDraftBlogPostId:
+        !isFailure && decision.action === "update" ? blogPostId : undefined,
+      failureBlogPostId: isFailure ? blogPostId : undefined,
+      failureReason,
+      isContentProducing: !isFailure && (decision.action === "create" || decision.action === "update"),
+    })
     .where(eq(blogDecisionLogs.id, decisionLogId));
 }
 
@@ -84,7 +128,7 @@ const defaultService = buildPipelineService({
   decide,
   createArticle,
   updateArticle,
-  linkDecisionToBlogPost,
+  recordPipelineOutcome,
 });
 
 /**

@@ -108,7 +108,7 @@ const defaultDeps: BlogTriggerDeps = {
     await db.insert(blogDecisionLogs).values({
       tenantId: input.tenantId,
       conversationId: input.conversationId,
-      action: "skip",
+      action: "skip-nosignal",
       reason: input.reason,
       similarPosts: [],
       metadata: {

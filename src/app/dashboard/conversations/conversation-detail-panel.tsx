@@ -18,7 +18,7 @@ function formatDateTime(date: Date | null | undefined) {
 function formatLabel(value: string | null | undefined) {
   if (!value) return "None";
   return value
-    .split("_")
+    .split(/[_-]/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
@@ -36,6 +36,35 @@ function summariseSkipReason(reason: string) {
   if (lower.includes("similar")) return "Skipped: similar existing post";
   if (lower.includes("generation failure")) return "Skipped: generation failure";
   return "Skipped";
+}
+
+function blogDecisionLabel(action: string, reason: string) {
+  if (action === "skip-covered") return "Skip-covered";
+  if (action === "skip-nosignal" || action === "skip") {
+    return summariseSkipReason(reason).replace("Skipped", "Skip-nosignal");
+  }
+  if (action === "failure") return "Generation failure";
+  return formatLabel(action);
+}
+
+function blogDecisionColor(action: string) {
+  if (action === "skip-covered") return "bg-blue-100 text-blue-800";
+  if (action === "skip-nosignal" || action === "skip") {
+    return "bg-amber-100 text-amber-800";
+  }
+  if (action === "failure") return "bg-red-100 text-red-800";
+  return "bg-green-100 text-green-800";
+}
+
+function ContentLink({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <a
+      href={`/dashboard/content/${id}`}
+      className="font-medium text-blue-700 hover:text-blue-900"
+    >
+      {children}
+    </a>
+  );
 }
 
 function Section({
@@ -117,21 +146,82 @@ export default function ConversationDetailPanel({
               <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      latestBlogDecision.action === "skip"
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-green-100 text-green-800"
-                    }`}
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${blogDecisionColor(
+                      latestBlogDecision.action
+                    )}`}
                   >
-                    {latestBlogDecision.action === "skip"
-                      ? summariseSkipReason(latestBlogDecision.reason)
-                      : formatLabel(latestBlogDecision.action)}
+                    {blogDecisionLabel(
+                      latestBlogDecision.action,
+                      latestBlogDecision.reason
+                    )}
                   </span>
                   <span className="text-xs text-slate-500">
                     {formatDateTime(latestBlogDecision.createdAt)}
                   </span>
                 </div>
                 <p className="mt-2 text-slate-700">{latestBlogDecision.reason}</p>
+                <dl className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                  {latestBlogDecision.generatedBlogPostId && (
+                    <div>
+                      <dt className="font-medium text-slate-500">Generated draft</dt>
+                      <dd className="mt-0.5">
+                        <ContentLink id={latestBlogDecision.generatedBlogPostId}>
+                          {latestBlogDecision.generatedBlogPostId}
+                        </ContentLink>
+                      </dd>
+                    </div>
+                  )}
+                  {(latestBlogDecision.selectedTargetPostId ??
+                    latestBlogDecision.targetBlogPostId) && (
+                    <div>
+                      <dt className="font-medium text-slate-500">
+                        {latestBlogDecision.action === "skip-covered"
+                          ? "Existing article"
+                          : "Update target"}
+                      </dt>
+                      <dd className="mt-0.5">
+                        <ContentLink
+                          id={
+                            latestBlogDecision.selectedTargetPostId ??
+                            latestBlogDecision.targetBlogPostId ??
+                            ""
+                          }
+                        >
+                          {latestBlogDecision.selectedTargetPostId ??
+                            latestBlogDecision.targetBlogPostId}
+                        </ContentLink>
+                      </dd>
+                    </div>
+                  )}
+                  {latestBlogDecision.updateDraftBlogPostId && (
+                    <div>
+                      <dt className="font-medium text-slate-500">Update draft</dt>
+                      <dd className="mt-0.5">
+                        <ContentLink id={latestBlogDecision.updateDraftBlogPostId}>
+                          {latestBlogDecision.updateDraftBlogPostId}
+                        </ContentLink>
+                      </dd>
+                    </div>
+                  )}
+                  {latestBlogDecision.failureBlogPostId && (
+                    <div>
+                      <dt className="font-medium text-slate-500">Failure record</dt>
+                      <dd className="mt-0.5">
+                        <ContentLink id={latestBlogDecision.failureBlogPostId}>
+                          {latestBlogDecision.failureBlogPostId}
+                        </ContentLink>
+                      </dd>
+                    </div>
+                  )}
+                  {latestBlogDecision.failureReason && (
+                    <div className="sm:col-span-2">
+                      <dt className="font-medium text-slate-500">Failure reason</dt>
+                      <dd className="mt-0.5 text-slate-700">
+                        {latestBlogDecision.failureReason}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
               </div>
             )}
             <ConvertToBlogButton

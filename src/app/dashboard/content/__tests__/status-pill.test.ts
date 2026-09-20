@@ -5,10 +5,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   BLOG_POST_STATUS_DISPLAY,
+  BlogPostContentTypePill,
   BlogPostStatusPill,
   FailedGenerationFilterChip,
 } from "../content-list";
-import type { BlogPostStatus } from "@/lib/blog/queries";
+import type { BlogPostListItem, BlogPostStatus } from "@/lib/blog/queries";
 
 let passed = 0;
 let failed = 0;
@@ -97,6 +98,45 @@ test("failed generation filter chip renders active label", () => {
 
   assertIncludes(markup, "Hiding failed generations", "active label");
   assertIncludes(markup, "42 archived", "active count");
+});
+
+function postWithType(
+  contentType: BlogPostListItem["contentType"],
+  updateOf: string | null = null,
+): BlogPostListItem {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "Choosing the right puppy class",
+    topic: "Puppy training",
+    persona: "New dog owner",
+    wordCount: 875,
+    status: contentType === "generation_failure" ? "generation_failed" : "draft",
+    contentType,
+    updateOf,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+}
+
+test("content type pill labels new article, update draft, and generation failure", () => {
+  const newMarkup = renderToStaticMarkup(
+    React.createElement(BlogPostContentTypePill, {
+      post: postWithType("new_article"),
+    }),
+  );
+  const updateMarkup = renderToStaticMarkup(
+    React.createElement(BlogPostContentTypePill, {
+      post: postWithType("update_draft", "22222222-2222-4222-8222-222222222222"),
+    }),
+  );
+  const failureMarkup = renderToStaticMarkup(
+    React.createElement(BlogPostContentTypePill, {
+      post: postWithType("generation_failure"),
+    }),
+  );
+
+  assertIncludes(newMarkup, "New article", "new article label");
+  assertIncludes(updateMarkup, "Update draft", "update draft label");
+  assertIncludes(failureMarkup, "Generation failure", "failure label");
 });
 
 console.log(`${passed} passed`);
