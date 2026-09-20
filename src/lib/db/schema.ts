@@ -59,6 +59,9 @@ export const blogDecisionActionEnum = pgEnum("blog_decision_action", [
   "create",
   "update",
   "skip",
+  "skip-covered",
+  "skip-nosignal",
+  "failure",
 ]);
 
 export const conversationStatusEnum = pgEnum("conversation_status", [
@@ -465,7 +468,18 @@ export const blogDecisionLogs = pgTable(
     action: blogDecisionActionEnum("action").notNull(),
     reason: text("reason").notNull(),
     similarPosts: jsonb("similar_posts")
-      .$type<Array<{ blog_post_id: string; score: number }>>()
+      .$type<
+        Array<{
+          id?: string;
+          blog_post_id: string;
+          title?: string;
+          slug?: string;
+          score: number;
+          band?: string;
+          word_count?: number | null;
+          last_modified?: string | null;
+        }>
+      >()
       .default([])
       .notNull(),
     primaryKeyword: text("primary_keyword"),
@@ -473,6 +487,21 @@ export const blogDecisionLogs = pgTable(
     targetBlogPostId: uuid("target_blog_post_id").references(() => blogPosts.id, {
       onDelete: "set null",
     }),
+    selectedTargetPostId: uuid("selected_target_post_id").references(() => blogPosts.id, {
+      onDelete: "set null",
+    }),
+    generatedBlogPostId: uuid("generated_blog_post_id").references(() => blogPosts.id, {
+      onDelete: "set null",
+    }),
+    updateDraftBlogPostId: uuid("update_draft_blog_post_id").references(() => blogPosts.id, {
+      onDelete: "set null",
+    }),
+    failureBlogPostId: uuid("failure_blog_post_id").references(() => blogPosts.id, {
+      onDelete: "set null",
+    }),
+    failureReason: text("failure_reason"),
+    thresholdsUsed: jsonb("thresholds_used").default({}).notNull(),
+    isContentProducing: boolean("is_content_producing").default(false).notNull(),
     metadata: jsonb("metadata").default({}).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

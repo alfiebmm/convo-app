@@ -116,15 +116,66 @@ function longRenderedHtml() {
   return `<html><body>${"<div>template chrome text</div>".repeat(1500)}<article>${words(174)}</article></body></html>`;
 }
 
-test("decide updates when the closest post is high similarity", async () => {
+test("decide skips covered content when the closest post is high similarity, fresh, and healthy", async () => {
   const { service, store } = makeService({
     similarPosts: [
       {
         blog_post_id: "post-high",
         score: 0.91,
-        title: "Puppy socialisation guide",
+        title: "Puppy socialisation timeline guide",
         slug: "puppy-socialisation-guide",
-        content: "Existing long article content ".repeat(40),
+        content: "Existing puppy socialisation timeline article content ".repeat(40),
+        word_count: 1500,
+        last_modified: new Date("2026-07-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "skip-covered");
+  assert.equal(result.target_blog_post_id, "post-high");
+  assert.equal(result.similar_posts[0].band, "high");
+  assert.equal(result.reason, "covered_by_existing_healthy_no_new_signal");
+  assertLogged(store, "skip-covered");
+});
+
+test("decide updates when the closest high-similarity post is stale", async () => {
+  const { service, store } = makeService({
+    similarPosts: [
+      {
+        blog_post_id: "post-high-stale",
+        score: 0.91,
+        title: "Puppy socialisation timeline guide",
+        slug: "puppy-socialisation-guide",
+        content: "Existing puppy socialisation timeline article content ".repeat(40),
+        word_count: 1500,
+        last_modified: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "update");
+  assert.equal(result.target_blog_post_id, "post-high-stale");
+  assert.equal(result.similar_posts[0].band, "high");
+  assert.equal(result.reason, "covered_by_existing_stale");
+  assertLogged(store, "update");
+});
+
+test("decide updates when the closest high-similarity post is thin", async () => {
+  const { service, store } = makeService({
+    messages: longConversation(),
+    minWordCount: 80,
+    similarPosts: [
+      {
+        blog_post_id: "post-high-thin",
+        score: 0.91,
+        title: "Puppy socialisation timeline guide",
+        slug: "puppy-socialisation-guide",
+        content: "Existing puppy socialisation timeline article content ".repeat(5),
+        word_count: 20,
         last_modified: new Date("2026-07-01T00:00:00.000Z"),
       },
     ],
@@ -133,9 +184,8 @@ test("decide updates when the closest post is high similarity", async () => {
   const result = await service.decide(CONVERSATION_ID);
 
   assert.equal(result.action, "update");
-  assert.equal(result.target_blog_post_id, "post-high");
-  assert.equal(result.similar_posts[0].band, "high");
-  assert.match(result.reason, /high similarity/);
+  assert.equal(result.target_blog_post_id, "post-high-thin");
+  assert.equal(result.reason, "covered_by_existing_thin");
   assertLogged(store, "update");
 });
 
@@ -180,7 +230,7 @@ test("decide creates for a fresh medium-similarity post", async () => {
 
   assert.equal(result.action, "create");
   assert.equal(result.similar_posts[0].band, "medium");
-  assert.match(result.reason, /fresh enough/);
+  assert.equal(result.reason, "medium_similarity_new_signal");
   assertLogged(store, "create");
 });
 
@@ -207,7 +257,7 @@ test("decide updates a medium-similarity post when stored word count is thin des
   assert.equal(result.action, "update");
   assert.equal(result.target_blog_post_id, "post-thin-stored-count");
   assert.equal(result.similar_posts[0].word_count, 174);
-  assert.match(result.reason, /below the word-count threshold/);
+  assert.equal(result.reason, "medium_similarity_existing_thin");
   assertLogged(store, "update");
 });
 
@@ -238,7 +288,7 @@ test("decide updates a medium-similarity post when metadata stats word count is 
   assert.equal(result.action, "update");
   assert.equal(result.target_blog_post_id, "post-thin-stats");
   assert.equal(result.similar_posts[0].word_count, 45);
-  assert.match(result.reason, /below the word-count threshold/);
+  assert.equal(result.reason, "medium_similarity_existing_thin");
   assertLogged(store, "update");
 });
 
@@ -280,11 +330,11 @@ test("decide updates a medium-similarity post when metadata sections are thin", 
   assert.equal(result.action, "update");
   assert.equal(result.target_blog_post_id, "post-thin-sections");
   assert.equal(result.similar_posts[0].word_count, 174);
-  assert.match(result.reason, /below the word-count threshold/);
+  assert.equal(result.reason, "medium_similarity_existing_thin");
   assertLogged(store, "update");
 });
 
-test("decide creates for a fresh medium-similarity post when stored word count is healthy", async () => {
+test("decide skips covered content for a fresh medium-similarity post when stored word count is healthy and there is no new keyword signal", async () => {
   const { service, store } = makeService({
     messages: longConversation(),
     minWordCount: 800,
@@ -292,9 +342,9 @@ test("decide creates for a fresh medium-similarity post when stored word count i
       {
         blog_post_id: "post-healthy-count",
         score: 0.72,
-        title: "Puppy socialisation guide",
+        title: "Puppy socialisation timeline guide",
         slug: "puppy-socialisation-guide",
-        content: "Existing long article content ".repeat(40),
+        content: "Existing puppy socialisation timeline article content ".repeat(40),
         metadata: {},
         word_count: 1500,
         last_modified: new Date("2026-07-01T00:00:00.000Z"),
@@ -304,11 +354,11 @@ test("decide creates for a fresh medium-similarity post when stored word count i
 
   const result = await service.decide(CONVERSATION_ID);
 
-  assert.equal(result.action, "create");
-  assert.equal(result.target_blog_post_id, undefined);
+  assert.equal(result.action, "skip-covered");
+  assert.equal(result.target_blog_post_id, "post-healthy-count");
   assert.equal(result.similar_posts[0].word_count, 1500);
-  assert.match(result.reason, /fresh enough/);
-  assertLogged(store, "create");
+  assert.equal(result.reason, "covered_by_existing_fresh");
+  assertLogged(store, "skip-covered");
 });
 
 test("decide skips when extraction has insufficient signal", async () => {
@@ -318,10 +368,10 @@ test("decide skips when extraction has insufficient signal", async () => {
 
   const result = await service.decide(CONVERSATION_ID);
 
-  assert.equal(result.action, "skip");
+  assert.equal(result.action, "skip-nosignal");
   assert.match(result.reason, /insufficient keyword or intent/);
   assert.deepEqual(result.similar_posts, []);
-  assertLogged(store, "skip");
+  assertLogged(store, "skip-nosignal");
 });
 
 test("decide skips when conversation is below the word-count threshold", async () => {
@@ -332,9 +382,9 @@ test("decide skips when conversation is below the word-count threshold", async (
 
   const result = await service.decide(CONVERSATION_ID);
 
-  assert.equal(result.action, "skip");
+  assert.equal(result.action, "skip-nosignal");
   assert.match(result.reason, /below minimum 10/);
-  assertLogged(store, "skip");
+  assertLogged(store, "skip-nosignal");
 });
 
 test("decide skips when tenant exclusion list matches", async () => {
@@ -350,9 +400,9 @@ test("decide skips when tenant exclusion list matches", async () => {
 
   const result = await service.decide(CONVERSATION_ID);
 
-  assert.equal(result.action, "skip");
+  assert.equal(result.action, "skip-nosignal");
   assert.match(result.reason, /tenant exclusion list/);
-  assertLogged(store, "skip");
+  assertLogged(store, "skip-nosignal");
 });
 
 test("decide creates for AgPages-style shearing livestock and agronomy topics", async () => {

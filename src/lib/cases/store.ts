@@ -150,6 +150,12 @@ export interface BlogDecisionSummary {
   reason: string;
   primaryKeyword: string | null;
   intent: string | null;
+  targetBlogPostId: string | null;
+  selectedTargetPostId: string | null;
+  generatedBlogPostId: string | null;
+  updateDraftBlogPostId: string | null;
+  failureBlogPostId: string | null;
+  failureReason: string | null;
   createdAt: Date;
 }
 
@@ -582,6 +588,12 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  ${blogDecisionLogs.reason} AS reason,
                  ${blogDecisionLogs.primaryKeyword} AS primary_keyword,
                  ${blogDecisionLogs.intent} AS intent,
+                 ${blogDecisionLogs.targetBlogPostId} AS target_blog_post_id,
+                 ${blogDecisionLogs.selectedTargetPostId} AS selected_target_post_id,
+                 ${blogDecisionLogs.generatedBlogPostId} AS generated_blog_post_id,
+                 ${blogDecisionLogs.updateDraftBlogPostId} AS update_draft_blog_post_id,
+                 ${blogDecisionLogs.failureBlogPostId} AS failure_blog_post_id,
+                 ${blogDecisionLogs.failureReason} AS failure_reason,
                  ${blogDecisionLogs.createdAt} AS created_at
             FROM ${blogDecisionLogs}
            WHERE ${blogDecisionLogs.tenantId} = ${tenantId}
@@ -638,6 +650,12 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  latest_blog_decisions.reason AS "latest_blog_decision_reason",
                  latest_blog_decisions.primary_keyword AS "latest_blog_decision_primary_keyword",
                  latest_blog_decisions.intent AS "latest_blog_decision_intent",
+                 latest_blog_decisions.target_blog_post_id AS "latest_blog_decision_target_blog_post_id",
+                 latest_blog_decisions.selected_target_post_id AS "latest_blog_decision_selected_target_post_id",
+                 latest_blog_decisions.generated_blog_post_id AS "latest_blog_decision_generated_blog_post_id",
+                 latest_blog_decisions.update_draft_blog_post_id AS "latest_blog_decision_update_draft_blog_post_id",
+                 latest_blog_decisions.failure_blog_post_id AS "latest_blog_decision_failure_blog_post_id",
+                 latest_blog_decisions.failure_reason AS "latest_blog_decision_failure_reason",
                  latest_blog_decisions.created_at AS "latest_blog_decision_created_at",
                  case_attributes.persona AS "persona",
                  case_attributes.topic AS "topic"
@@ -803,6 +821,24 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
            WHERE ${connectorOutbox.tenantId} = ${tenantId}
            ORDER BY ${connectorOutbox.caseId}, ${connectorOutbox.createdAt} DESC
         ),
+        latest_blog_decisions AS (
+          SELECT DISTINCT ON (${blogDecisionLogs.conversationId})
+                 ${blogDecisionLogs.conversationId} AS conversation_id,
+                 ${blogDecisionLogs.action} AS action,
+                 ${blogDecisionLogs.reason} AS reason,
+                 ${blogDecisionLogs.primaryKeyword} AS primary_keyword,
+                 ${blogDecisionLogs.intent} AS intent,
+                 ${blogDecisionLogs.targetBlogPostId} AS target_blog_post_id,
+                 ${blogDecisionLogs.selectedTargetPostId} AS selected_target_post_id,
+                 ${blogDecisionLogs.generatedBlogPostId} AS generated_blog_post_id,
+                 ${blogDecisionLogs.updateDraftBlogPostId} AS update_draft_blog_post_id,
+                 ${blogDecisionLogs.failureBlogPostId} AS failure_blog_post_id,
+                 ${blogDecisionLogs.failureReason} AS failure_reason,
+                 ${blogDecisionLogs.createdAt} AS created_at
+            FROM ${blogDecisionLogs}
+           WHERE ${blogDecisionLogs.tenantId} = ${tenantId}
+           ORDER BY ${blogDecisionLogs.conversationId}, ${blogDecisionLogs.createdAt} DESC
+        ),
         case_attributes AS (
           SELECT ${followUpCaseAttributes.caseId} AS case_id,
                  MAX(${followUpCaseAttributes.value} #>> '{}')
@@ -853,6 +889,17 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                  latest_connectors.connector_type AS "latest_connector_type",
                  latest_connectors.destination_id AS "latest_connector_destination_id",
                  latest_connectors.status AS "latest_connector_status",
+                 latest_blog_decisions.action AS "latest_blog_decision_action",
+                 latest_blog_decisions.reason AS "latest_blog_decision_reason",
+                 latest_blog_decisions.primary_keyword AS "latest_blog_decision_primary_keyword",
+                 latest_blog_decisions.intent AS "latest_blog_decision_intent",
+                 latest_blog_decisions.target_blog_post_id AS "latest_blog_decision_target_blog_post_id",
+                 latest_blog_decisions.selected_target_post_id AS "latest_blog_decision_selected_target_post_id",
+                 latest_blog_decisions.generated_blog_post_id AS "latest_blog_decision_generated_blog_post_id",
+                 latest_blog_decisions.update_draft_blog_post_id AS "latest_blog_decision_update_draft_blog_post_id",
+                 latest_blog_decisions.failure_blog_post_id AS "latest_blog_decision_failure_blog_post_id",
+                 latest_blog_decisions.failure_reason AS "latest_blog_decision_failure_reason",
+                 latest_blog_decisions.created_at AS "latest_blog_decision_created_at",
                  case_attributes.persona AS "persona",
                  case_attributes.topic AS "topic"
             FROM ${conversations}
@@ -870,6 +917,8 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
               ON ${users.id} = ${followUpCases.assignedTo}
             LEFT JOIN latest_connectors
               ON latest_connectors.case_id = ${followUpCases.id}
+            LEFT JOIN latest_blog_decisions
+              ON latest_blog_decisions.conversation_id = ${conversations.id}
             LEFT JOIN case_attributes
               ON case_attributes.case_id = ${followUpCases.id}
            WHERE ${conversations.tenantId} = ${tenantId}
@@ -909,6 +958,24 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                   (row.latest_blog_decision_primary_keyword as string | null) ??
                   null,
                 intent: (row.latest_blog_decision_intent as string | null) ?? null,
+                targetBlogPostId:
+                  (row.latest_blog_decision_target_blog_post_id as string | null) ??
+                  null,
+                selectedTargetPostId:
+                  (row.latest_blog_decision_selected_target_post_id as string | null) ??
+                  null,
+                generatedBlogPostId:
+                  (row.latest_blog_decision_generated_blog_post_id as string | null) ??
+                  null,
+                updateDraftBlogPostId:
+                  (row.latest_blog_decision_update_draft_blog_post_id as string | null) ??
+                  null,
+                failureBlogPostId:
+                  (row.latest_blog_decision_failure_blog_post_id as string | null) ??
+                  null,
+                failureReason:
+                  (row.latest_blog_decision_failure_reason as string | null) ??
+                  null,
                 createdAt: new Date(
                   String(row.latest_blog_decision_created_at)
                 ),
@@ -1333,6 +1400,12 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
           reason: blogDecisionLogs.reason,
           primaryKeyword: blogDecisionLogs.primaryKeyword,
           intent: blogDecisionLogs.intent,
+          targetBlogPostId: blogDecisionLogs.targetBlogPostId,
+          selectedTargetPostId: blogDecisionLogs.selectedTargetPostId,
+          generatedBlogPostId: blogDecisionLogs.generatedBlogPostId,
+          updateDraftBlogPostId: blogDecisionLogs.updateDraftBlogPostId,
+          failureBlogPostId: blogDecisionLogs.failureBlogPostId,
+          failureReason: blogDecisionLogs.failureReason,
           createdAt: blogDecisionLogs.createdAt,
         })
         .from(blogDecisionLogs)
@@ -1367,6 +1440,12 @@ export function createDrizzleCasesStore(db: DrizzleDb = defaultDb): CasesStore {
                 reason: latestBlogDecision.reason,
                 primaryKeyword: latestBlogDecision.primaryKeyword,
                 intent: latestBlogDecision.intent,
+                targetBlogPostId: latestBlogDecision.targetBlogPostId,
+                selectedTargetPostId: latestBlogDecision.selectedTargetPostId,
+                generatedBlogPostId: latestBlogDecision.generatedBlogPostId,
+                updateDraftBlogPostId: latestBlogDecision.updateDraftBlogPostId,
+                failureBlogPostId: latestBlogDecision.failureBlogPostId,
+                failureReason: latestBlogDecision.failureReason,
                 createdAt: latestBlogDecision.createdAt,
               }
             : null,

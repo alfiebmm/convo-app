@@ -13,10 +13,17 @@ import { parseForumConfigPerSlice } from "@/lib/forum-config/validate";
 import { getOpenAIClient } from "@/lib/openai";
 import { computeBlogPostWordCountFallback } from "./queries";
 
-export type DecisionAction = "create" | "update" | "skip";
+export type DecisionAction =
+  | "create"
+  | "update"
+  | "skip"
+  | "skip-covered"
+  | "skip-nosignal"
+  | "failure";
 export type SimilarityBand = "high" | "medium" | "low";
 
 export interface SimilarPost {
+  id?: string;
   blog_post_id: string;
   score: number;
   title?: string;
@@ -32,6 +39,7 @@ export interface DecisionResult {
   similar_posts: SimilarPost[];
   primary_keyword: string | null;
   intent: string | null;
+  thresholds_used?: DecisionThresholds;
   target_blog_post_id?: string;
   log_id?: string;
 }
@@ -70,7 +78,10 @@ interface DecisionLogInput {
   primaryKeyword: string | null;
   intent: string | null;
   targetBlogPostId?: string;
+  selectedTargetPostId?: string;
   metadata: Record<string, unknown>;
+  thresholdsUsed: DecisionThresholds;
+  isContentProducing: boolean;
 }
 
 interface DecisionStore {
@@ -93,8 +104,17 @@ interface DecisionAi {
 export interface DecisionConfig {
   minWordCount: number;
   staleAfterDays: number;
+  mediumFreshAfterDays: number;
   similarPostLimit: number;
   now: Date;
+}
+
+export interface DecisionThresholds {
+  high_similarity: number;
+  medium_similarity: number;
+  min_word_count: number;
+  stale_after_days: number;
+  medium_fresh_after_days: number;
 }
 
 interface DecisionDeps {
@@ -107,6 +127,7 @@ const HIGH_SIMILARITY = 0.85;
 const MEDIUM_SIMILARITY = 0.65;
 const DEFAULT_MIN_WORD_COUNT = 30;
 const DEFAULT_STALE_AFTER_DAYS = 90;
+const DEFAULT_MEDIUM_FRESH_AFTER_DAYS = 30;
 const DEFAULT_SIMILAR_POST_LIMIT = 5;
 
 const EXTRACTION_PROMPT = `You are an SEO content strategist. Extract the primary SEO keyword and visitor intent from the conversation.
@@ -242,6 +263,12 @@ function parseDecisionConfig(settings: unknown): Partial<DecisionConfig> {
         : typeof source.stale_after_days === "number"
           ? source.stale_after_days
           : undefined,
+    mediumFreshAfterDays:
+      typeof source.mediumFreshAfterDays === "number"
+        ? source.mediumFreshAfterDays
+        : typeof source.medium_fresh_after_days === "number"
+          ? source.medium_fresh_after_days
+          : undefined,
     similarPostLimit:
       typeof source.similarPostLimit === "number"
         ? source.similarPostLimit
@@ -251,18 +278,123 @@ function parseDecisionConfig(settings: unknown): Partial<DecisionConfig> {
   };
 }
 
+function mergeDecisionConfig(
+  base: DecisionConfig,
+  ...overrides: Array<Partial<DecisionConfig> | undefined>
+): DecisionConfig {
+  const next = { ...base };
+  for (const override of overrides) {
+    if (!override) continue;
+    for (const [key, value] of Object.entries(override) as Array<
+      [keyof DecisionConfig, DecisionConfig[keyof DecisionConfig] | undefined]
+    >) {
+      if (value !== undefined) {
+        next[key] = value as never;
+      }
+    }
+  }
+  return next;
+}
+
 function tenantExclusionList(settings: unknown): string[] {
   const parsed = parseForumConfigPerSlice(settings);
   return parsed.exclusion_list;
 }
 
 function publicSimilarPosts(posts: SimilarPostCandidate[]): SimilarPost[] {
-  return posts.map(({ content: _content, metadata: _metadata, ...post }) => post);
+  return posts.map((post) => ({
+    id: post.blog_post_id,
+    blog_post_id: post.blog_post_id,
+    score: post.score,
+    title: post.title,
+    slug: post.slug,
+    last_modified: post.last_modified,
+    word_count: post.word_count,
+    band: post.band,
+  }));
+}
+
+const SIGNAL_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "also",
+  "article",
+  "before",
+  "being",
+  "blog",
+  "content",
+  "could",
+  "from",
+  "guide",
+  "into",
+  "need",
+  "needs",
+  "right",
+  "should",
+  "than",
+  "that",
+  "their",
+  "there",
+  "they",
+  "this",
+  "timing",
+  "want",
+  "when",
+  "where",
+  "with",
+  "would",
+  "your",
+]);
+
+function signalTerms(primaryKeyword: string | null, intent: string | null): string[] {
+  void intent;
+  return Array.from(
+    new Set(
+      [primaryKeyword]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .flatMap((value) => normalise(value).split(/[^a-z0-9]+/))
+        .filter((term) => term.length >= 4 && !SIGNAL_STOP_WORDS.has(term))
+    )
+  );
+}
+
+function candidateSearchText(post: SimilarPostCandidate): string {
+  return normalise(
+    [
+      post.title,
+      post.slug?.replace(/-/g, " "),
+      post.content,
+      post.metadata ? JSON.stringify(post.metadata) : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+function hasNewKeywordSignal(
+  post: SimilarPostCandidate,
+  extracted: KeywordIntent
+): boolean {
+  const terms = signalTerms(extracted.primary_keyword, extracted.intent);
+  if (terms.length === 0) return false;
+  const haystack = candidateSearchText(post);
+  return terms.some((term) => !haystack.includes(term));
+}
+
+function thresholds(config: DecisionConfig): DecisionThresholds {
+  return {
+    high_similarity: HIGH_SIMILARITY,
+    medium_similarity: MEDIUM_SIMILARITY,
+    min_word_count: config.minWordCount,
+    stale_after_days: config.staleAfterDays,
+    medium_fresh_after_days: config.mediumFreshAfterDays,
+  };
 }
 
 function decideFromSimilarity(
   similarPosts: SimilarPostCandidate[],
-  config: DecisionConfig
+  config: DecisionConfig,
+  extracted: KeywordIntent
 ): Pick<DecisionResult, "action" | "reason" | "target_blog_post_id"> {
   const top = similarPosts[0];
   if (!top || top.score < MEDIUM_SIMILARITY) {
@@ -272,22 +404,48 @@ function decideFromSimilarity(
     };
   }
 
-  if (top.score >= HIGH_SIMILARITY) {
+  const staleDays = daysSince(top.last_modified, config.now);
+  const stale = staleDays > config.staleAfterDays;
+  const thinExisting = (candidateWordCount(top) ?? 0) < config.minWordCount;
+  const newSignal = hasNewKeywordSignal(top, extracted);
+
+  if (top.score >= HIGH_SIMILARITY && stale) {
     return {
       action: "update",
       target_blog_post_id: top.blog_post_id,
-      reason: `Most similar post is in the high similarity band (${top.score.toFixed(3)}).`,
+      reason: "covered_by_existing_stale",
     };
   }
 
-  const stale = daysSince(top.last_modified, config.now) > config.staleAfterDays;
-  const thinExisting = (candidateWordCount(top) ?? 0) < config.minWordCount;
+  if (top.score >= HIGH_SIMILARITY && thinExisting) {
+    return {
+      action: "update",
+      target_blog_post_id: top.blog_post_id,
+      reason: "covered_by_existing_thin",
+    };
+  }
+
+  if (top.score >= HIGH_SIMILARITY && newSignal) {
+    return {
+      action: "update",
+      target_blog_post_id: top.blog_post_id,
+      reason: "covered_by_existing_with_new_signal",
+    };
+  }
+
+  if (top.score >= HIGH_SIMILARITY) {
+    return {
+      action: "skip-covered",
+      target_blog_post_id: top.blog_post_id,
+      reason: "covered_by_existing_healthy_no_new_signal",
+    };
+  }
 
   if (stale) {
     return {
       action: "update",
       target_blog_post_id: top.blog_post_id,
-      reason: `Most similar post is medium similarity (${top.score.toFixed(3)}) and stale.`,
+      reason: "medium_similarity_existing_stale",
     };
   }
 
@@ -295,13 +453,23 @@ function decideFromSimilarity(
     return {
       action: "update",
       target_blog_post_id: top.blog_post_id,
-      reason: `Most similar post is medium similarity (${top.score.toFixed(3)}) and below the word-count threshold.`,
+      reason: "medium_similarity_existing_thin",
+    };
+  }
+
+  if (staleDays <= config.mediumFreshAfterDays && !newSignal) {
+    return {
+      action: "skip-covered",
+      target_blog_post_id: top.blog_post_id,
+      reason: "covered_by_existing_fresh",
     };
   }
 
   return {
     action: "create",
-    reason: `Closest existing post is only medium similarity (${top.score.toFixed(3)}) and is fresh enough.`,
+    reason: newSignal
+      ? "medium_similarity_new_signal"
+      : "medium_similarity_not_fresh_enough_to_skip",
   };
 }
 
@@ -313,14 +481,17 @@ function buildDecisionService(deps: DecisionDeps) {
 
       const sourceTranscript = transcript(loaded.messages);
       const sourceWordCount = wordCount(sourceTranscript);
-      const config: DecisionConfig = {
-        minWordCount: DEFAULT_MIN_WORD_COUNT,
-        staleAfterDays: DEFAULT_STALE_AFTER_DAYS,
-        similarPostLimit: DEFAULT_SIMILAR_POST_LIMIT,
-        now: new Date(),
-        ...parseDecisionConfig(loaded.tenant.settings),
-        ...deps.getConfig?.(loaded.tenant.settings),
-      };
+      const config = mergeDecisionConfig(
+        {
+          minWordCount: DEFAULT_MIN_WORD_COUNT,
+          staleAfterDays: DEFAULT_STALE_AFTER_DAYS,
+          mediumFreshAfterDays: DEFAULT_MEDIUM_FRESH_AFTER_DAYS,
+          similarPostLimit: DEFAULT_SIMILAR_POST_LIMIT,
+          now: new Date(),
+        },
+        parseDecisionConfig(loaded.tenant.settings),
+        deps.getConfig?.(loaded.tenant.settings)
+      );
 
       const extracted = await deps.ai.extractKeywordIntent(loaded.messages);
       const primaryKeyword = extracted.primary_keyword?.trim() || null;
@@ -328,21 +499,23 @@ function buildDecisionService(deps: DecisionDeps) {
 
       if (!primaryKeyword || !intent) {
         return persistAndReturn(deps.store, loaded, {
-          action: "skip",
+          action: "skip-nosignal",
           reason: "OpenAI extraction returned insufficient keyword or intent signal.",
           similar_posts: [],
           primary_keyword: primaryKeyword,
           intent,
+          thresholds_used: thresholds(config),
         });
       }
 
       if (sourceWordCount < config.minWordCount) {
         return persistAndReturn(deps.store, loaded, {
-          action: "skip",
+          action: "skip-nosignal",
           reason: `Conversation word count ${sourceWordCount} is below minimum ${config.minWordCount}.`,
           similar_posts: [],
           primary_keyword: primaryKeyword,
           intent,
+          thresholds_used: thresholds(config),
         });
       }
 
@@ -353,11 +526,12 @@ function buildDecisionService(deps: DecisionDeps) {
       );
       if (excludedTerm) {
         return persistAndReturn(deps.store, loaded, {
-          action: "skip",
+          action: "skip-nosignal",
           reason: `Primary topic matched tenant exclusion list term "${excludedTerm}".`,
           similar_posts: [],
           primary_keyword: primaryKeyword,
           intent,
+          thresholds_used: thresholds(config),
         });
       }
 
@@ -383,7 +557,8 @@ function buildDecisionService(deps: DecisionDeps) {
           ...post,
           word_count: candidateWordCount(post),
         })),
-        config
+        config,
+        { primary_keyword: primaryKeyword, intent }
       );
 
       return persistAndReturn(deps.store, loaded, {
@@ -391,6 +566,7 @@ function buildDecisionService(deps: DecisionDeps) {
         similar_posts,
         primary_keyword: primaryKeyword,
         intent,
+        thresholds_used: thresholds(config),
       });
     },
   };
@@ -410,12 +586,21 @@ async function persistAndReturn(
     primaryKeyword: decision.primary_keyword,
     intent: decision.intent,
     targetBlogPostId: decision.target_blog_post_id,
+    selectedTargetPostId:
+      decision.action === "update" || decision.action === "skip-covered"
+        ? decision.target_blog_post_id
+        : undefined,
     metadata: {
-      thresholds: {
-        high_similarity: HIGH_SIMILARITY,
-        medium_similarity: MEDIUM_SIMILARITY,
-      },
+      thresholds: decision.thresholds_used,
     },
+    thresholdsUsed: decision.thresholds_used ?? thresholds({
+      minWordCount: DEFAULT_MIN_WORD_COUNT,
+      staleAfterDays: DEFAULT_STALE_AFTER_DAYS,
+      mediumFreshAfterDays: DEFAULT_MEDIUM_FRESH_AFTER_DAYS,
+      similarPostLimit: DEFAULT_SIMILAR_POST_LIMIT,
+      now: new Date(),
+    }),
+    isContentProducing: decision.action === "create" || decision.action === "update",
   });
 
   return { ...decision, log_id: log.id };
@@ -534,14 +719,25 @@ class DrizzleDecisionStore implements DecisionStore {
         conversationId: input.conversationId,
         action: input.action,
         reason: input.reason,
-        similarPosts: input.similarPosts.map(({ blog_post_id, score }) => ({
-          blog_post_id,
-          score,
+        similarPosts: input.similarPosts.map((post) => ({
+          id: post.id ?? post.blog_post_id,
+          blog_post_id: post.blog_post_id,
+          title: post.title,
+          slug: post.slug,
+          score: post.score,
+          band: post.band,
+          word_count: post.word_count,
+          last_modified: post.last_modified
+            ? post.last_modified.toISOString()
+            : null,
         })),
         primaryKeyword: input.primaryKeyword,
         intent: input.intent,
         targetBlogPostId: input.targetBlogPostId,
+        selectedTargetPostId: input.selectedTargetPostId,
         metadata: input.metadata,
+        thresholdsUsed: input.thresholdsUsed,
+        isContentProducing: input.isContentProducing,
       })
       .returning({ id: blogDecisionLogs.id });
 
@@ -563,4 +759,5 @@ export const __testing = {
   wordCount,
   similarityBand,
   matchesExclusion,
+  mergeDecisionConfig,
 };

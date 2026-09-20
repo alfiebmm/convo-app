@@ -39,6 +39,8 @@ export interface BlogPostListItem {
   persona: string | null;
   wordCount: number | null;
   status: BlogPostStatus;
+  contentType: "new_article" | "update_draft" | "generation_failure";
+  updateOf: string | null;
   createdAt: Date;
 }
 
@@ -265,6 +267,10 @@ function metadataStatsWordCount(metadata: Record<string, unknown>) {
 
 function mapBlogPostRow(row: BlogPostSupabaseRow): BlogPostListItem {
   const metadata = row.metadata ?? {};
+  const updateOf =
+    typeof metadata.update_of === "string" && metadata.update_of.trim()
+      ? metadata.update_of
+      : null;
   const topic =
     typeof row.topic === "string" && row.topic.trim()
       ? row.topic
@@ -288,6 +294,13 @@ function mapBlogPostRow(row: BlogPostSupabaseRow): BlogPostListItem {
     persona,
     wordCount: metadataWordCount ?? computeBlogPostWordCountFallback(row.content, metadata),
     status: row.status,
+    contentType:
+      row.status === "generation_failed"
+        ? "generation_failure"
+        : updateOf
+          ? "update_draft"
+          : "new_article",
+    updateOf,
     createdAt: new Date(row.created_at),
   };
 }
