@@ -6,7 +6,7 @@ import path from "node:path";
 import { __testing as pipelineTesting } from "../pipeline";
 import { __testing as updateTesting } from "../update";
 import type { DecisionResult } from "../decision";
-import type { BlogPostJson } from "../writing-rules";
+import { wordCountGateStats, type BlogPostJson } from "../writing-rules";
 import brandFixture from "../schemas/brand.example.chemist2u.json";
 import postFixture from "../schemas/post.example.chemist2u.json";
 
@@ -109,6 +109,41 @@ function richParagraphs(sectionIndex: number) {
   }));
 }
 
+function paragraphBlocks(counts: number[], prefix: string) {
+  return counts.map((count, index) => ({
+    type: "p" as const,
+    text: proseWords(count, `${prefix}p${index}`),
+  }));
+}
+
+function fourSectionPostWithTotalWordCount(totalWordCount: number): BlogPostJson {
+  const post = validPost();
+  const introWordCount = wordCountGateStats(post).introWordCount;
+  const paragraphWords = totalWordCount - introWordCount;
+  const sectionCount = 4;
+  const baseSectionWords = Math.floor(paragraphWords / sectionCount);
+  let sectionRemainder = paragraphWords % sectionCount;
+
+  post.sections = post.sections.slice(0, sectionCount).map((section, sectionIndex) => {
+    const sectionWords = baseSectionWords + (sectionRemainder-- > 0 ? 1 : 0);
+    const baseParagraphWords = Math.floor(sectionWords / 3);
+    let paragraphRemainder = sectionWords % 3;
+
+    return {
+      ...section,
+      blocks: paragraphBlocks(
+        Array.from(
+          { length: 3 },
+          () => baseParagraphWords + (paragraphRemainder-- > 0 ? 1 : 0)
+        ),
+        `target${sectionIndex}`
+      ),
+    };
+  });
+
+  return post;
+}
+
 function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   const post = structuredClone(postFixture) as BlogPostJson;
   const postRecord = post as unknown as Record<string, unknown>;
@@ -183,9 +218,10 @@ function makeTarget() {
   };
 }
 
-function makeService(responses: BlogPostJson[]) {
+function makeService(responses: unknown[]) {
   const inserts: InsertedPost[] = [];
   const seoValidationLogs: SeoValidationLog[] = [];
+  const prompts: string[] = [];
   const existingSlugs = new Set(["how-pharmacists-support-care"]);
   const target = makeTarget();
   const service = updateTesting.buildUpdateService({
@@ -199,7 +235,7 @@ function makeService(responses: BlogPostJson[]) {
             name: "Chemist2U",
             slug: "chemist2u",
             domain: "chemist2u.com.au",
-            settings: { brandJson: validBrand(), blog: { cta: CTA } },
+            settings: { brandJson: validBrand(), blog: { cta: CTA, bannedTerms: ["delve"] } },
           },
           messages: [
             {
@@ -229,7 +265,8 @@ function makeService(responses: BlogPostJson[]) {
       },
     },
     ai: {
-      async generatePost() {
+      async generatePost(params) {
+        prompts.push(params.userPrompt);
         const next = responses.shift();
         if (!next) throw new Error("mock response queue exhausted");
         return JSON.stringify(next);
@@ -247,7 +284,7 @@ function makeService(responses: BlogPostJson[]) {
     sleep: async () => {},
     now: () => NOW,
   });
-  return { service, inserts, target, seoValidationLogs };
+  return { service, inserts, target, seoValidationLogs, prompts };
 }
 
 test("update decisions route to updateArticle", async () => {
@@ -293,19 +330,99 @@ test("revision updates seo.modifiedAt", async () => {
   assert.equal((inserts[0].metadata as BlogPostJson).seo?.modifiedAt, NOW.toISOString());
 });
 
-test("update failure creates failed row without mutating target", async () => {
+test("banned words are cleaned up deterministically before update save", async () => {
   const bad = validPost({
     intro:
       "Pharmacists delve into ongoing care by answering medicine questions and helping people understand side effects.",
   });
-  const { service, inserts, target } = makeService([bad, bad, bad, bad]);
+  const { service, inserts, target, prompts, seoValidationLogs } = makeService([bad]);
   const targetBefore = structuredClone(target);
   await service.updateArticle(CONVERSATION_ID, decision());
+  assert.deepEqual(target, targetBefore);
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(inserts[0].metadata.update_of, TARGET_ID);
+  assert.equal(prompts.length, 1);
+  assert.doesNotMatch((inserts[0].metadata as BlogPostJson).intro, /\bdelve\b/i);
+  assert.equal(seoValidationLogs[0].metadata.phase, "repair_loop");
+  assert.equal(seoValidationLogs[0].targetBlogPostId, TARGET_ID);
+  assert.deepEqual(
+    (
+      (seoValidationLogs[0].metadata.operations as Array<Record<string, unknown>>)[0]
+    ).action,
+    "replace_banned_terms"
+  );
+});
+
+test("short update sections repair only the affected section before acceptance", async () => {
+  const bad = validPost({
+    sections: validPost().sections.map((section, index) =>
+      index === 0
+        ? {
+            ...section,
+            blocks: paragraphBlocks([25, 25, 25], "short-section"),
+          }
+        : section
+    ),
+  });
+  const repairedSection = {
+    heading: bad.sections[0].heading,
+    blocks: richParagraphs(99),
+  };
+  const { service, inserts, prompts, seoValidationLogs } = makeService([
+    bad,
+    repairedSection,
+  ]);
+
+  await service.updateArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /Repair only this section/);
+  assert.match(prompts[1], /"targetSectionParagraphWords": 100/);
+  assert.doesNotMatch(prompts[1], /Rewrite the full post\.json/);
+  assert.equal(seoValidationLogs[0].metadata.phase, "quality_gate_word_count");
+  assert.equal(seoValidationLogs[1].metadata.phase, "repair_loop");
+  assert.equal(seoValidationLogs.at(-1)?.metadata.phase, "seo_validation");
+  assert.equal(
+    ((inserts[0].metadata.generation as Record<string, unknown>)
+      .repairOperations as Array<Record<string, unknown>>)[0].action,
+    "repair_section_prose"
+  );
+});
+
+test("700-word update candidate repairs to target minimum before acceptance", async () => {
+  const bad = fourSectionPostWithTotalWordCount(700);
+  const repairedSection = {
+    ...bad.sections[0],
+    blocks: paragraphBlocks([90, 90, 90], "expanded-total"),
+  };
+  const { service, inserts, prompts, seoValidationLogs } = makeService([
+    bad,
+    repairedSection,
+  ]);
+
+  await service.updateArticle(CONVERSATION_ID, decision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /Repair only this section/);
+  assert.ok(((inserts[0].metadata.stats as Record<string, unknown>).wordCount as number) >= 800);
+  assert.equal(seoValidationLogs[0].metadata.phase, "quality_gate_word_count");
+  assert.equal(seoValidationLogs[1].metadata.phase, "repair_loop");
+  assert.equal(seoValidationLogs.at(-1)?.metadata.phase, "seo_validation");
+});
+
+test("update failure creates failed row without mutating target when initial generation fails", async () => {
+  const { service, inserts, target } = makeService([]);
+  const targetBefore = structuredClone(target);
+
+  await service.updateArticle(CONVERSATION_ID, decision());
+
   assert.deepEqual(target, targetBefore);
   assert.equal(inserts[0].status, "generation_failed");
   assert.equal(inserts[0].metadata.update_of, TARGET_ID);
   assert.match(
     String((inserts[0].metadata.generation_failure as Record<string, unknown>).reason),
-    /Banned term found/
+    /mock response queue exhausted/
   );
 });
