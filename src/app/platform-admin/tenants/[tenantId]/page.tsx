@@ -76,6 +76,13 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function formatCents(value: number) {
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+  }).format(value / 100);
+}
+
 function Tabs({
   tenantId,
   active,
@@ -403,9 +410,57 @@ function DangerTab({ detail }: { detail: TenantDetail }) {
 
 function TabContent({ tab, detail }: { tab: TenantTab; detail: TenantDetail }) {
   if (tab === "usage") {
+    const cap = detail.tenant.blogAiHeroMonthlyCapCents;
+    const spend = detail.aiImageUsage.spendCents;
+    const percentage = cap > 0 ? Math.min(100, Math.round((spend / cap) * 100)) : 100;
     return (
-      <section className="rounded-md border border-zinc-200 bg-white p-5 text-sm text-zinc-600">
-        Usage metrics shipping in ADMIN-5 (CON-223).
+      <section className="rounded-md border border-zinc-200 bg-white p-5">
+        <h2 className="font-semibold">AI hero image usage</h2>
+        <dl className="mt-4 grid gap-4 text-sm md:grid-cols-4">
+          <div>
+            <dt className="text-xs font-semibold uppercase text-zinc-500">Month</dt>
+            <dd className="mt-1 font-medium">{detail.aiImageUsage.month}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase text-zinc-500">Spend</dt>
+            <dd className="mt-1 font-medium">{formatCents(spend)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase text-zinc-500">Cap</dt>
+            <dd className="mt-1 font-medium">{formatCents(cap)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase text-zinc-500">Images</dt>
+            <dd className="mt-1 font-medium">{detail.aiImageUsage.imageCount}</dd>
+          </div>
+        </dl>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-100">
+          <div
+            className={percentage >= 100 ? "h-full bg-red-600" : percentage >= 80 ? "h-full bg-amber-500" : "h-full bg-[#FF6B2C]"}
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+        <p className="mt-2 text-sm text-zinc-600">
+          {percentage >= 100
+            ? "Monthly cap reached. New article hero images fall back to the gradient placeholder."
+            : percentage >= 80
+              ? "Spend is above 80% of the monthly cap."
+              : "Spend is within the monthly cap."}
+        </p>
+        <dl className="mt-4 grid gap-4 text-sm md:grid-cols-2">
+          <div>
+            <dt className="text-xs font-semibold uppercase text-zinc-500">Feature flag</dt>
+            <dd className="mt-1 font-medium">
+              {detail.tenant.blogAiHeroEnabled ? "Enabled" : "Disabled"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase text-zinc-500">Style prompt</dt>
+            <dd className="mt-1 text-zinc-700">
+              {detail.tenant.heroImageStylePrompt || "System default"}
+            </dd>
+          </div>
+        </dl>
       </section>
     );
   }

@@ -8,6 +8,7 @@ export type BrandSettingsTenant = {
   slug: string;
   domain: string | null;
   settings: unknown;
+  heroImageStylePrompt?: string | null;
 };
 
 export type BrandSettingsDeps = {
@@ -15,6 +16,7 @@ export type BrandSettingsDeps = {
   saveTenantSettings: (
     tenantId: string,
     settings: Record<string, unknown>,
+    tenantUpdates?: { heroImageStylePrompt?: string | null },
   ) => Promise<Record<string, unknown>>;
   uploadLogo?: (
     tenantId: string,
@@ -32,6 +34,7 @@ const brandPayloadSchema = z.object({
     .trim()
     .regex(/^#[0-9a-f]{6}$/i)
     .optional(),
+  heroImageStylePrompt: z.string().trim().max(1000).optional(),
 });
 
 export type BrandPayload = z.infer<typeof brandPayloadSchema>;
@@ -94,7 +97,9 @@ export async function handleBrandSettingsPost(
     ...settings,
     brandJson: nextBrandJson,
   };
-  const saved = await deps.saveTenantSettings(tenantId, nextSettings);
+  const saved = await deps.saveTenantSettings(tenantId, nextSettings, {
+    heroImageStylePrompt: parsed.data.heroImageStylePrompt,
+  });
 
   return NextResponse.json({
     brandJson: isRecord(saved.brandJson) ? saved.brandJson : nextBrandJson,
@@ -109,6 +114,7 @@ export function readBrandPayloadFromFormData(formData: FormData): BrandPayload {
     logoUrl: readFormString(formData, "logoUrl"),
     logoAlt: readFormString(formData, "logoAlt"),
     primaryColor: readFormString(formData, "primaryColor"),
+    heroImageStylePrompt: readFormString(formData, "heroImageStylePrompt") ?? "",
   };
 }
 

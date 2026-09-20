@@ -21,6 +21,13 @@ import {
   heroUrlMatchesBrandLogo,
   isHttpsUrl,
 } from "./hero-placeholder";
+import {
+  applyAiHeroToMetadata,
+  generateAndStoreHeroImage,
+  loadTenantHeroImageConfig,
+  persistGeneratedHero,
+  type HeroImageResult,
+} from "./hero-image";
 import brandSchema from "./schemas/brand.schema.json";
 import postSchema from "./schemas/post.schema.json";
 import { repairBlogPost, type RepairOperation } from "./repair";
@@ -145,6 +152,21 @@ type BlogCreateDeps = {
   renderSemantic: BlogRenderer;
   validate: BlogValidator;
   sleep: (ms: number) => Promise<void>;
+  heroImages?: {
+    generate(params: {
+      tenantId: string;
+      postId: string;
+      post: BlogPostJson;
+      metadata: Record<string, unknown>;
+    }): Promise<HeroImageResult | null>;
+    persist(params: {
+      tenantId: string;
+      postId: string;
+      metadata: Record<string, unknown>;
+      content: string;
+      contentSemantic: string;
+    }): Promise<void>;
+  };
 };
 
 export type RetryClass =
@@ -925,6 +947,13 @@ function buildCreateService(deps: BlogCreateDeps) {
         throw new Error("Validated article is missing word count");
       }
 
+      const metadata = buildBlogPostMetadata(finalPost, finalWordCount, {
+        generation: {
+          decision,
+          emDashReplacements: allEmDashReplacements,
+          repairOperations,
+        },
+      });
       const row = await deps.store.insertBlogPost({
         tenantId: loaded.tenant.id,
         threadId: conversationId,
@@ -932,17 +961,52 @@ function buildCreateService(deps: BlogCreateDeps) {
         slug: finalPost.slug,
         content: finalHtml,
         contentSemantic: finalSemanticHtml,
-        metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
-          generation: {
-            decision,
-            emDashReplacements: allEmDashReplacements,
-            repairOperations,
-          },
-        }),
+        metadata,
         status: "draft",
         persona: decision.primary_keyword,
         topic: decision.intent,
       });
+
+      if (deps.heroImages) {
+        const heroResult = await deps.heroImages.generate({
+          tenantId: loaded.tenant.id,
+          postId: row.id,
+          post: finalPost,
+          metadata,
+        });
+
+        if (heroResult?.ok) {
+          const metadataWithHero = applyAiHeroToMetadata({
+            metadata,
+            url: heroResult.url,
+            path: heroResult.path,
+            prompt: heroResult.prompt,
+            generationNumber: heroResult.generationNumber,
+          });
+          const postWithHero = {
+            ...finalPost,
+            hero: {
+              ...finalPost.hero,
+              url: heroResult.url,
+            },
+            seo: {
+              ...finalPost.seo,
+              ogImage: heroResult.url,
+            },
+          };
+          await deps.heroImages.persist({
+            tenantId: loaded.tenant.id,
+            postId: row.id,
+            metadata: metadataWithHero,
+            content: stripRenderedEmDashes(
+              deps.render({ brand: brief.tenant.brandJson, post: postWithHero })
+            ),
+            contentSemantic: stripRenderedEmDashes(
+              deps.renderSemantic({ brand: brief.tenant.brandJson, post: postWithHero })
+            ),
+          });
+        }
+      }
 
       return row.id;
     },
@@ -1138,6 +1202,22 @@ const defaultService = buildCreateService({
   render: defaultBlogRender,
   renderSemantic: defaultBlogSemanticRender,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  heroImages: {
+    async generate({ tenantId, postId, post, metadata }) {
+      const tenant = await loadTenantHeroImageConfig(tenantId);
+      if (!tenant) return null;
+      return generateAndStoreHeroImage({ tenant, postId, post, metadata });
+    },
+    async persist({ tenantId, postId, metadata, content, contentSemantic }) {
+      await persistGeneratedHero({
+        tenantId,
+        postId,
+        metadata,
+        content,
+        contentSemantic,
+      });
+    },
+  },
 });
 
 export async function createArticle(

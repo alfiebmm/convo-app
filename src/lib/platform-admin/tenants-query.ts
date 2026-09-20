@@ -72,6 +72,9 @@ export type TenantDetail = {
     status: TenantStatus;
     settings: unknown;
     stripeCustomerId: string | null;
+    blogAiHeroEnabled: boolean;
+    heroImageStylePrompt: string | null;
+    blogAiHeroMonthlyCapCents: number;
     createdAt: string;
     suspendedAt: string | null;
     suspendedReason: string | null;
@@ -79,6 +82,11 @@ export type TenantDetail = {
     softDeletedAt: string | null;
     softDeletedReason: string | null;
     softDeletedByEmail: string | null;
+  };
+  aiImageUsage: {
+    month: string;
+    spendCents: number;
+    imageCount: number;
   };
   owner: TenantMemberRow | null;
   members: TenantMemberRow[];
@@ -120,6 +128,9 @@ type RawTenantDetailRow = {
   status: TenantStatus;
   settings: unknown;
   stripe_customer_id: string | null;
+  blog_ai_hero_enabled: boolean;
+  hero_image_style_prompt: string | null;
+  blog_ai_hero_monthly_cap_cents: number;
   created_at: string | Date;
   suspended_at: string | Date | null;
   suspended_reason: string | null;
@@ -406,6 +417,9 @@ export async function loadTenantDetail(
            t.status,
            t.settings,
            t.stripe_customer_id,
+           t.blog_ai_hero_enabled,
+           t.hero_image_style_prompt,
+           t.blog_ai_hero_monthly_cap_cents,
            t.created_at,
            t.suspended_at,
            t.suspended_reason,
@@ -422,7 +436,8 @@ export async function loadTenantDetail(
   const tenantRow = tenantResult.rows[0] as RawTenantDetailRow | undefined;
   if (!tenantRow) notFound();
 
-  const [membersResult, timelineResult] = await Promise.all([
+  const usageMonth = new Date().toISOString().slice(0, 7);
+  const [membersResult, timelineResult, usageResult] = await Promise.all([
     database.execute(sql`
       SELECT tenant_members.id,
              tenant_members.user_id,
@@ -482,6 +497,15 @@ export async function loadTenantDetail(
        ORDER BY at DESC
        LIMIT 100
     `),
+    database.execute(sql`
+      SELECT month,
+             spend_cents,
+             image_count
+        FROM tenant_ai_image_usage
+       WHERE tenant_id = ${tenantId}::uuid
+         AND month = ${usageMonth}
+       LIMIT 1
+    `),
   ]);
 
   const members = (membersResult.rows as RawMemberRow[]).map((member) => ({
@@ -502,6 +526,9 @@ export async function loadTenantDetail(
       status: tenantRow.status,
       settings: tenantRow.settings ?? {},
       stripeCustomerId: tenantRow.stripe_customer_id,
+      blogAiHeroEnabled: tenantRow.blog_ai_hero_enabled,
+      heroImageStylePrompt: tenantRow.hero_image_style_prompt,
+      blogAiHeroMonthlyCapCents: tenantRow.blog_ai_hero_monthly_cap_cents,
       createdAt: toIso(tenantRow.created_at) ?? "",
       suspendedAt: toIso(tenantRow.suspended_at),
       suspendedReason: tenantRow.suspended_reason,
@@ -509,6 +536,17 @@ export async function loadTenantDetail(
       softDeletedAt: toIso(tenantRow.soft_deleted_at),
       softDeletedReason: tenantRow.soft_deleted_reason,
       softDeletedByEmail: tenantRow.soft_deleted_by_email,
+    },
+    aiImageUsage: {
+      month: String((usageResult.rows[0] as { month?: string } | undefined)?.month ?? usageMonth),
+      spendCents: Number(
+        (usageResult.rows[0] as { spend_cents?: number | string } | undefined)
+          ?.spend_cents ?? 0,
+      ),
+      imageCount: Number(
+        (usageResult.rows[0] as { image_count?: number | string } | undefined)
+          ?.image_count ?? 0,
+      ),
     },
     owner: members.find((member) => member.role === "owner") ?? members[0] ?? null,
     members,

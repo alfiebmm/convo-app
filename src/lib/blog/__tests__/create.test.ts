@@ -64,6 +64,7 @@ type SeoValidationLog = {
 type MakeServiceOptions = {
   brandJson?: Record<string, unknown>;
   settings?: Record<string, unknown>;
+  heroImages?: Parameters<typeof __testing.buildCreateService>[0]["heroImages"];
 };
 
 function decision(): DecisionResult {
@@ -304,6 +305,7 @@ function makeService(responses: unknown[], options: MakeServiceOptions = {}) {
       }),
     renderSemantic,
     sleep: async () => {},
+    heroImages: options.heroImages,
   });
 
   return { service, inserts, prompts, seoValidationLogs };
@@ -395,6 +397,46 @@ test("createArticle preserves a valid HTTPS hero URL from the generated post", a
 
   assert.equal((inserts[0].metadata as BlogPostJson).hero.url, heroUrl);
   assert.match(inserts[0].content, new RegExp(heroUrl));
+});
+
+test("createArticle generates and persists an AI hero after first save", async () => {
+  const persisted: Array<Record<string, unknown>> = [];
+  const { service } = makeService([validPost()], {
+    heroImages: {
+      async generate({ postId, metadata }) {
+        assert.equal(postId, "post-1");
+        assert.equal(typeof (metadata as BlogPostJson).hero.url, "string");
+        return {
+          ok: true,
+          url: "https://cdn.example.com/tenant/blog/post-1-hero-1.jpg",
+          path: `${TENANT_ID}/blog/post-1-hero-1.jpg`,
+          prompt: "editorial hero prompt",
+          generationNumber: 1,
+          usage: {
+            month: "2026-09",
+            spendCents: 4,
+            imageCount: 1,
+            capCents: 1000,
+          },
+        };
+      },
+      async persist({ metadata, content }) {
+        persisted.push({ metadata, content });
+      },
+    },
+  });
+
+  await service.createArticle(CONVERSATION_ID, decision());
+
+  assert.equal(persisted.length, 1);
+  assert.equal(
+    ((persisted[0].metadata as Record<string, unknown>).hero as Record<string, unknown>).url,
+    "https://cdn.example.com/tenant/blog/post-1-hero-1.jpg",
+  );
+  assert.match(
+    persisted[0].content as string,
+    /https:\/\/cdn\.example\.com\/tenant\/blog\/post-1-hero-1\.jpg/,
+  );
 });
 
 test("normalisePostHero rejects exact brand logo hero URL and logs the reason", () => {

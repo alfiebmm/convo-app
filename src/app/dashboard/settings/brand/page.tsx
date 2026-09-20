@@ -51,6 +51,7 @@ async function BrandSettingsPageImpl() {
             typeof brandJson.name === "string" ? brandJson.name : tenant.name,
           primaryColor:
             typeof colours.primary === "string" ? colours.primary : "#FF6B2C",
+          heroImageStylePrompt: tenant.heroImageStylePrompt ?? "",
         }}
       />
     </div>

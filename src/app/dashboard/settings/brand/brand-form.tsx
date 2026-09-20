@@ -7,6 +7,7 @@ type BrandFormValues = {
   logoAlt: string;
   siteName: string;
   primaryColor: string;
+  heroImageStylePrompt: string;
 };
 
 export function BrandForm({
@@ -77,6 +78,7 @@ export function BrandForm({
       formData.set("logoUrl", values.logoUrl);
       formData.set("logoAlt", values.logoAlt);
       formData.set("primaryColor", values.primaryColor);
+      formData.set("heroImageStylePrompt", values.heroImageStylePrompt);
       if (logoFile) formData.set("logoFile", logoFile);
 
       const res = await fetch("/api/settings/brand", {
@@ -93,6 +95,7 @@ export function BrandForm({
         logoAlt: savedLogo.alt || values.logoAlt,
         siteName: saved.name || values.siteName,
         primaryColor: savedColours.primary || values.primaryColor,
+        heroImageStylePrompt: values.heroImageStylePrompt,
       });
       setLogoFile(null);
       setStatus("Saved");
@@ -174,6 +177,24 @@ export function BrandForm({
             </div>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-zinc-700">
+              Hero image style prompt
+            </label>
+            <textarea
+              value={values.heroImageStylePrompt}
+              onChange={(event) =>
+                updateValue("heroImageStylePrompt", event.target.value)
+              }
+              rows={4}
+              placeholder="Photorealistic natural light editorial image, no text, no logos"
+              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-zinc-500">
+              Leave blank to use the default Convo editorial hero style.
+            </p>
+          </div>
+
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
@@ -226,6 +247,7 @@ export function BrandForm({
                 "@type": "Organization",
                 name: values.siteName || tenantName,
                 logo: values.logoUrl || null,
+                heroImageStylePrompt: values.heroImageStylePrompt || "Default",
               },
               null,
               2,

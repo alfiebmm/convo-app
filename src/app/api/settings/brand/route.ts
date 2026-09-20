@@ -30,10 +30,16 @@ function buildDeps(): BrandSettingsDeps {
         .limit(1);
       return tenant ?? null;
     },
-    saveTenantSettings: async (tenantId, settings) => {
+    saveTenantSettings: async (tenantId, settings, tenantUpdates) => {
       const [updated] = await db
         .update(tenants)
-        .set({ settings, updatedAt: new Date() })
+        .set({
+          settings,
+          ...(tenantUpdates?.heroImageStylePrompt !== undefined
+            ? { heroImageStylePrompt: tenantUpdates.heroImageStylePrompt || null }
+            : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(tenants.id, tenantId))
         .returning();
       return (updated.settings ?? {}) as Record<string, unknown>;

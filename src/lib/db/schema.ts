@@ -143,6 +143,11 @@ export const tenants = pgTable("tenants", {
     onDelete: "set null",
   }),
   suspendedReason: text("suspended_reason"),
+  blogAiHeroEnabled: boolean("blog_ai_hero_enabled").default(true).notNull(),
+  heroImageStylePrompt: text("hero_image_style_prompt"),
+  blogAiHeroMonthlyCapCents: integer("blog_ai_hero_monthly_cap_cents")
+    .default(1000)
+    .notNull(),
   softDeletedAt: timestamp("soft_deleted_at", { withTimezone: true }),
   softDeletedBy: uuid("soft_deleted_by").references(() => users.id, {
     onDelete: "set null",
@@ -155,6 +160,28 @@ export const tenants = pgTable("tenants", {
     .defaultNow()
     .notNull(),
 });
+
+export const tenantAiImageUsage = pgTable(
+  "tenant_ai_image_usage",
+  {
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    month: varchar("month", { length: 7 }).notNull(),
+    spendCents: integer("spend_cents").default(0).notNull(),
+    imageCount: integer("image_count").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.month] }),
+    index("tenant_ai_image_usage_month_idx").on(table.month),
+  ]
+);
 
 // ============================================================
 // USERS
