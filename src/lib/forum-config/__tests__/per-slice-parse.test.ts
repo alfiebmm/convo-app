@@ -74,6 +74,41 @@ test("forumConfigSchema parses successfully without seo_defaults present", () =>
   }
 });
 
+test("forumConfigSchema round-trips contentRules (CON-88)", () => {
+  const input = {
+    contentRules: {
+      styleGuide: {
+        tone: "Direct and practical",
+        bannedWords: ["cheap"],
+        readingLevel: "Year 8",
+        lengthTargets: { min: 900, max: 1200 },
+      },
+      blogTemplate: {
+        h1Pattern: "{primaryKeyword}: {benefit}",
+        h2Sections: ["What to know", "Next steps"],
+        faqEnabled: true,
+        ctaPlaceholders: ["Book a consult"],
+      },
+      personas: [
+        {
+          id: "owner",
+          name: "Owner",
+          audience: "Business owner",
+          tone: "confident",
+          description: "Needs clear commercial trade-offs.",
+        },
+      ],
+      exclusionList: ["medical advice"],
+    },
+  };
+
+  const result = forumConfigSchema.safeParse(input);
+  assert.equal(result.success, true);
+  if (result.success) {
+    assert.deepEqual(result.data.contentRules, input.contentRules);
+  }
+});
+
 // ─── parseForumConfigPerSlice (Option A) ──────────────────────
 
 test("parseForumConfigPerSlice: null/undefined → DEFAULT_FORUM_CONFIG", () => {

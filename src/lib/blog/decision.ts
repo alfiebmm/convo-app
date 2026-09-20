@@ -9,7 +9,7 @@ import {
   messages,
   tenants,
 } from "@/lib/db/schema";
-import { parseForumConfigPerSlice } from "@/lib/forum-config/validate";
+import { resolveContentRuleExclusions } from "@/lib/forum-config/content-rules";
 import { getOpenAIClient } from "@/lib/openai";
 import { computeBlogPostWordCountFallback } from "./queries";
 
@@ -297,8 +297,7 @@ function mergeDecisionConfig(
 }
 
 function tenantExclusionList(settings: unknown): string[] {
-  const parsed = parseForumConfigPerSlice(settings);
-  return parsed.exclusion_list;
+  return resolveContentRuleExclusions(settings);
 }
 
 function publicSimilarPosts(posts: SimilarPostCandidate[]): SimilarPost[] {

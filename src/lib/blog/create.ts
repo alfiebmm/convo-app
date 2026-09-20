@@ -13,6 +13,10 @@ import {
   messages,
   tenants,
 } from "@/lib/db/schema";
+import {
+  contentRulesPromptBlock,
+  resolveContentRules,
+} from "@/lib/forum-config/content-rules";
 import { getOpenAIClient } from "@/lib/openai";
 
 import type { DecisionResult } from "./decision";
@@ -58,6 +62,7 @@ type BlogBrief = {
     brandJson: BrandJson;
     heroPlaceholderUrl?: string | null;
     writingRules: { bannedTerms: string[]; enforceAustralianEnglish: boolean };
+    contentRulesPrompt?: string;
     ctaConfig: BlogCtaConfig;
   };
   source: {
@@ -190,6 +195,7 @@ function formatBannedTerms(terms: string[]): string {
 function buildSystemPrompt(brief: BlogBrief): string {
   const primaryKeyword = brief.decision.primaryKeyword;
   const bannedTerms = formatBannedTerms(brief.tenant.writingRules.bannedTerms);
+  const contentRulesPrompt = brief.tenant.contentRulesPrompt ?? "";
 
   return `You are Convo's senior SEO article writer.
 
@@ -220,7 +226,9 @@ Article requirements:
 - Do not invent facts that are not supported by the source conversation, tenant context, or common non-sensitive industry knowledge.
 - Do not fabricate customer names, prices, guarantees, credentials, or policies.
 - Use sentence case headings.
-- ${AU_ENGLISH_RULE}`;
+- ${AU_ENGLISH_RULE}
+
+${contentRulesPrompt}`;
 }
 
 export function wordCount(input: string): number {
@@ -422,7 +430,13 @@ function buildBrief(
   if (!primaryKeyword) throw new Error("Create decision is missing primary_keyword");
 
   const ctaConfig = resolveCtaConfig(loaded.tenant);
-  const bannedTerms = tenantBannedTerms(loaded.tenant.settings);
+  const contentRules = resolveContentRules(loaded.tenant.settings);
+  const bannedTerms = Array.from(
+    new Set([
+      ...tenantBannedTerms(loaded.tenant.settings),
+      ...contentRules.styleGuide.bannedWords,
+    ]),
+  );
 
   return {
     tenant: {
@@ -436,6 +450,7 @@ function buildBrief(
         bannedTerms,
         enforceAustralianEnglish: true,
       },
+      contentRulesPrompt: contentRulesPromptBlock(loaded.tenant.settings),
       ctaConfig,
     },
     source: {
