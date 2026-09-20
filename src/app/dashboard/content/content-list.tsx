@@ -3,10 +3,13 @@
 import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import type { BlogPostListItem, BlogPostStatus } from "@/lib/blog/queries";
+import type {
+  BlogPostListItem,
+  ContentFilterStatus,
+} from "@/lib/blog/queries";
 
 export const BLOG_POST_STATUS_DISPLAY: Record<
-  BlogPostStatus,
+  ContentFilterStatus,
   { label: string; className: string }
 > = {
   draft: { label: "Draft", className: "bg-slate-100 text-slate-700" },
@@ -26,6 +29,10 @@ export const BLOG_POST_STATUS_DISPLAY: Record<
   update_pending: {
     label: "Update pending",
     className: "bg-amber-100 text-amber-800",
+  },
+  no_blog_source: {
+    label: "No blog source",
+    className: "bg-slate-100 text-slate-700",
   },
 };
 
@@ -57,12 +64,15 @@ function Pill({
   );
 }
 
-export function BlogPostStatusPill({ status }: { status: BlogPostStatus }) {
+export function BlogPostStatusPill({ status }: { status: ContentFilterStatus }) {
   const display = BLOG_POST_STATUS_DISPLAY[status];
   return <Pill className={display.className}>{display.label}</Pill>;
 }
 
 export function BlogPostContentTypePill({ post }: { post: BlogPostListItem }) {
+  if (post.contentType === "no_blog_source") {
+    return <Pill className="bg-slate-100 text-slate-700">Declined source</Pill>;
+  }
   if (post.contentType === "generation_failure") {
     return <Pill className="bg-red-100 text-red-800">Generation failure</Pill>;
   }
@@ -111,7 +121,7 @@ function ArticleTitle({ post }: { post: BlogPostListItem }) {
         {post.title}
       </p>
       <p className="mt-1 truncate text-xs text-slate-500">
-        {post.topic ?? "No topic"}
+        {post.decisionReason ?? post.topic ?? "No topic"}
       </p>
     </div>
   );
@@ -142,6 +152,11 @@ export default function ContentList({
   }
 
   function openPost(postId: string) {
+    const declined = posts.find((post) => post.id === postId);
+    if (declined?.sourceConversationId) {
+      router.push(`/dashboard/conversations?conversationId=${declined.sourceConversationId}`);
+      return;
+    }
     router.push(`/dashboard/content/${postId}`);
   }
 
