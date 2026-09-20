@@ -208,9 +208,6 @@ function getStyles(config: ConvoConfig): string {
   return `
     :host {
       --convo-color: ${config.color};
-      --convo-bubble-size: ${dims.bubble}px;
-      --convo-bubble-icon: ${dims.icon}px;
-      --convo-bubble-offset: ${dims.offset}px;
     }
 
     *,
@@ -229,7 +226,6 @@ function getStyles(config: ConvoConfig): string {
       color: #1e293b;
     }
 
-    /* Bubble */
     .convo-bubble {
       position: fixed;
       bottom: ${dims.offset}px;
@@ -246,7 +242,6 @@ function getStyles(config: ConvoConfig): string {
       justify-content: center;
       box-shadow: 0 4px 14px rgba(0,0,0,0.15);
       z-index: 2147483647;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
     .convo-bubble:hover {
       transform: scale(1.08);
@@ -255,7 +250,6 @@ function getStyles(config: ConvoConfig): string {
     .convo-bubble svg {
       width: ${dims.icon}px;
       height: ${dims.icon}px;
-      transition: transform 0.3s ease;
     }
     .convo-bubble.open svg {
       transform: rotate(90deg);
@@ -289,7 +283,6 @@ function getStyles(config: ConvoConfig): string {
       border-radius: 999px;
       box-shadow: 0 2px 8px rgba(0,0,0,.08);
       cursor: pointer;
-      transition: all .15s ease;
     }
     .convo-starter-pill:hover {
       transform: translateY(-1px);
@@ -309,7 +302,6 @@ function getStyles(config: ConvoConfig): string {
     }
     @media(max-width:640px){.convo-starter-pills{${mobilePos}}}
 
-    /* Panel */
     .convo-panel {
       position: fixed;
       bottom: ${panelBottom}px;
@@ -328,7 +320,6 @@ function getStyles(config: ConvoConfig): string {
       opacity: 0;
       transform: translateY(16px) scale(0.96);
       pointer-events: none;
-      transition: opacity 0.25s ease, transform 0.25s ease;
     }
     .convo-panel.visible {
       opacity: 1;
@@ -336,7 +327,6 @@ function getStyles(config: ConvoConfig): string {
       pointer-events: auto;
     }
 
-    /* Header */
     .convo-header {
       padding: 16px 20px;
       background: var(--convo-color);
@@ -358,7 +348,6 @@ function getStyles(config: ConvoConfig): string {
       display: none;
       align-items: center;
       justify-content: center;
-      transition: background 0.15s ease;
       padding: 0;
       flex-shrink: 0;
       margin-left: auto;
@@ -388,7 +377,6 @@ function getStyles(config: ConvoConfig): string {
       margin: 0;
     }
 
-    /* Messages area */
     .convo-messages {
       flex: 1;
       overflow-y: auto;
@@ -405,7 +393,6 @@ function getStyles(config: ConvoConfig): string {
       border-radius: 2px;
     }
 
-    /* Message bubbles */
     .convo-msg {
       max-width: 85%;
       padding: 10px 14px;
@@ -439,9 +426,6 @@ function getStyles(config: ConvoConfig): string {
       }
     }
 
-    /* Shared card surface (CON-169 offer + CON-170 capture).
-       The convo-card class is the common bubble; per-feature modifiers
-       (-offer, -cap) only set what differs. */
     .convo-card, .convo-offer-block, .convo-cap-block {
       align-self: stretch;
       padding: 12px 14px;
@@ -473,7 +457,6 @@ function getStyles(config: ConvoConfig): string {
       gap: 8px;
     }
     .convo-cap-input-row { gap: 6px; }
-    /* Shared pill button — offer Yes/No + capture Send. */
     .convo-offer-btn, .convo-cap-btn {
       padding: 8px 12px;
       border-radius: 10px;
@@ -481,7 +464,6 @@ function getStyles(config: ConvoConfig): string {
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
-      transition: opacity 0.15s ease, background 0.15s ease;
     }
     .convo-offer-btn { flex: 1; }
     .convo-offer-btn:disabled, .convo-cap-btn:disabled {
@@ -506,8 +488,6 @@ function getStyles(config: ConvoConfig): string {
       background: #f8fafc;
     }
 
-    /* Progressive contact capture (CON-170 / D2b) - only the
-       feature-specific pieces; shared surface lives above. */
     .convo-cap-privacy {
       display: flex;
       flex-direction: column;
@@ -579,7 +559,6 @@ function getStyles(config: ConvoConfig): string {
       color: #334155;
     }
 
-    /* Qualifying-question quick-reply card (CON-94) */
     .convo-qualifying {
       align-self: stretch;
       display: flex;
@@ -614,7 +593,6 @@ function getStyles(config: ConvoConfig): string {
       font-weight: 500;
       cursor: pointer;
       font-family: inherit;
-      transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
     }
     .convo-qualifying-options button:hover {
       background: ${config.color};
@@ -643,7 +621,6 @@ function getStyles(config: ConvoConfig): string {
       color: #1e293b;
     }
 
-    /* Typing indicator */
     .convo-typing {
       align-self: flex-start;
       display: flex;
@@ -671,7 +648,6 @@ function getStyles(config: ConvoConfig): string {
       30% { transform: translateY(-6px); }
     }
 
-    /* Input area */
     .convo-input-area {
       padding: 12px 16px;
       border-top: 1px solid #e2e8f0;
@@ -690,7 +666,6 @@ function getStyles(config: ConvoConfig): string {
       font-size: 14px;
       outline: none;
       font-family: inherit;
-      transition: border-color 0.15s ease;
     }
     .convo-input-area input:focus {
       border-color: var(--convo-color);
@@ -710,14 +685,12 @@ function getStyles(config: ConvoConfig): string {
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      transition: opacity 0.15s ease;
     }
     .convo-input-area button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
 
-    /* Powered by */
     .convo-powered {
       padding: 6px;
       text-align: center;
@@ -730,13 +703,10 @@ function getStyles(config: ConvoConfig): string {
       text-decoration: none;
     }
 
-    /* Mobile */
     @media (max-width: 640px) {
       .convo-panel {
         position: fixed;
         border-radius: 12px;
-        /* All four edges set by JS via setupViewportHandler() */
-        /* Fallbacks if JS hasn't run yet or visualViewport unavailable */
         top: 12px;
         bottom: 12px;
         left: 12px;
@@ -745,7 +715,6 @@ function getStyles(config: ConvoConfig): string {
         height: auto;
       }
       
-      /* Hide the floating bubble when the panel is open on mobile — the in-header close button takes over. */
       .convo-bubble.open {
         display: none;
       }
@@ -802,7 +771,6 @@ function getStyles(config: ConvoConfig): string {
       }
     }
 
-    /* CON-93 — CTA block (button-style call-to-action below an assistant message). */
     .convo-cta-block {
       margin: 8px 0 4px 0;
       display: flex;
@@ -822,7 +790,6 @@ function getStyles(config: ConvoConfig): string {
       border-radius: 8px;
       line-height: 1.2;
       cursor: pointer;
-      transition: filter 120ms ease, transform 120ms ease;
       max-width: 100%;
       min-height: 36px;
       box-sizing: border-box;
@@ -1928,10 +1895,37 @@ class ConvoWidget {
       this.isStreaming = false;
       this.sendBtn.disabled = false;
       this.inputEl.disabled = false;
+      this.refocusInputAfterTurn();
       // If typing indicator somehow survived the drain loop (e.g. abort
       // fired before the first token), hide it here so we don't leave
       // the visitor staring at three dots.
       this.hideTyping();
+    }
+  }
+
+  private refocusInputAfterTurn(): void {
+    const refocus = () => {
+      if (
+        !this.isOpen ||
+        !this.panel.classList.contains("visible") ||
+        this.messagesEl.querySelector(".convo-qualifying,.convo-cap-block form")
+      ) return;
+
+      const activeEl =
+        (this.shadow.activeElement as Element | null) ||
+        (document.activeElement as Element | null);
+      if (
+        !activeEl ||
+        activeEl === document.body ||
+        activeEl === this.sendBtn ||
+        activeEl === this.inputEl ||
+        !this.panel.contains(activeEl)
+      ) this.inputEl.focus();
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(refocus);
+    } else {
+      setTimeout(refocus, 50);
     }
   }
 
