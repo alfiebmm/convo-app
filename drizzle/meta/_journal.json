@@ -204,6 +204,13 @@
       "when": 1788998400000,
       "tag": "0028_con295_blog_content_semantic",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788998400001,
+      "tag": "0029_con297_ai_hero_images",
+      "breakpoints": true
     }
   ]
 }

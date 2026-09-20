@@ -5,7 +5,11 @@ import type { PrePublishChecklistResult } from "@/lib/blog/pre-publish-checklist
 import type { BlogPostDetail } from "@/lib/blog/queries";
 
 import { BlogPostStatusPill } from "../content-list";
-import { revalidatePrePublishChecklist } from "./actions";
+import {
+  regenerateHeroImage,
+  revalidatePrePublishChecklist,
+  revertHeroImage,
+} from "./actions";
 import { PublishBlogPostButton } from "./publish-blog-post-button";
 
 type JsonRecord = Record<string, unknown>;
@@ -251,6 +255,73 @@ function FailureState({ post }: { post: BlogPostDetail }) {
   );
 }
 
+function heroImageState(metadata: JsonRecord) {
+  const state = nestedRecord(metadata, "aiHeroImage");
+  const images = Array.isArray(state.images) ? state.images : [];
+  const activeUrl = stringValue(state.activeUrl);
+  const hero = nestedRecord(metadata, "hero");
+  return {
+    activeUrl,
+    currentUrl: activeUrl ?? stringValue(hero.url),
+    imageCount: images.length,
+    revertedAt: stringValue(state.revertedAt),
+  };
+}
+
+function HeroImagePanel({ post }: { post: BlogPostDetail }) {
+  const state = heroImageState(post.metadata);
+  const regenerate = async () => {
+    "use server";
+    await regenerateHeroImage(post.id);
+  };
+  const revert = async () => {
+    "use server";
+    await revertHeroImage(post.id);
+  };
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Hero image</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {state.activeUrl
+              ? "AI hero image active"
+              : state.revertedAt
+                ? "Gradient placeholder active after revert"
+                : "Gradient placeholder active"}
+          </p>
+          <p className="mt-2 break-all text-xs text-slate-500">
+            {state.currentUrl ?? "No hero image URL recorded"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <form action={regenerate}>
+            <button
+              type="submit"
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Regenerate hero image
+            </button>
+          </form>
+          <form action={revert}>
+            <button
+              type="submit"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Revert to gradient placeholder
+            </button>
+          </form>
+        </div>
+      </div>
+      <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+        <DetailItem label="AI images generated" value={state.imageCount} />
+        <DetailItem label="Active AI image" value={state.activeUrl ? "Yes" : "No"} />
+      </dl>
+    </section>
+  );
+}
+
 export async function ArticleDetailView({ post }: { post: BlogPostDetail }) {
   return ArticleDetailViewWithPublishing({
     post,
@@ -325,6 +396,8 @@ export async function ArticleDetailViewWithPublishing({
         className="prose prose-slate max-w-none [&_img]:mx-auto [&_img]:w-auto [&_img]:max-h-[400px] [&_.gh-blog-site-header__logo_img]:max-h-[36px] [&_.gh-blog-article-hero__image_img]:max-h-[280px] [&_.gh-blog-article-hero__image_img]:rounded-lg"
         dangerouslySetInnerHTML={{ __html: body }}
       />
+
+      <HeroImagePanel post={post} />
 
       {similar.length > 0 ? (
         <section className="rounded-lg border border-slate-200 bg-white p-5">
