@@ -12,6 +12,29 @@ import {
 } from "@/lib/db/schema";
 
 export type BlogTriggerSource = "manual" | "idle" | "backfill";
+export const NO_BLOG_SOURCE_STATE = "no_blog_source";
+export const NO_BLOG_SOURCE_REASON =
+  "OpenAI extraction returned insufficient keyword or intent signal.";
+export const EXCLUDED_BLOG_CONVERSION_STATES = [
+  "converted_to_blog",
+  "conversion_queued",
+  NO_BLOG_SOURCE_STATE,
+] as const;
+
+export function excludedBlogConversionStatesSql() {
+  return sql.join(
+    EXCLUDED_BLOG_CONVERSION_STATES.map((state) => sql`${state}`),
+    sql`, `
+  );
+}
+
+export function isExcludedBlogConversionState(
+  state: string | null
+): state is (typeof EXCLUDED_BLOG_CONVERSION_STATES)[number] {
+  return EXCLUDED_BLOG_CONVERSION_STATES.includes(
+    state as (typeof EXCLUDED_BLOG_CONVERSION_STATES)[number]
+  );
+}
 
 export type BlogTriggerResult =
   | { status: "queued"; conversationId: string }
@@ -43,7 +66,7 @@ export type BlogTriggerDeps = {
     source: BlogTriggerSource,
     markCompleted: boolean,
     now: Date,
-    blogPostId?: string | null
+    result: BlogPipelineResult
   ) => Promise<void>;
   runBlogPipeline: (conversationId: string) => Promise<BlogPipelineResult | null>;
   logDecisionSkip: (input: {
@@ -123,17 +146,24 @@ const defaultDeps: BlogTriggerDeps = {
     source,
     markCompleted,
     now,
-    blogPostId
+    result
   ) {
     const existing = asRecord(conversation.metadata.blogConversion);
+    const state = blogConversionStateForResult(result);
     const nextMetadata = {
       ...conversation.metadata,
       blogConversion: {
         ...existing,
-        state: "converted_to_blog",
+        state,
         source,
         triggeredAt: now.toISOString(),
-        ...(blogPostId ? { blogPostId } : {}),
+        ...(result.blogPostId ? { blogPostId: result.blogPostId } : {}),
+        ...(state === NO_BLOG_SOURCE_STATE
+          ? {
+              reason: result.decision.reason,
+              decisionLogId: result.decision.log_id,
+            }
+          : {}),
       },
     };
     await db
@@ -184,7 +214,7 @@ export async function requestBlogPipeline(
     return { status: "skipped", conversationId, reason: "duplicate_thread_id" };
   }
 
-  if (getBlogConversionState(conversation.metadata) === "converted_to_blog") {
+  if (isExcludedBlogConversionState(getBlogConversionState(conversation.metadata))) {
     await deps.logDecisionSkip({
       tenantId: conversation.tenantId,
       conversationId,
@@ -209,7 +239,7 @@ export async function requestBlogPipeline(
         source,
         markCompleted,
         new Date(),
-        result.blogPostId
+        result
       );
     } catch (error) {
       await deps.logDecisionSkip({
@@ -291,7 +321,7 @@ const defaultIdleDeps: IdleBlogTriggerDeps = {
          AND COALESCE(
                ${conversations.metadata}->'blogConversion'->>'state',
                ''
-             ) <> 'converted_to_blog'
+             ) NOT IN (${excludedBlogConversionStatesSql()})
        ORDER BY COALESCE(latest_messages.latest_message_at, ${conversations.startedAt}) ASC
        LIMIT ${limit}
     `);
@@ -354,4 +384,17 @@ export async function triggerIdleBlogPipelines({
   }
 
   return summary;
+}
+
+export function isNoBlogSourceDecision(result: BlogPipelineResult): boolean {
+  return (
+    result.decision.action === "skip-nosignal" &&
+    result.decision.reason === NO_BLOG_SOURCE_REASON
+  );
+}
+
+export function blogConversionStateForResult(result: BlogPipelineResult) {
+  return isNoBlogSourceDecision(result)
+    ? NO_BLOG_SOURCE_STATE
+    : "converted_to_blog";
 }

@@ -18,6 +18,7 @@ const statusOptions = [
   { value: "published", label: "Published" },
   { value: "publish_failed", label: "Publish failed" },
   { value: "rejected", label: "Rejected" },
+  { value: "no_blog_source", label: "No blog source" },
 ];
 
 function FilterShell({

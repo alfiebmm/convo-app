@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
 import {
+  EXCLUDED_BLOG_CONVERSION_STATES,
+  NO_BLOG_SOURCE_REASON,
+  NO_BLOG_SOURCE_STATE,
+  blogConversionStateForResult,
   requestBlogPipeline,
   triggerIdleBlogPipelines,
   type BlogTriggerDeps,
@@ -60,14 +64,14 @@ function immediateSchedule(calls: Array<() => Promise<void>>): ScheduleBlogTask 
 async function run() {
   await test("manual trigger queues the pipeline in the background", async () => {
     const tasks: Array<() => Promise<void>> = [];
-    const savedPostIds: Array<string | null | undefined> = [];
+    const savedPostIds: Array<string | null> = [];
     let ranFor: string | null = null;
     const res = await requestBlogPipeline("conversation-a", {
       source: "manual",
       schedule: immediateSchedule(tasks),
       deps: createDeps({
         saveTriggerState: async (...args) => {
-          savedPostIds.push(args[4]);
+          savedPostIds.push(args[4].blogPostId);
         },
         runBlogPipeline: async (conversationId) => {
           ranFor = conversationId;
@@ -93,6 +97,40 @@ async function run() {
     assertEq(ranFor, "conversation-a", "pipeline conversation id");
     assertEq(savedPostIds.length, 1, "converted state saved");
     assertEq(savedPostIds[0], "blog-post-1", "blog post id stored");
+  });
+
+  await test("insufficient extraction signal is saved as no_blog_source", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    let savedState: string | null = null;
+    let savedReason: string | null = null;
+    const res = await requestBlogPipeline("conversation-a", {
+      source: "idle",
+      schedule: immediateSchedule(tasks),
+      deps: createDeps({
+        saveTriggerState: async (conversation, _source, _markCompleted, _now, result) => {
+          savedState = blogConversionStateForResult(result);
+          savedReason = result.decision.reason;
+          assertEq(conversation.id, "conversation-a", "saved conversation");
+        },
+        runBlogPipeline: async (conversationId) => ({
+          conversationId,
+          decision: {
+            action: "skip-nosignal",
+            reason: NO_BLOG_SOURCE_REASON,
+            similar_posts: [],
+            primary_keyword: null,
+            intent: null,
+            log_id: "decision-log-1",
+          },
+          blogPostId: null,
+        }),
+      }),
+    });
+
+    assertEq(res.status, "queued", "status");
+    await tasks[0]();
+    assertEq(savedState, NO_BLOG_SOURCE_STATE, "terminal state");
+    assertEq(savedReason, NO_BLOG_SOURCE_REASON, "terminal reason");
   });
 
   await test("pipeline failure does not mark the conversation converted", async () => {
@@ -170,6 +208,31 @@ async function run() {
     assertEq(skipReasons[0], "Duplicate: conversation is already marked converted to blog.", "logged skip reason");
   });
 
+  await test("trigger skips no_blog_source as a terminal blog conversion state", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    const res = await requestBlogPipeline("conversation-a", {
+      source: "manual",
+      schedule: immediateSchedule(tasks),
+      deps: createDeps({
+        findConversation: async () => ({
+          id: "conversation-a",
+          tenantId: "tenant-a",
+          status: "completed",
+          metadata: { blogConversion: { state: NO_BLOG_SOURCE_STATE } },
+          completedAt: new Date("2026-07-16T00:00:00.000Z"),
+        }),
+      }),
+    });
+
+    assertEq(res.status, "skipped", "status");
+    assertEq(
+      res.status === "skipped" ? res.reason : "",
+      "already_triggered",
+      "skip reason"
+    );
+    assertEq(tasks.length, 0, "background task count");
+  });
+
   await test("idle timer reads forumConfig.blog.idleMinutes", () => {
     const minutes = resolveBlogIdleMinutes({
       forumConfig: { blog: { idleMinutes: 15 } },
@@ -179,6 +242,19 @@ async function run() {
 
   await test("idle timer defaults to near-real-time ten minute window", () => {
     assertEq(resolveBlogIdleMinutes({}), 10, "idle minutes");
+  });
+
+  await test("orphan candidate queries share no_blog_source as an excluded state", () => {
+    assertEq(
+      EXCLUDED_BLOG_CONVERSION_STATES.includes(NO_BLOG_SOURCE_STATE),
+      true,
+      "no_blog_source excluded"
+    );
+    assertEq(
+      EXCLUDED_BLOG_CONVERSION_STATES.includes("converted_to_blog"),
+      true,
+      "converted_to_blog excluded"
+    );
   });
 
   await test("pipeline failure writes a decision log skip reason", async () => {

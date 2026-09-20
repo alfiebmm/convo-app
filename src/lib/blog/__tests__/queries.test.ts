@@ -5,6 +5,7 @@ import {
   computeBlogPostWordCountFallback,
   listBlogPostsForTenant,
   parseBlogPostPage,
+  parseBlogPostStatus,
   type BlogPostsSupabaseClient,
 } from "../queries";
 import { mintSupabaseJwt } from "@/lib/supabase-client";
@@ -134,6 +135,14 @@ test("listBlogPostsForTenant filters by status", async () => {
         call.args[1] === "approved",
     ),
     "status eq filter was not applied",
+  );
+});
+
+test("parseBlogPostStatus accepts the no_blog_source content filter state", () => {
+  assertEq(
+    parseBlogPostStatus("no_blog_source"),
+    "no_blog_source",
+    "no_blog_source status",
   );
 });
 

@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
+  excludedBlogConversionStatesSql,
   requestBlogPipeline,
   type BlogTriggerResult,
   type ScheduleBlogTask,
@@ -113,7 +114,7 @@ const defaultDeps: ReprocessFailedBlogDeps = {
          AND COALESCE(
                ${conversations.metadata}->'blogConversion'->>'state',
                ''
-             ) NOT IN ('converted_to_blog', 'conversion_queued')
+             ) NOT IN (${excludedBlogConversionStatesSql()})
        ORDER BY COALESCE(latest_messages.latest_message_at, ${conversations.startedAt}) DESC
        LIMIT ${limit}
     `);

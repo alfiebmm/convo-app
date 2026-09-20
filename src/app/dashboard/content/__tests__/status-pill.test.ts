@@ -9,7 +9,10 @@ import {
   BlogPostStatusPill,
   FailedGenerationFilterChip,
 } from "../content-list";
-import type { BlogPostListItem, BlogPostStatus } from "@/lib/blog/queries";
+import type {
+  BlogPostListItem,
+  ContentFilterStatus,
+} from "@/lib/blog/queries";
 
 let passed = 0;
 let failed = 0;
@@ -34,7 +37,7 @@ function assertIncludes(actual: string, expected: string, msg: string) {
 }
 
 test("content status pill renders the required colour mapping", () => {
-  const expectations: Record<BlogPostStatus, { label: string; className: string }> =
+  const expectations: Record<ContentFilterStatus, { label: string; className: string }> =
     {
       draft: { label: "Draft", className: "bg-slate-100 text-slate-700" },
       in_review: {
@@ -60,10 +63,14 @@ test("content status pill renders the required colour mapping", () => {
         label: "Update pending",
         className: "bg-amber-100 text-amber-800",
       },
+      no_blog_source: {
+        label: "No blog source",
+        className: "bg-slate-100 text-slate-700",
+      },
     };
 
   for (const [status, expectation] of Object.entries(expectations) as Array<
-    [BlogPostStatus, { label: string; className: string }]
+    [ContentFilterStatus, { label: string; className: string }]
   >) {
     const display = BLOG_POST_STATUS_DISPLAY[status];
     const markup = renderToStaticMarkup(
@@ -137,6 +144,21 @@ test("content type pill labels new article, update draft, and generation failure
   assertIncludes(newMarkup, "New article", "new article label");
   assertIncludes(updateMarkup, "Update draft", "update draft label");
   assertIncludes(failureMarkup, "Generation failure", "failure label");
+});
+
+test("content type pill labels no-blog-source rows distinctly", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(BlogPostContentTypePill, {
+      post: {
+        ...postWithType("new_article"),
+        status: "no_blog_source",
+        contentType: "no_blog_source",
+        decisionReason: "OpenAI extraction returned insufficient keyword or intent signal.",
+      },
+    }),
+  );
+
+  assertIncludes(markup, "Declined source", "declined source label");
 });
 
 console.log(`${passed} passed`);

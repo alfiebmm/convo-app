@@ -1,4 +1,7 @@
 import { assertTenantId } from "@/lib/cases/tenant-guard";
+import { db } from "@/lib/db";
+import { blogDecisionLogs, blogPosts, conversations } from "@/lib/db/schema";
+import { sql } from "drizzle-orm";
 
 export const BLOG_POST_PAGE_SIZE = 25;
 export const MAX_BLOG_POST_PAGE = 10_000;
@@ -16,6 +19,11 @@ export const blogPostStatuses = [
 ] as const;
 
 export type BlogPostStatus = (typeof blogPostStatuses)[number];
+export const contentFilterStatuses = [
+  ...blogPostStatuses,
+  "no_blog_source",
+] as const;
+export type ContentFilterStatus = (typeof contentFilterStatuses)[number];
 export const hiddenBlogPostStatuses = ["generation_failed"] as const;
 export const defaultBlogPostListStatuses = blogPostStatuses.filter(
   (status) =>
@@ -25,7 +33,7 @@ export const defaultBlogPostListStatuses = blogPostStatuses.filter(
 );
 
 export interface BlogPostListFilters {
-  status?: BlogPostStatus;
+  status?: ContentFilterStatus;
   topic?: string;
   persona?: string;
   page?: number;
@@ -38,10 +46,16 @@ export interface BlogPostListItem {
   topic: string | null;
   persona: string | null;
   wordCount: number | null;
-  status: BlogPostStatus;
-  contentType: "new_article" | "update_draft" | "generation_failure";
+  status: BlogPostStatus | "no_blog_source";
+  contentType:
+    | "new_article"
+    | "update_draft"
+    | "generation_failure"
+    | "no_blog_source";
   updateOf: string | null;
   createdAt: Date;
+  sourceConversationId?: string;
+  decisionReason?: string;
 }
 
 export interface BlogPostDetail {
@@ -138,15 +152,112 @@ export function parseBlogPostPage(value: string | number | undefined) {
 
 export function parseBlogPostStatus(
   value: string | undefined,
-): BlogPostStatus | undefined {
-  return blogPostStatuses.includes(value as BlogPostStatus)
-    ? (value as BlogPostStatus)
+): ContentFilterStatus | undefined {
+  return contentFilterStatuses.includes(value as ContentFilterStatus)
+    ? (value as ContentFilterStatus)
     : undefined;
 }
 
 function cleanText(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+type NoBlogSourceRow = {
+  id: string;
+  started_at: Date;
+  reason: string | null;
+  primary_keyword: string | null;
+  intent: string | null;
+};
+
+function noBlogSourceTitle(row: NoBlogSourceRow) {
+  const signal = row.primary_keyword?.trim() || row.intent?.trim();
+  return signal ? `Declined source: ${signal}` : "Declined source conversation";
+}
+
+function mapNoBlogSourceRow(row: NoBlogSourceRow): BlogPostListItem {
+  return {
+    id: `no-blog-source:${row.id}`,
+    title: noBlogSourceTitle(row),
+    topic: row.primary_keyword,
+    persona: row.intent,
+    wordCount: null,
+    status: "no_blog_source",
+    contentType: "no_blog_source",
+    updateOf: null,
+    createdAt: new Date(row.started_at),
+    sourceConversationId: row.id,
+    decisionReason: row.reason ?? "No usable blog source signal.",
+  };
+}
+
+export async function listNoBlogSourceConversationsForTenant({
+  tenantId,
+  page,
+}: {
+  tenantId: string;
+  page: number;
+}): Promise<BlogPostListResult> {
+  assertTenantId(tenantId);
+
+  const currentPage = parseBlogPostPage(page);
+  const from = (currentPage - 1) * BLOG_POST_PAGE_SIZE;
+
+  const rowsResult = await db.execute(sql`
+    WITH latest_decisions AS (
+      SELECT DISTINCT ON (${blogDecisionLogs.conversationId})
+             ${blogDecisionLogs.conversationId} AS conversation_id,
+             ${blogDecisionLogs.reason} AS reason,
+             ${blogDecisionLogs.primaryKeyword} AS primary_keyword,
+             ${blogDecisionLogs.intent} AS intent,
+             ${blogDecisionLogs.createdAt} AS created_at
+        FROM ${blogDecisionLogs}
+       WHERE ${blogDecisionLogs.tenantId} = ${tenantId}
+       ORDER BY ${blogDecisionLogs.conversationId}, ${blogDecisionLogs.createdAt} DESC
+    )
+    SELECT ${conversations.id} AS id,
+           ${conversations.startedAt} AS started_at,
+           latest_decisions.reason AS reason,
+           latest_decisions.primary_keyword AS primary_keyword,
+           latest_decisions.intent AS intent
+      FROM ${conversations}
+      LEFT JOIN ${blogPosts}
+        ON ${blogPosts.threadId} = ${conversations.id}
+      LEFT JOIN latest_decisions
+        ON latest_decisions.conversation_id = ${conversations.id}
+     WHERE ${conversations.tenantId} = ${tenantId}
+       AND ${blogPosts.id} IS NULL
+       AND ${conversations.metadata}->'blogConversion'->>'state' = 'no_blog_source'
+     ORDER BY ${conversations.startedAt} DESC
+     LIMIT ${BLOG_POST_PAGE_SIZE}
+    OFFSET ${from}
+  `);
+
+  const countResult = await db.execute(sql`
+    SELECT COUNT(*)::int AS count
+      FROM ${conversations}
+      LEFT JOIN ${blogPosts}
+        ON ${blogPosts.threadId} = ${conversations.id}
+     WHERE ${conversations.tenantId} = ${tenantId}
+       AND ${blogPosts.id} IS NULL
+       AND ${conversations.metadata}->'blogConversion'->>'state' = 'no_blog_source'
+  `);
+
+  const rows =
+    (rowsResult as unknown as { rows?: NoBlogSourceRow[] }).rows ??
+    (rowsResult as unknown as NoBlogSourceRow[]);
+  const countRows =
+    (countResult as unknown as { rows?: Array<{ count: number | string }> }).rows ??
+    (countResult as unknown as Array<{ count: number | string }>);
+  const totalCount = Number(countRows[0]?.count ?? 0);
+
+  return {
+    rows: rows.map(mapNoBlogSourceRow),
+    totalCount,
+    page: currentPage,
+    pageSize: BLOG_POST_PAGE_SIZE,
+  };
 }
 
 function parseWordCount(value: unknown) {
@@ -343,6 +454,10 @@ export async function listBlogPostsForTenant({
     .from("blog_posts")
     .select("id,title,status,metadata,content,persona,topic,created_at", { count: "exact" })
     .eq("tenant_id", tenantId);
+
+  if (filters.status === "no_blog_source") {
+    return listNoBlogSourceConversationsForTenant({ tenantId, page });
+  }
 
   if (!filters.includeFailed) {
     query = query.in("status", defaultBlogPostListStatuses);
