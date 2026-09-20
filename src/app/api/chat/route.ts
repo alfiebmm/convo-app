@@ -45,6 +45,7 @@ import {
   followUpSchema,
   qualifyingQuestionsSchema,
 } from "@/lib/forum-config/schema";
+import { findExcludedTopic } from "@/lib/forum-config/content-rules";
 import {
   assertForumConfigCompleteness,
   REQUIRED_FORUM_CONFIG_SLICES,
@@ -103,6 +104,83 @@ export function finaliseChatLinkPolicy(params: {
   });
 
   return stripped.content;
+}
+
+function exclusionDeflection(settings: unknown, excludedTopic: string): string {
+  const fallback =
+    "I can't help with that topic here, but I can help with questions about this business and its services.";
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return fallback;
+  }
+  const record = settings as Record<string, unknown>;
+  const guardrails = record.guardrails;
+  if (!guardrails || typeof guardrails !== "object" || Array.isArray(guardrails)) {
+    return fallback;
+  }
+  const boundaries = (guardrails as Record<string, unknown>).topicBoundaries;
+  if (!boundaries || typeof boundaries !== "object" || Array.isArray(boundaries)) {
+    return fallback;
+  }
+  const deflect = (boundaries as Record<string, unknown>).deflect;
+  if (!Array.isArray(deflect)) return fallback;
+
+  const lowered = excludedTopic.trim().toLowerCase();
+  for (const rule of deflect) {
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) continue;
+    const topic = (rule as Record<string, unknown>).topic;
+    const response = (rule as Record<string, unknown>).response;
+    if (
+      typeof topic === "string" &&
+      typeof response === "string" &&
+      topic.trim().toLowerCase() === lowered &&
+      response.trim()
+    ) {
+      return response.trim();
+    }
+  }
+  return fallback;
+}
+
+function sseAssistantResponse(params: {
+  conversationId: string;
+  content: string;
+  persist: () => Promise<void>;
+}): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              type: "meta",
+              conversationId: params.conversationId,
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              type: "token",
+              content: params.content,
+            })}\n\n`,
+          ),
+        );
+        await params.persist();
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`),
+        );
+        controller.close();
+      },
+    }),
+    {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    },
+  );
 }
 
 /**
@@ -243,6 +321,18 @@ export async function POST(req: NextRequest) {
     const persistedUser = isGreetingTurn
       ? null
       : await addMessage(convoId, "user", message);
+
+    const excludedTopic = !isGreetingTurn
+      ? findExcludedTopic(tenant.settings, message)
+      : null;
+    if (excludedTopic) {
+      const content = exclusionDeflection(tenant.settings, excludedTopic);
+      return sseAssistantResponse({
+        conversationId: convoId,
+        content,
+        persist: () => addMessage(convoId, "assistant", content).then(() => undefined),
+      });
+    }
 
     // CON-98 audit: log the regex hit (if any) now that we have a
     // conversation + message id to associate it with. Non-blocking.

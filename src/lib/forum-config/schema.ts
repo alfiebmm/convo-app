@@ -100,6 +100,48 @@ export const allowedTopicsSchema = z.array(z.string()).default([]);
 export const exclusionListSchema = z.array(z.string()).default([]);
 
 // ============================================================
+// Content Rules Configuration (CON-88)
+// ============================================================
+
+export const contentRulesPersonaSchema = z.object({
+  id: z.string().default(""),
+  name: z.string().default(""),
+  description: z.string().default(""),
+  audience: z.string().optional(),
+  tone: z.string().optional(),
+});
+
+export const contentRulesSchema = z.object({
+  styleGuide: z
+    .object({
+      tone: z.string().default(""),
+      bannedWords: z.array(z.string()).default([]),
+      readingLevel: z.string().default(""),
+      lengthTargets: z
+        .object({
+          min: z.number().int().nonnegative().default(800),
+          max: z.number().int().positive().default(1500),
+        })
+        .refine((value) => value.max >= value.min, {
+          message: "max must be greater than or equal to min",
+          path: ["max"],
+        })
+        .default({ min: 800, max: 1500 }),
+    })
+    .prefault({}),
+  blogTemplate: z
+    .object({
+      h1Pattern: z.string().default("{title}"),
+      h2Sections: z.array(z.string()).default([]),
+      faqEnabled: z.boolean().default(true),
+      ctaPlaceholders: z.array(z.string()).default([]),
+    })
+    .prefault({}),
+  personas: z.array(contentRulesPersonaSchema).default([]),
+  exclusionList: z.array(z.string()).default([]),
+});
+
+// ============================================================
 // SEO Defaults Configuration
 // ============================================================
 
@@ -692,6 +734,7 @@ export const forumConfigSchema = z.object({
   lead_capture: leadCaptureSchema.prefault({}),
   allowed_topics: allowedTopicsSchema,
   exclusion_list: exclusionListSchema,
+  contentRules: contentRulesSchema.prefault({}),
   seo_defaults: seoDefaultsSchema.prefault({}),
   blog: blogConfigSchema.prefault({}),
   connectors: connectorsSchema.prefault({}),
@@ -714,6 +757,7 @@ export type BlogConfig = z.infer<typeof blogConfigSchema>;
 export type Connectors = z.infer<typeof connectorsSchema>;
 export type Limits = z.infer<typeof limitsSchema>;
 export type LeadCapture = z.infer<typeof leadCaptureSchema>;
+export type ContentRules = z.infer<typeof contentRulesSchema>;
 
 // Follow-up (CON-157)
 export type CaseType = z.infer<typeof caseTypeEnum>;

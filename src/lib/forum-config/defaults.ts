@@ -133,6 +133,35 @@ export const DEFAULT_FORUM_CONFIG: ForumConfig = {
     "regulated advice",
   ],
 
+  contentRules: {
+    styleGuide: {
+      tone: "Friendly, practical, and specific. Use Australian English.",
+      bannedWords: [],
+      readingLevel: "Plain English for a general adult audience",
+      lengthTargets: {
+        min: 800,
+        max: 1500,
+      },
+    },
+    blogTemplate: {
+      h1Pattern: "{title}",
+      h2Sections: [
+        "What visitors need to know",
+        "How to choose the right next step",
+        "Common questions",
+      ],
+      faqEnabled: true,
+      ctaPlaceholders: ["Speak with the team", "Book a consult"],
+    },
+    personas: [],
+    exclusionList: [
+      "legal advice",
+      "medical advice",
+      "financial advice",
+      "regulated advice",
+    ],
+  },
+
   seo_defaults: {
     title_template: "{topic} | {site_name}",
     meta_template:

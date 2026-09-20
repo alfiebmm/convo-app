@@ -315,6 +315,65 @@ async function run() {
     assertEq(topics.length, 2, "allowed_topics written");
   });
 
+  await test("PATCH persists contentRules while preserving forumConfig", async () => {
+    const contentRules = {
+      styleGuide: {
+        tone: "Plainspoken and specific",
+        bannedWords: ["cheap"],
+        readingLevel: "Year 8",
+        lengthTargets: { min: 900, max: 1300 },
+      },
+      blogTemplate: {
+        h1Pattern: "{title}",
+        h2Sections: ["What to know", "Common mistakes"],
+        faqEnabled: false,
+        ctaPlaceholders: ["Book a consult"],
+      },
+      personas: [
+        {
+          id: "ops-manager",
+          name: "Operations manager",
+          description: "Needs implementation detail.",
+        },
+      ],
+      exclusionList: ["medical advice"],
+    };
+    const deps = makeDeps({
+      "tenant-a": {
+        forumConfig: {
+          ai_persona: validPersona,
+          allowed_topics: ["dogs"],
+        },
+      },
+    });
+
+    const res = await handleForumConfigPatch(
+      "tenant-a",
+      { contentRules },
+      deps,
+    );
+
+    assertEq(res.status, 200, "status");
+    const stored = deps._readStore("tenant-a") as Record<string, unknown>;
+    const fc = stored.forumConfig as Record<string, unknown>;
+    assertEq(
+      JSON.stringify(fc.contentRules),
+      JSON.stringify(contentRules),
+      "contentRules persisted",
+    );
+    assertEq(
+      JSON.stringify(fc.ai_persona),
+      JSON.stringify(validPersona),
+      "ai_persona preserved",
+    );
+    const body = await readJson(res);
+    assertEq(
+      JSON.stringify(body.appliedSlices),
+      JSON.stringify(["contentRules"]),
+      "applied slices",
+    );
+  });
+
   await test("PATCH replaces a slice atomically (no in-slice merge)", async () => {
     // A slice is the atomic write unit — the new value REPLACES the old.
     const deps = makeDeps({

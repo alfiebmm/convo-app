@@ -8,6 +8,7 @@ import {
   leadCaptureSchema,
   allowedTopicsSchema,
   exclusionListSchema,
+  contentRulesSchema,
   seoDefaultsSchema,
   blogConfigSchema,
   connectorsSchema,
@@ -25,6 +26,7 @@ import type {
   Connectors,
   Limits,
   LeadCapture,
+  ContentRules,
   FollowUp,
 } from "./schema";
 import { DEFAULT_FORUM_CONFIG } from "./defaults";
@@ -236,6 +238,13 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     has("exclusion_list"),
   );
 
+  const contentRules = parseSlice<ContentRules>(
+    contentRulesSchema,
+    raw.contentRules,
+    DEFAULT_FORUM_CONFIG.contentRules,
+    has("contentRules"),
+  );
+
   const seo_defaults = parseSlice<SeoDefaults>(
     seoDefaultsSchema,
     raw.seo_defaults,
@@ -281,6 +290,7 @@ export function parseForumConfigPerSlice(input: unknown): ForumConfig {
     lead_capture,
     allowed_topics,
     exclusion_list,
+    contentRules,
     seo_defaults,
     blog,
     connectors,
@@ -360,6 +370,13 @@ export function parseSliceSafe<K extends SliceKey>(
         exclusionListSchema,
         input,
         fallback as string[],
+        true,
+      ) as ForumConfig[K];
+    case "contentRules":
+      return parseSlice(
+        contentRulesSchema,
+        input,
+        fallback as ContentRules,
         true,
       ) as ForumConfig[K];
     case "seo_defaults":

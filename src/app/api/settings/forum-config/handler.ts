@@ -15,6 +15,7 @@ import {
   starterPromptsSchema,
   welcomeSchema,
   allowedTopicsSchema,
+  contentRulesSchema,
   followUpSchema,
   forumConfigSchema,
 } from "@/lib/forum-config/schema";
@@ -34,6 +35,7 @@ export const AUTHORING_SLICES = [
   "starter_prompts",
   "welcome",
   "allowed_topics",
+  "contentRules",
   "follow_up",
 ] as const;
 
@@ -54,6 +56,7 @@ const SLICE_SCHEMAS: Record<AuthoringSlice, z.ZodTypeAny> = {
   starter_prompts: starterPromptsSchema,
   welcome: welcomeSchema,
   allowed_topics: allowedTopicsSchema,
+  contentRules: contentRulesSchema,
   follow_up: followUpSchema,
 };
 

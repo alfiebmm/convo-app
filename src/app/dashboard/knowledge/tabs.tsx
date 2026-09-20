@@ -17,6 +17,11 @@ const TABS: Tab[] = [
       p === "/dashboard/knowledge" ||
       p.startsWith("/dashboard/knowledge/documents"),
   },
+  {
+    href: "/dashboard/knowledge/content-rules",
+    label: "Content rules",
+    match: (p) => p.startsWith("/dashboard/knowledge/content-rules"),
+  },
 ];
 
 /**

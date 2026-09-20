@@ -4,7 +4,8 @@
  *
  * CON-191 (Epic — Dashboard authoring UI for forumConfig).
  *
- * Authoring scope (V1): `ai_persona`, `welcome`, `qualifying_questions`, `allowed_topics`, `follow_up`.
+ * Authoring scope (V1): `ai_persona`, `welcome`, `qualifying_questions`,
+ * `allowed_topics`, `contentRules`, `follow_up`.
  * Other slices on the root forumConfig (`cta_rules`, `lead_capture`, `seo_defaults`,
  * `connectors`, `limits`, `schema_version`, `exclusion_list`) are NOT writable
  * through this endpoint — they're preserved untouched by deep-merge.

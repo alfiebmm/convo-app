@@ -405,6 +405,41 @@ test("decide skips when tenant exclusion list matches", async () => {
   assertLogged(store, "skip-nosignal");
 });
 
+test("decide skips when contentRules exclusionList matches", async () => {
+  const { service, store } = makeService({
+    settings: {
+      forumConfig: {
+        contentRules: {
+          styleGuide: {
+            tone: "Helpful",
+            bannedWords: [],
+            readingLevel: "Plain English",
+            lengthTargets: { min: 800, max: 1200 },
+          },
+          blogTemplate: {
+            h1Pattern: "{title}",
+            h2Sections: [],
+            faqEnabled: true,
+            ctaPlaceholders: [],
+          },
+          personas: [],
+          exclusionList: ["financial advice"],
+        },
+      },
+    },
+    extracted: {
+      primary_keyword: "financial advice for dog breeders",
+      intent: "educational",
+    },
+  });
+
+  const result = await service.decide(CONVERSATION_ID);
+
+  assert.equal(result.action, "skip-nosignal");
+  assert.match(result.reason, /tenant exclusion list/);
+  assertLogged(store, "skip-nosignal");
+});
+
 test("decide creates for AgPages-style shearing livestock and agronomy topics", async () => {
   const { service, store } = makeService({
     messages: [
