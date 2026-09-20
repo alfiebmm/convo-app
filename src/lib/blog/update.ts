@@ -11,13 +11,13 @@ import {
   generateWithRateLimitRetry,
   isRecord,
   logQualityGateViolation,
+  logRepairPass,
   logSeoValidation,
   OpenAiBlogCreateClient,
   packValidate,
   parsePostJson,
   resolveBrandJson,
   resolveCtaConfig,
-  retryInstruction,
   stripRenderedEmDashes,
   transcript,
   uniqueSlug,
@@ -31,10 +31,10 @@ import {
   type BrandJson,
   type ConversationRecord,
   type MessageRecord,
-  type RetryClass,
   type TenantRecord,
 } from "./create";
 import type { DecisionResult } from "./decision";
+import { repairBlogPost, type RepairOperation } from "./repair";
 import postSchema from "./schemas/post.schema.json";
 import { validateSeoMetadata } from "./seo";
 import {
@@ -92,8 +92,7 @@ type BlogUpdateBrief = {
   knowledge: { entries: Array<{ q: string; a: string }> };
 };
 
-const MAX_RETRIES_PER_CLASS = 3;
-const MAX_GENERATION_ATTEMPTS = 6;
+const MAX_REPAIR_PASSES = 12;
 
 const SYSTEM_PROMPT = `You are Convo's senior SEO article editor.
 
@@ -287,36 +286,50 @@ function buildUpdateService(deps: BlogUpdateDeps) {
         });
       }
 
-      const retryCounts = new Map<RetryClass, number>();
-      const retryInstructions: string[] = [];
       let finalPost: BlogPostJson | null = null;
       let finalHtml = "";
       let finalSemanticHtml = "";
       let finalWordCount: number | null = null;
       let failureReason = "Article update generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
+      const repairOperations: RepairOperation[] = [];
 
-      for (
-        let generationAttempt = 1;
-        !finalPost && generationAttempt <= MAX_GENERATION_ATTEMPTS;
-        generationAttempt++
-      ) {
-        const raw = await generateWithRateLimitRetry(
-          deps.ai,
-          {
-            systemPrompt: SYSTEM_PROMPT,
-            userPrompt: buildUserPrompt(brief, retryInstructions),
-          },
-          deps.sleep
-        ).catch((error) => {
-          failureReason =
-            error instanceof Error ? error.message : `OpenAI failed: ${String(error)}`;
-          return null;
+      const raw = await generateWithRateLimitRetry(
+        deps.ai,
+        {
+          systemPrompt: SYSTEM_PROMPT,
+          userPrompt: buildUserPrompt(brief, []),
+        },
+        deps.sleep
+      ).catch((error) => {
+        failureReason =
+          error instanceof Error ? error.message : `OpenAI failed: ${String(error)}`;
+        return null;
+      });
+
+      if (!raw) {
+        return persistFailure(deps.store, {
+          loaded,
+          decision,
+          targetBlogPostId: target.id,
+          reason: failureReason,
         });
-        if (!raw) break;
+      }
 
+      let candidate: BlogPostJson;
+      try {
+        candidate = normaliseRevision(parsePostJson(raw), target, deps.now());
+      } catch (error) {
+        return persistFailure(deps.store, {
+          loaded,
+          decision,
+          targetBlogPostId: target.id,
+          reason: error instanceof Error ? error.message : `Invalid JSON: ${String(error)}`,
+        });
+      }
+
+      for (let repairPass = 0; !finalPost && repairPass <= MAX_REPAIR_PASSES; repairPass++) {
         try {
-          const candidate = normaliseRevision(parsePostJson(raw), target, deps.now());
           const validated = validateCandidate(candidate, brief, deps.validate);
           const slug = await uniqueGeneratedSlug(
             deps.store,
@@ -358,25 +371,45 @@ function buildUpdateService(deps: BlogUpdateDeps) {
               targetBlogPostId: target.id,
             });
           }
-          const retryClass = violation.code;
-          const retryCount = (retryCounts.get(retryClass) ?? 0) + 1;
-          retryCounts.set(retryClass, retryCount);
-          console.info("[blog] article update generation retry", {
-            conversationId,
-            retryClass,
-            retryCount,
-            maxRetriesPerClass: MAX_RETRIES_PER_CLASS,
-            generationAttempt,
-            maxGenerationAttempts: MAX_GENERATION_ATTEMPTS,
-            violation: violation.message,
-          });
-          if (
-            retryCount > MAX_RETRIES_PER_CLASS ||
-            generationAttempt >= MAX_GENERATION_ATTEMPTS
-          ) {
+          if (repairPass >= MAX_REPAIR_PASSES) {
+            console.error("[blog] article update repair loop exhausted", {
+              conversationId,
+              targetBlogPostId: target.id,
+              maxRepairPasses: MAX_REPAIR_PASSES,
+              violation: violation.message,
+              repairOperations,
+            });
             break;
           }
-          retryInstructions.push(retryInstruction(violation));
+
+          const repair = await repairBlogPost(candidate, brief, violation, deps.ai).catch(
+            (repairError) => {
+              failureReason =
+                repairError instanceof Error
+                  ? repairError.message
+                  : `Article update repair failed: ${String(repairError)}`;
+              return null;
+            }
+          );
+          if (!repair) break;
+          candidate = normaliseRevision(repair.post, target, deps.now());
+          repairOperations.push(...repair.operations);
+          await logRepairPass(deps.store, {
+            loaded,
+            decision,
+            violation,
+            repairPass: repairPass + 1,
+            operations: repair.operations,
+            targetBlogPostId: target.id,
+          });
+          console.info("[blog] article update contract repair applied", {
+            conversationId,
+            targetBlogPostId: target.id,
+            repairPass: repairPass + 1,
+            violationCode: violation.code,
+            violationMessage: violation.message,
+            operations: repair.operations,
+          });
         }
       }
 
@@ -405,6 +438,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
             decision,
             updateOf: target.id,
             emDashReplacements: allEmDashReplacements,
+            repairOperations,
           },
         }),
         status: "draft",
