@@ -10,8 +10,8 @@ import { runPrePublishChecklist } from "@/lib/blog/pre-publish-checklist";
 import { withDashboardErrorLogging } from "@/lib/errors/wrap";
 import { getAuthenticatedSupabaseClient } from "@/lib/supabase-client";
 import { db } from "@/lib/db";
-import { messages, tenants } from "@/lib/db/schema";
-import { asc, eq } from "drizzle-orm";
+import { blogEditorialBriefs, blogPostSeo, messages, tenants } from "@/lib/db/schema";
+import { asc, desc, eq, or } from "drizzle-orm";
 import type { TenantSettings } from "@/lib/publishing";
 
 import { ArticleDetailViewWithPublishing } from "./article-detail";
@@ -57,6 +57,25 @@ async function ContentDetailPageImpl({
         .orderBy(asc(messages.createdAt))
     : [];
 
+  const [seoFields] = await db
+    .select()
+    .from(blogPostSeo)
+    .where(eq(blogPostSeo.blogPostId, post.id))
+    .limit(1);
+
+  const briefWhere = post.threadId
+    ? or(
+        eq(blogEditorialBriefs.blogPostId, post.id),
+        eq(blogEditorialBriefs.conversationId, post.threadId),
+      )
+    : eq(blogEditorialBriefs.blogPostId, post.id);
+  const [editorialBrief] = await db
+    .select()
+    .from(blogEditorialBriefs)
+    .where(briefWhere)
+    .orderBy(desc(blogEditorialBriefs.createdAt))
+    .limit(1);
+
   const checklist = runPrePublishChecklist(post, {
     settings: tenantSettings,
     brandJson:
@@ -78,6 +97,8 @@ async function ContentDetailPageImpl({
       post={post}
       checklist={checklist}
       wordpressSiteUrl={wordpress.ok ? wordpress.config?.siteUrl ?? null : null}
+      seoFields={seoFields ?? null}
+      editorialBrief={editorialBrief ?? null}
     />
   );
 }

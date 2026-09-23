@@ -251,6 +251,27 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* SEO Strategy */}
+        <section className="rounded-lg border border-slate-200 bg-white p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                SEO Strategy
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Manage the search targets, audiences, internal links, and CTAs
+                used before article generation.
+              </p>
+            </div>
+            <Link
+              href="/dashboard/settings/seo-strategy"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Configure SEO strategy
+            </Link>
+          </div>
+        </section>
+
         {/* CMS Integration */}
         <section className="rounded-lg border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">

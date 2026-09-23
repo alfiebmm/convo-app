@@ -48,7 +48,7 @@ type InsertedPost = {
   content: string;
   contentSemantic?: string | null;
   metadata: Record<string, unknown>;
-  status: "draft" | "generation_failed" | "update_pending";
+  status: "draft" | "in_review" | "generation_failed" | "update_pending";
   persona: string | null;
   topic: string | null;
 };

@@ -186,6 +186,74 @@ export const tenantAiImageUsage = pgTable(
   ]
 );
 
+export type TenantSeoKeyword = {
+  keyword: string;
+  priority: "high" | "medium" | "low";
+  notes?: string;
+};
+export type TenantSeoService = { name: string; url?: string; notes?: string };
+export type TenantSeoLocation = { name: string; notes?: string };
+export type TenantSeoAudience = { persona: string; description?: string };
+export type TenantSeoInternalUrl = {
+  url: string;
+  label?: string;
+  topic?: string;
+};
+export type TenantSeoCta = {
+  label: string;
+  url?: string;
+  article_type?: string;
+  audience?: string;
+};
+
+export const tenantSeoStrategy = pgTable(
+  "tenant_seo_strategy",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    targetKeywords: jsonb("target_keywords")
+      .$type<TenantSeoKeyword[]>()
+      .default([])
+      .notNull(),
+    priorityServices: jsonb("priority_services")
+      .$type<TenantSeoService[]>()
+      .default([])
+      .notNull(),
+    priorityLocations: jsonb("priority_locations")
+      .$type<TenantSeoLocation[]>()
+      .default([])
+      .notNull(),
+    targetAudiences: jsonb("target_audiences")
+      .$type<TenantSeoAudience[]>()
+      .default([])
+      .notNull(),
+    approvedInternalUrls: jsonb("approved_internal_urls")
+      .$type<TenantSeoInternalUrl[]>()
+      .default([])
+      .notNull(),
+    preferredCtas: jsonb("preferred_ctas")
+      .$type<TenantSeoCta[]>()
+      .default([])
+      .notNull(),
+    avoidTopics: jsonb("avoid_topics").$type<string[]>().default([]).notNull(),
+    avoidClaims: jsonb("avoid_claims").$type<string[]>().default([]).notNull(),
+    avoidKeywords: jsonb("avoid_keywords").$type<string[]>().default([]).notNull(),
+    revision: integer("revision").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("tenant_seo_strategy_tenant_unique").on(table.tenantId),
+    index("tenant_seo_strategy_tenant_idx").on(table.tenantId),
+  ]
+);
+
 // ============================================================
 // USERS
 // ============================================================
@@ -452,6 +520,101 @@ export const blogPosts = pgTable(
     index("blog_posts_embedding_hnsw_idx")
       .using("hnsw", table.embedding.op("vector_cosine_ops"))
       .where(sql`embedding IS NOT NULL`),
+  ]
+);
+
+export const blogPostSeo = pgTable("blog_post_seo", {
+  blogPostId: uuid("blog_post_id")
+    .primaryKey()
+    .references(() => blogPosts.id, { onDelete: "cascade" }),
+  primaryKeyword: text("primary_keyword"),
+  secondaryKeywords: jsonb("secondary_keywords")
+    .$type<string[]>()
+    .default([])
+    .notNull(),
+  searchIntent: text("search_intent"),
+  targetAudience: text("target_audience"),
+  articleType: text("article_type"),
+  internalLinkSuggestions: jsonb("internal_link_suggestions")
+    .$type<Array<{ url: string; label?: string }>>()
+    .default([])
+    .notNull(),
+  ctaGoal: text("cta_goal"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export type BlogEditorialBriefEvidence = {
+  messageId?: string;
+  role?: string;
+  snippet: string;
+};
+
+export const blogEditorialBriefs = pgTable(
+  "blog_editorial_briefs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blogPostId: uuid("blog_post_id").references(() => blogPosts.id, {
+      onDelete: "set null",
+    }),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    tenantId: uuid("tenant_id")
+      .references(() => tenants.id, { onDelete: "cascade" })
+      .notNull(),
+    selectedPrimaryKeyword: text("selected_primary_keyword"),
+    selectionRationale: text("selection_rationale"),
+    supportingKeywords: jsonb("supporting_keywords")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
+    supportingEntities: jsonb("supporting_entities")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
+    conversationEvidence: jsonb("conversation_evidence")
+      .$type<BlogEditorialBriefEvidence[]>()
+      .default([])
+      .notNull(),
+    tenantFactsUsed: jsonb("tenant_facts_used")
+      .$type<Record<string, unknown>>()
+      .default({})
+      .notNull(),
+    missingDataFallbacks: jsonb("missing_data_fallbacks")
+      .$type<Array<{ field: string; fallback_strategy: string }>>()
+      .default([])
+      .notNull(),
+    requiredModules: jsonb("required_modules")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
+    internalLinkPlan: jsonb("internal_link_plan")
+      .$type<Array<{ url: string; label?: string; reason?: string }>>()
+      .default([])
+      .notNull(),
+    ctaPlan: jsonb("cta_plan").$type<Record<string, unknown>>().default({}).notNull(),
+    createUpdateSkip: text("create_update_skip")
+      .$type<"create" | "update" | "skip">()
+      .notNull(),
+    createUpdateSkipRationale: text("create_update_skip_rationale"),
+    noStrongTarget: boolean("no_strong_target").default(false).notNull(),
+    needsReview: boolean("needs_review").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("blog_editorial_briefs_tenant_idx").on(table.tenantId),
+    index("blog_editorial_briefs_blog_post_idx").on(table.blogPostId),
+    index("blog_editorial_briefs_conversation_idx").on(table.conversationId),
   ]
 );
 

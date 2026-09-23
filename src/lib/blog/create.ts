@@ -8,9 +8,12 @@ import type OpenAI from "openai";
 import { db } from "@/lib/db";
 import {
   blogDecisionLogs,
+  blogEditorialBriefs,
+  blogPostSeo,
   blogPosts,
   conversations,
   messages,
+  tenantSeoStrategy,
   tenants,
 } from "@/lib/db/schema";
 import {
@@ -18,6 +21,14 @@ import {
   resolveContentRules,
 } from "@/lib/forum-config/content-rules";
 import { getOpenAIClient } from "@/lib/openai";
+import {
+  articleSeoFromBrief,
+  buildEditorialBrief,
+  validateEditorialBriefArticle,
+  type ArticleSeoFields,
+  type EditorialBrief,
+  type TenantSeoStrategy,
+} from "@/lib/pipeline/editorial-brief";
 
 import type { DecisionResult } from "./decision";
 import {
@@ -75,6 +86,7 @@ type BlogBrief = {
     intent: string;
     targetBlogPostId?: string;
   };
+  editorial: EditorialBrief;
   knowledge: {
     entries: Array<{ q: string; a: string }>;
   };
@@ -124,7 +136,7 @@ export type BlogCreateStore = {
     content: string;
     contentSemantic?: string | null;
     metadata: Record<string, unknown>;
-    status: "draft" | "generation_failed" | "update_pending";
+    status: "draft" | "in_review" | "generation_failed" | "update_pending";
     persona: string | null;
     topic: string | null;
   }): Promise<{ id: string }>;
@@ -138,6 +150,10 @@ export type BlogCreateStore = {
     targetBlogPostId?: string;
     metadata: Record<string, unknown>;
   }): Promise<{ id: string }>;
+  loadTenantSeoStrategy?(tenantId: string): Promise<TenantSeoStrategy | null>;
+  insertEditorialBrief?(brief: EditorialBrief): Promise<{ id: string }>;
+  linkEditorialBriefToBlogPost?(briefId: string, blogPostId: string): Promise<void>;
+  upsertBlogPostSeo?(blogPostId: string, fields: ArticleSeoFields): Promise<void>;
 };
 
 export type BlogCreateAi = {
@@ -223,6 +239,9 @@ Article requirements:
 - Use a lowercase, hyphenated \`post.slug\` with stop words removed, 70 characters or fewer.
 - BANNED TERMS: ${bannedTerms}. Using ANY of these terms, even once, will REJECT the entire output. Do not use any word or phrase from this list, not even as part of a compound word.
 - Use the tenant CTA config exactly for any type=cta block.
+- Follow the supplied editorial brief. It defines required modules, planned internal links, CTA goal, target audience, supporting keywords, and tenant facts to use.
+- If editorial.requiredModules includes "internal-links", include at least one planned internal link exactly as supplied in editorial.internalLinkPlan.
+- If editorial.requiredModules includes "cta", include a CTA block using the tenant CTA config and make the CTA purpose match editorial.ctaPlan.
 - Do not invent facts that are not supported by the source conversation, tenant context, or common non-sensitive industry knowledge.
 - Do not fabricate customer names, prices, guarantees, credentials, or policies.
 - Use sentence case headings.
@@ -420,7 +439,11 @@ export function resolveBrandJson(tenant: TenantRecord, cta: BlogCtaConfig): Bran
 function buildBrief(
   conversationId: string,
   decision: DecisionResult,
-  loaded: { tenant: TenantRecord; messages: MessageRecord[] }
+  loaded: {
+    tenant: TenantRecord;
+    messages: MessageRecord[];
+    seoStrategy?: TenantSeoStrategy | null;
+  }
 ): BlogBrief {
   if (decision.action !== "create") {
     throw new Error(`createArticle only accepts create decisions, got ${decision.action}`);
@@ -463,6 +486,22 @@ function buildBrief(
       intent: decision.intent?.trim() || "educational",
       targetBlogPostId: decision.target_blog_post_id,
     },
+    editorial: buildEditorialBrief({
+      tenantId: loaded.tenant.id,
+      conversationId,
+      strategy: loaded.seoStrategy ?? null,
+      messages: loaded.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      decision: {
+        action: decision.action,
+        primaryKeyword: decision.primary_keyword,
+        intent: decision.intent,
+        reason: decision.reason,
+        targetBlogPostId: decision.target_blog_post_id,
+      },
+    }),
     knowledge: {
       entries: [],
     },
@@ -574,6 +613,17 @@ export function validateCandidate(
     brief.decision.primaryKeyword
   );
   if (keyword) throw keyword;
+
+  const editorialIssues = validateEditorialBriefArticle({
+    brief: brief.editorial,
+    article: post,
+  });
+  if (editorialIssues.length > 0 && !brief.editorial.noStrongTarget) {
+    throw {
+      code: "primary_keyword",
+      message: editorialIssues.map((issue) => issue.message).join(" "),
+    } satisfies WritingRuleViolation;
+  }
 
   post = {
     ...post,
@@ -770,6 +820,7 @@ async function persistFailure(
     loaded: { conversation: ConversationRecord; tenant: TenantRecord };
     decision: DecisionResult;
     reason: string;
+    editorialBriefId?: string;
   }
 ): Promise<string> {
   console.error("[blog] article generation failed", {
@@ -804,6 +855,10 @@ async function persistFailure(
     topic: params.decision.intent,
   });
 
+  if (params.editorialBriefId && store.linkEditorialBriefToBlogPost) {
+    await store.linkEditorialBriefToBlogPost(params.editorialBriefId, row.id);
+  }
+
   return row.id;
 }
 
@@ -817,11 +872,22 @@ function buildCreateService(deps: BlogCreateDeps) {
       if (!loaded) throw new Error(`Conversation not found: ${conversationId}`);
 
       let brief: BlogBrief;
+      let editorialBriefId: string | undefined;
+      let hasConfiguredSeoTargets = false;
       try {
+        const seoStrategy = deps.store.loadTenantSeoStrategy
+          ? await deps.store.loadTenantSeoStrategy(loaded.tenant.id)
+          : null;
+        hasConfiguredSeoTargets = Boolean(seoStrategy?.targetKeywords.length);
         brief = buildBrief(conversationId, decision, {
           tenant: loaded.tenant,
           messages: loaded.messages,
+          seoStrategy,
         });
+        if (deps.store.insertEditorialBrief) {
+          editorialBriefId = (await deps.store.insertEditorialBrief(brief.editorial)).id;
+          brief.editorial.id = editorialBriefId;
+        }
       } catch (error) {
         return persistFailure(deps.store, {
           loaded,
@@ -856,6 +922,7 @@ function buildCreateService(deps: BlogCreateDeps) {
           loaded,
           decision,
           reason: failureReason,
+          editorialBriefId,
         });
       }
 
@@ -867,6 +934,7 @@ function buildCreateService(deps: BlogCreateDeps) {
           loaded,
           decision,
           reason: error instanceof Error ? error.message : `Invalid JSON: ${String(error)}`,
+          editorialBriefId,
         });
       }
 
@@ -956,6 +1024,7 @@ function buildCreateService(deps: BlogCreateDeps) {
           loaded,
           decision,
           reason: failureReason,
+          editorialBriefId,
         });
       }
       if (finalWordCount === null) {
@@ -965,6 +1034,7 @@ function buildCreateService(deps: BlogCreateDeps) {
       const metadata = buildBlogPostMetadata(finalPost, finalWordCount, {
         generation: {
           decision,
+          editorialBrief: brief.editorial,
           emDashReplacements: allEmDashReplacements,
           repairOperations,
         },
@@ -976,11 +1046,21 @@ function buildCreateService(deps: BlogCreateDeps) {
         slug: finalPost.slug,
         content: finalHtml,
         contentSemantic: finalSemanticHtml,
-        metadata,
-        status: "draft",
+          metadata,
+        status:
+          brief.editorial.noStrongTarget && hasConfiguredSeoTargets
+            ? "in_review"
+            : "draft",
         persona: decision.primary_keyword,
         topic: decision.intent,
       });
+
+      if (editorialBriefId && deps.store.linkEditorialBriefToBlogPost) {
+        await deps.store.linkEditorialBriefToBlogPost(editorialBriefId, row.id);
+      }
+      if (deps.store.upsertBlogPostSeo) {
+        await deps.store.upsertBlogPostSeo(row.id, articleSeoFromBrief(brief.editorial));
+      }
 
       if (deps.heroImages) {
         const heroResult = await deps.heroImages.generate({
@@ -1116,7 +1196,7 @@ export class DrizzleBlogCreateStore implements BlogCreateStore {
     slug: string;
     content: string;
     metadata: Record<string, unknown>;
-    status: "draft" | "generation_failed" | "update_pending";
+    status: "draft" | "in_review" | "generation_failed" | "update_pending";
     persona: string | null;
     topic: string | null;
   }): Promise<{ id: string }> {
@@ -1152,6 +1232,90 @@ export class DrizzleBlogCreateStore implements BlogCreateStore {
       })
       .returning({ id: blogDecisionLogs.id });
     return row;
+  }
+
+  async loadTenantSeoStrategy(tenantId: string): Promise<TenantSeoStrategy | null> {
+    const [row] = await db
+      .select()
+      .from(tenantSeoStrategy)
+      .where(eq(tenantSeoStrategy.tenantId, tenantId))
+      .limit(1);
+    if (!row) return null;
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      targetKeywords: row.targetKeywords,
+      priorityServices: row.priorityServices,
+      priorityLocations: row.priorityLocations,
+      targetAudiences: row.targetAudiences,
+      approvedInternalUrls: row.approvedInternalUrls,
+      preferredCtas: row.preferredCtas,
+      avoidTopics: row.avoidTopics,
+      avoidClaims: row.avoidClaims,
+      avoidKeywords: row.avoidKeywords,
+      revision: row.revision,
+    };
+  }
+
+  async insertEditorialBrief(brief: EditorialBrief): Promise<{ id: string }> {
+    const [row] = await db
+      .insert(blogEditorialBriefs)
+      .values({
+        blogPostId: brief.blogPostId ?? null,
+        conversationId: brief.conversationId,
+        tenantId: brief.tenantId,
+        selectedPrimaryKeyword: brief.selectedPrimaryKeyword,
+        selectionRationale: brief.selectionRationale,
+        supportingKeywords: brief.supportingKeywords,
+        supportingEntities: brief.supportingEntities,
+        conversationEvidence: brief.conversationEvidence,
+        tenantFactsUsed: brief.tenantFactsUsed,
+        missingDataFallbacks: brief.missingDataFallbacks,
+        requiredModules: brief.requiredModules,
+        internalLinkPlan: brief.internalLinkPlan,
+        ctaPlan: brief.ctaPlan,
+        createUpdateSkip: brief.createUpdateSkip,
+        createUpdateSkipRationale: brief.createUpdateSkipRationale,
+        noStrongTarget: brief.noStrongTarget,
+        needsReview: brief.needsReview,
+      })
+      .returning({ id: blogEditorialBriefs.id });
+    return row;
+  }
+
+  async linkEditorialBriefToBlogPost(briefId: string, blogPostId: string): Promise<void> {
+    await db
+      .update(blogEditorialBriefs)
+      .set({ blogPostId, updatedAt: new Date() })
+      .where(eq(blogEditorialBriefs.id, briefId));
+  }
+
+  async upsertBlogPostSeo(blogPostId: string, fields: ArticleSeoFields): Promise<void> {
+    await db
+      .insert(blogPostSeo)
+      .values({
+        blogPostId,
+        primaryKeyword: fields.primaryKeyword,
+        secondaryKeywords: fields.secondaryKeywords,
+        searchIntent: fields.searchIntent,
+        targetAudience: fields.targetAudience,
+        articleType: fields.articleType,
+        internalLinkSuggestions: fields.internalLinkSuggestions,
+        ctaGoal: fields.ctaGoal,
+      })
+      .onConflictDoUpdate({
+        target: blogPostSeo.blogPostId,
+        set: {
+          primaryKeyword: fields.primaryKeyword,
+          secondaryKeywords: fields.secondaryKeywords,
+          searchIntent: fields.searchIntent,
+          targetAudience: fields.targetAudience,
+          articleType: fields.articleType,
+          internalLinkSuggestions: fields.internalLinkSuggestions,
+          ctaGoal: fields.ctaGoal,
+          updatedAt: new Date(),
+        },
+      });
   }
 }
 
