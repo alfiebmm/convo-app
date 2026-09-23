@@ -5,6 +5,18 @@ export type SearchIntent =
   | "transactional"
   | "navigational";
 
+export type TopicType = "rates" | "general";
+
+export type RequiredModules = {
+  quickAnswer: boolean;
+  rateTableOrFallback: boolean;
+  quoteDrivers: boolean;
+  checklist: boolean;
+  cta: boolean;
+  faq: boolean;
+  internalLinks: boolean;
+};
+
 export type TenantSeoStrategy = {
   id?: string;
   tenantId: string;
@@ -50,6 +62,7 @@ export type EditorialBrief = {
   };
   missingDataFallbacks: Array<{ field: string; fallback_strategy: string }>;
   requiredModules: string[];
+  requiredModuleContract: RequiredModules;
   internalLinkPlan: Array<{ url: string; label?: string; reason?: string }>;
   ctaPlan: { label?: string; url?: string; rationale?: string };
   createUpdateSkip: "create" | "update" | "skip";
@@ -57,6 +70,7 @@ export type EditorialBrief = {
   noStrongTarget: boolean;
   needsReview: boolean;
   searchIntent: SearchIntent;
+  topicType: TopicType;
   targetAudience: string | null;
   articleType: string;
 };

@@ -69,6 +69,40 @@ test("renderSemantic preserves fixture structure", () => {
   assert.equal(countMatches(html, /<figure>/g), 1);
 });
 
+test("renderSemantic emits portable rates modules", () => {
+  const post = structuredClone(postFixture) as BlogPostJson;
+  post.sections[0].blocks.unshift({
+    type: "quickAnswer",
+    heading: "Quick answer",
+    body: "Verified ranges are not available.",
+  });
+  post.sections[0].blocks.push({
+    type: "table",
+    caption: "Indicative comparison",
+    headers: ["Service", "Driver"],
+    rows: [["Spraying", "Area and travel"]],
+  });
+  post.sections[0].blocks.push({
+    type: "checklist",
+    items: ["Share timing", "Confirm access"],
+  });
+  post.sections[0].blocks.push({
+    type: "noRateDataFallback",
+    text: "We do not yet have verified rate data for this service.",
+  });
+
+  const html = renderSemantic({
+    brand: brandFixture as Record<string, unknown>,
+    post,
+  });
+
+  assert.match(html, /<aside class="quick-answer">/);
+  assert.match(html, /<table>/);
+  assert.match(html, /<caption>Indicative comparison<\/caption>/);
+  assert.match(html, /<ul class="checklist">/);
+  assert.match(html, /<p data-fallback="no-rate-data">/);
+});
+
 test("renderSemantic chemist2u snapshot starts with readable JSON-LD and article body", () => {
   const snapshot = semanticHtml().split("\n").slice(0, 33).join("\n");
 

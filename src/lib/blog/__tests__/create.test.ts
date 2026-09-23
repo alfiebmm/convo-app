@@ -196,6 +196,85 @@ function validPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
   };
 }
 
+function ratesDecision(): DecisionResult {
+  return {
+    action: "create",
+    reason: "Rates topic.",
+    similar_posts: [],
+    primary_keyword: "AgPages contractor rates",
+    intent: "commercial",
+  };
+}
+
+function validRatesPost(overrides: Partial<BlogPostJson> = {}): BlogPostJson {
+  const post = validPost({
+    title: "AgPages contractor rates guide",
+    dek: "Understand AgPages contractor rates, quote drivers, job brief details, and how to request a quote when verified rate data is not available.",
+    intro:
+      "AgPages contractor rates can vary by service type, machinery, location, timing, job complexity, and the details supplied in the initial brief.",
+    seo: {
+      metaTitle: "AgPages contractor rates guide for Australian jobs",
+      metaDescription:
+        "Understand AgPages contractor rates, quote drivers, job brief details, and how to request a quote when verified rate data is not available.",
+      canonicalUrl: null as unknown as string,
+      ogImage: null as unknown as string,
+      authoredAt: null as unknown as string,
+      modifiedAt: null as unknown as string,
+      authorName: null as unknown as string,
+      keywords: ["AgPages contractor rates", "contractor quotes"],
+    },
+  });
+
+  post.sections[0].heading = "AgPages contractor rates at a glance";
+  post.sections[0].blocks.unshift({
+    type: "quickAnswer",
+    heading: "Quick answer",
+    body:
+      "Use AgPages contractor rates as a starting point for scoping. Verified ranges are not available in this source, so request a quote against the job details.",
+  });
+  post.sections[1].heading = "Quote drivers for AgPages contractor rates";
+  post.sections[1].blocks.push({
+    type: "ul",
+    items: [
+      "Service type and machinery required.",
+      "Location, travel time, and site access.",
+      "Timing, urgency, and weather constraints.",
+    ],
+  });
+  post.sections[2].blocks.push({
+    type: "noRateDataFallback",
+    text:
+      "We do not yet have verified rate data for this service. Use the CTA to request a quote for the exact job scope.",
+  });
+  post.sections[3].blocks.push({
+    type: "checklist",
+    items: [
+      "Describe the job, location, timing, and access constraints.",
+      "Share area, equipment needs, and safety requirements.",
+      "Ask what is included, excluded, and charged separately.",
+    ],
+  });
+  post.faqs = [
+    {
+      q: "Do AgPages contractor rates include verified ranges?",
+      a: "This source does not include verified rate ranges, so the safest next step is to request a quote against the actual job scope.",
+    },
+    {
+      q: "What changes a contractor quote?",
+      a: "Quotes can change with service type, machinery, travel, timing, site access, and whether extra preparation is required.",
+    },
+    {
+      q: "What should I include in a job brief?",
+      a: "Include the location, area, timing, work type, machinery needs, site constraints, and any safety or access details.",
+    },
+  ];
+
+  return {
+    ...post,
+    ...overrides,
+  };
+}
+
 function validBrand(): Record<string, unknown> {
   const brand = structuredClone(brandFixture) as Record<string, unknown>;
   const fonts = brand.fonts as Record<string, unknown>;
@@ -357,6 +436,39 @@ test("buildSystemPrompt injects keyword, banned terms, and section contract", as
   assert.match(prompt, /gradient placeholder/);
 });
 
+test("buildSystemPrompt includes rates content module instructions", async () => {
+  const brief = __testing.buildBrief(CONVERSATION_ID, ratesDecision(), {
+    tenant: {
+      id: TENANT_ID,
+      name: "AgPages",
+      slug: "agpages",
+      domain: "agpages.com.au",
+      settings: {
+        brandJson: validBrand(),
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+    },
+    messages: [],
+  });
+
+  const prompt = __testing.buildSystemPrompt(brief);
+
+  assert.equal(brief.editorial.topicType, "rates");
+  assert.deepEqual(brief.editorial.requiredModuleContract, {
+    quickAnswer: true,
+    rateTableOrFallback: true,
+    quoteDrivers: true,
+    checklist: true,
+    cta: true,
+    faq: true,
+    internalLinks: true,
+  });
+  assert.match(prompt, /Required content modules/);
+  assert.match(prompt, /type": "quickAnswer"/);
+  assert.match(prompt, /noRateDataFallback/);
+  assert.match(prompt, /do not invent ranges/i);
+});
+
 test("createArticle renders HTML and persists full post metadata", async () => {
   const { service, inserts, seoValidationLogs } = makeService([validPost()]);
 
@@ -385,6 +497,55 @@ test("createArticle renders HTML and persists full post metadata", async () => {
   assert.equal(seoValidationLogs.length, 1);
   assert.equal(seoValidationLogs[0].metadata.phase, "seo_validation");
   assert.equal(seoValidationLogs[0].metadata.ok, true);
+});
+
+test("AgPages rates fixture repairs thin prose into required modules with no-data fallback", async () => {
+  const genericRatesPost = validRatesPost({
+    sections: validRatesPost().sections.map((section) => ({
+      ...section,
+      blocks: section.blocks.filter(
+        (block) =>
+          block.type === "p" ||
+          block.type === "cta"
+      ),
+    })),
+  });
+  const repairedRatesPost = validRatesPost();
+  const { service, inserts, prompts, seoValidationLogs } = makeService([
+    genericRatesPost,
+    repairedRatesPost,
+  ]);
+
+  await service.createArticle(CONVERSATION_ID, ratesDecision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /missing required content module/i);
+  assert.equal(seoValidationLogs[0].metadata.phase, "repair_loop");
+  assert.equal(
+    (
+      (seoValidationLogs[0].metadata.operations as Array<Record<string, unknown>>)[0]
+    ).action,
+    "repair_required_content_modules",
+  );
+
+  const metadata = inserts[0].metadata as BlogPostJson & {
+    topicType?: string;
+    requiredModuleContract?: Record<string, boolean>;
+  };
+  assert.equal(metadata.topicType, "rates");
+  assert.equal(metadata.requiredModuleContract?.rateTableOrFallback, true);
+  assert.ok(
+    metadata.sections
+      .flatMap((section) => section.blocks)
+      .some((block) => block.type === "noRateDataFallback")
+  );
+  assert.match(inserts[0].contentSemantic ?? "", /data-fallback="no-rate-data"/);
+  assert.match(inserts[0].contentSemantic ?? "", /<aside class="quick-answer">/);
+  assert.match(inserts[0].contentSemantic ?? "", /<ul class="checklist">/);
+  assert.match(inserts[0].contentSemantic ?? "", /Book a consult/);
+  assert.match(inserts[0].contentSemantic ?? "", /<h2>FAQ<\/h2>/);
+  assert.doesNotMatch(inserts[0].contentSemantic ?? "", /\$[0-9]/);
 });
 
 test("createArticle preserves a valid HTTPS hero URL from the generated post", async () => {
