@@ -1,0 +1,47 @@
+{
+  "tenant": {
+    "name": "AgPages",
+    "settings": {
+      "brandJson": {
+        "name": "AgPages",
+        "site": {
+          "baseUrl": "https://agpages.com.au",
+          "hubUrl": "https://agpages.com.au/blog"
+        },
+        "services": [
+          "agricultural contractor directory",
+          "job quote enquiries",
+          "machinery and rural service listings"
+        ]
+      },
+      "blog": {
+        "cta": {
+          "heading": "Request a contractor quote",
+          "body": "Share the job scope and location so AgPages can help with the next step.",
+          "linkUrl": "https://agpages.com.au/contact",
+          "linkLabel": "Request a quote"
+        }
+      }
+    }
+  },
+  "sourceMessages": [
+    {
+      "role": "user",
+      "content": "I need an article about contractor rates. We do not have verified rate ranges, so tell people to request quotes based on job scope, machinery, access, timing and location."
+    },
+    {
+      "role": "assistant",
+      "content": "Use a no-rate-data fallback and keep the article limited to quote requests, job scope and practical quote drivers."
+    }
+  ],
+  "unsupportedSentences": [
+    "AgPages contractor rates are easier to compare because verified customer reviews and star ratings show which operators are trusted.",
+    "Farmers can use AgPages forums and discussion boards to compare contractor experiences before requesting a quote.",
+    "AgPages webinars and training sessions help contractors learn how to price jobs.",
+    "Secure payments, escrow protection and digital contracts are built into the AgPages quote workflow."
+  ],
+  "repairedSentences": [
+    "AgPages contractor rates should be treated as quote-led because verified rate ranges are not available in the source material.",
+    "The practical next step is to request a quote with the job scope, location, machinery needs, timing and access constraints."
+  ]
+}

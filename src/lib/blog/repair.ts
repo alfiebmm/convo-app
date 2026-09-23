@@ -345,6 +345,62 @@ function sectionRepairPrompt(params: {
   };
 }
 
+function groundingRepairPrompt(params: {
+  brief: BlogRepairBrief;
+  post: BlogPostJson;
+  violation: WritingRuleViolation;
+}): { systemPrompt: string; userPrompt: string } {
+  return {
+    systemPrompt:
+      "You repair factual grounding issues in one Convo blog article. Return only JSON for the full repaired post object. Do not include markdown fences.",
+    userPrompt: JSON.stringify(
+      {
+        post: params.post,
+        unsupportedClaim: {
+          message: params.violation.message,
+          sentence: params.violation.sentence,
+        },
+        tenantContext: {
+          name: params.brief.tenant.name,
+          ctaConfig: params.brief.tenant.ctaConfig,
+        },
+        repairInstructions: [
+          "Remove unsupported product, marketplace, payment, review, forum, webinar, training, contract, booking, rewards, or policy claims unless tenant evidence explicitly supports them.",
+          "Do not invent replacement evidence, features, customer proof, prices, guarantees, credentials, or policies.",
+          "When a claim is unsupported but the surrounding section is useful, rewrite it as neutral advice about checking details with the tenant.",
+          "Preserve schema shape, Australian English, the primary keyword placements, required modules, and the tenant CTA config.",
+        ],
+      },
+      null,
+      2,
+    ),
+  };
+}
+
+async function repairGrounding(
+  post: BlogPostJson,
+  brief: BlogRepairBrief,
+  violation: WritingRuleViolation,
+  ai: BlogRepairAi,
+): Promise<RepairResult> {
+  const prompt = groundingRepairPrompt({ post, brief, violation });
+  const repaired = JSON.parse(await ai.generatePost(prompt)) as BlogPostJson;
+  return {
+    post: enforceCtaConfig(repaired, brief.tenant.ctaConfig),
+    operations: [
+      {
+        kind: "model",
+        code: "grounding",
+        action: "repair_unsupported_grounding_claims",
+        details: {
+          message: violation.message,
+          sentence: violation.sentence,
+        },
+      },
+    ],
+  };
+}
+
 function parseSectionRepair(raw: string, fallbackHeading: string): Section {
   const parsed = JSON.parse(raw) as Partial<Section>;
   return {
@@ -468,6 +524,7 @@ export async function repairBlogPost(
   if (violation.code === "required_module") {
     return repairRequiredModules(post, brief, violation, ai);
   }
+  if (violation.code === "grounding") return repairGrounding(post, brief, violation, ai);
   if (violation.code === "word_count") {
     return repairWordCount(post, brief, violation as WordCountGateViolation, ai);
   }

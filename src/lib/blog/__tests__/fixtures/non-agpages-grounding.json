@@ -1,0 +1,27 @@
+{
+  "tenant": {
+    "name": "Northside Vet",
+    "settings": {
+      "brandJson": {
+        "name": "Northside Vet",
+        "site": {
+          "baseUrl": "https://northsidevet.example",
+          "hubUrl": "https://northsidevet.example/blog"
+        },
+        "services": [
+          "small animal consultations",
+          "vaccinations",
+          "dental checks"
+        ]
+      }
+    }
+  },
+  "sourceMessages": [
+    {
+      "role": "user",
+      "content": "Write about preparing for a first puppy vaccination appointment. Mention what to bring and when to ask the clinic for advice."
+    }
+  ],
+  "unsupportedSentence": "Northside Vet offers an online booking portal with loyalty points for every puppy vaccination.",
+  "supportedSentence": "Northside Vet can help with small animal consultations, vaccinations and dental checks."
+}

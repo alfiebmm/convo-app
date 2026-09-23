@@ -72,6 +72,7 @@ export type WritingRuleViolation = {
     | "australian_english"
     | "primary_keyword"
     | "required_module"
+    | "grounding"
     | "word_count"
     | "schema";
   message: string;
