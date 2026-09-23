@@ -6,17 +6,19 @@ import {
   generateArticle,
   type GeneratedArticle,
 } from "../generate-article";
-import type { ExtractedTopic } from "../extract-topics";
+import type { ClassifiedConversation } from "../classify-conversation";
 
-const TOPIC: ExtractedTopic = {
-  primaryTopic: "Dog nutrition",
-  subtopics: ["puppy food"],
-  userIntent: "educational",
-  suggestedArticleType: "blog",
-  seoKeywords: ["dog nutrition"],
+const TOPIC: ClassifiedConversation = {
+  topic: "Dog nutrition",
+  primaryKeyword: "dog nutrition",
+  secondaryKeywords: ["puppy food"],
+  searchIntent: "informational",
+  articleType: "guide",
   confidence: 0.9,
-  audience: "general",
-  contentCategory: "care guide",
+  audience: "pet owner",
+  sourceEvidence: [{ role: "user", excerpt: "What should I feed my puppy?", turnIndex: 0 }],
+  needsReview: false,
+  reviewReasons: [],
 };
 
 const MESSAGES = [

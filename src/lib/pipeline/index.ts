@@ -17,7 +17,7 @@ import {
   tenants,
 } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { extractTopics } from "./extract-topics";
+import { classifyConversation, type ClassifiedConversation } from "./classify-conversation";
 import { dedup } from "./dedup";
 import { generateArticle, type GeneratedArticle } from "./generate-article";
 import {
@@ -39,7 +39,7 @@ export interface PipelineResult {
   article?: GeneratedArticle;
   autoPublished?: boolean;
   audience?: string;
-  contentCategory?: string;
+  articleType?: string;
   error?: string;
 }
 
@@ -81,8 +81,13 @@ export async function processConversation(
       content: m.content,
     }));
 
-    // 2. Extract topics
-    const topic = await extractTopics(messagePairs);
+    const seoStrategy = await loadTenantSeoStrategy(conversation.tenantId);
+
+    // 2. Classify conversation metadata
+    const topic = await classifyConversation({
+      conversationMessages: messagePairs,
+      tenantSeoStrategy: seoStrategy,
+    });
 
     if (topic.confidence < 0.3) {
       // Mark completed but skip content generation for low-confidence topics
@@ -101,8 +106,8 @@ export async function processConversation(
     // 3. Dedup
     const dedupResult = await dedup(
       conversation.tenantId,
-      topic.primaryTopic,
-      topic.subtopics.join(", ")
+      topic.topic,
+      topic.secondaryKeywords.join(", ")
     );
 
     const [tenant] = await db
@@ -119,6 +124,7 @@ export async function processConversation(
       tenantId: conversation.tenantId,
       conversationId,
       topic,
+      seoStrategy,
       messages: convoMessages.map((message) => ({
         id: message.id,
         role: message.role,
@@ -177,7 +183,7 @@ export async function processConversation(
       article,
       autoPublished,
       audience: topic.audience,
-      contentCategory: topic.contentCategory,
+      articleType: topic.articleType,
     };
   } catch (err) {
     console.error(`[Pipeline] Error processing ${conversationId}:`, err);
@@ -192,35 +198,11 @@ export async function processConversation(
 async function createEditorialBriefForLegacyPipeline(params: {
   tenantId: string;
   conversationId: string;
-  topic: {
-    primaryTopic: string;
-    userIntent: string;
-    seoKeywords: string[];
-    suggestedArticleType: string;
-  };
+  topic: ClassifiedConversation;
+  seoStrategy: TenantSeoStrategy | null;
   messages: Array<{ id: string; role: string; content: string }>;
 }): Promise<EditorialBrief> {
-  const [strategyRow] = await db
-    .select()
-    .from(tenantSeoStrategy)
-    .where(eq(tenantSeoStrategy.tenantId, params.tenantId))
-    .limit(1);
-  const strategy: TenantSeoStrategy | null = strategyRow
-    ? {
-        id: strategyRow.id,
-        tenantId: strategyRow.tenantId,
-        targetKeywords: strategyRow.targetKeywords,
-        priorityServices: strategyRow.priorityServices,
-        priorityLocations: strategyRow.priorityLocations,
-        targetAudiences: strategyRow.targetAudiences,
-        approvedInternalUrls: strategyRow.approvedInternalUrls,
-        preferredCtas: strategyRow.preferredCtas,
-        avoidTopics: strategyRow.avoidTopics,
-        avoidClaims: strategyRow.avoidClaims,
-        avoidKeywords: strategyRow.avoidKeywords,
-        revision: strategyRow.revision,
-      }
-    : null;
+  const strategy = params.seoStrategy;
   const brief = buildEditorialBrief({
     tenantId: params.tenantId,
     conversationId: params.conversationId,
@@ -228,10 +210,11 @@ async function createEditorialBriefForLegacyPipeline(params: {
     messages: params.messages,
     decision: {
       action: "create",
-      primaryKeyword: params.topic.seoKeywords[0] ?? params.topic.primaryTopic,
-      intent: params.topic.userIntent,
-      reason: `Legacy content pipeline topic: ${params.topic.primaryTopic}`,
+      primaryKeyword: params.topic.primaryKeyword,
+      intent: params.topic.searchIntent,
+      reason: `Classified conversation topic: ${params.topic.topic}`,
     },
+    classification: params.topic,
   });
 
   const [row] = await db
@@ -257,6 +240,30 @@ async function createEditorialBriefForLegacyPipeline(params: {
     .returning({ id: blogEditorialBriefs.id });
 
   return { ...brief, id: row.id };
+}
+
+async function loadTenantSeoStrategy(tenantId: string): Promise<TenantSeoStrategy | null> {
+  const [strategyRow] = await db
+    .select()
+    .from(tenantSeoStrategy)
+    .where(eq(tenantSeoStrategy.tenantId, tenantId))
+    .limit(1);
+  return strategyRow
+    ? {
+        id: strategyRow.id,
+        tenantId: strategyRow.tenantId,
+        targetKeywords: strategyRow.targetKeywords,
+        priorityServices: strategyRow.priorityServices,
+        priorityLocations: strategyRow.priorityLocations,
+        targetAudiences: strategyRow.targetAudiences,
+        approvedInternalUrls: strategyRow.approvedInternalUrls,
+        preferredCtas: strategyRow.preferredCtas,
+        avoidTopics: strategyRow.avoidTopics,
+        avoidClaims: strategyRow.avoidClaims,
+        avoidKeywords: strategyRow.avoidKeywords,
+        revision: strategyRow.revision,
+      }
+    : null;
 }
 
 /**

@@ -9,11 +9,13 @@ import {
   type EditorialBrief,
   type TenantSeoStrategy,
 } from "@/lib/pipeline/editorial-brief";
+import type { ClassifiedConversation } from "@/lib/pipeline/classify-conversation";
 
 import {
   defaultBlogRender,
   defaultBlogSemanticRender,
   buildBlogPostMetadata,
+  classifiedMetadata,
   DrizzleBlogCreateStore,
   generateWithRateLimitRetry,
   isRecord,
@@ -133,6 +135,7 @@ function buildBrief(
     messages: MessageRecord[];
     target: TargetBlogPost;
     seoStrategy?: TenantSeoStrategy | null;
+    classification?: ClassifiedConversation | null;
   }
 ): BlogUpdateBrief {
   if (decision.action !== "update") {
@@ -188,6 +191,7 @@ function buildBrief(
         reason: decision.reason,
         targetBlogPostId: decision.target_blog_post_id,
       },
+      classification: loaded.classification ?? null,
     }),
     previousVersion: {
       id: loaded.target.id,
@@ -309,9 +313,19 @@ function buildUpdateService(deps: BlogUpdateDeps) {
       let brief: BlogUpdateBrief;
       let editorialBriefId: string | undefined;
       let hasConfiguredSeoTargets = false;
+      let classification: ClassifiedConversation | null = null;
       try {
         const seoStrategy = deps.store.loadTenantSeoStrategy
           ? await deps.store.loadTenantSeoStrategy(loaded.tenant.id)
+          : null;
+        classification = deps.ai.classifyConversation
+          ? await deps.ai.classifyConversation({
+              conversationMessages: loaded.messages.map((message) => ({
+                role: message.role,
+                content: message.content,
+              })),
+              tenantSeoStrategy: seoStrategy,
+            })
           : null;
         hasConfiguredSeoTargets = Boolean(seoStrategy?.targetKeywords.length);
         brief = buildBrief(conversationId, decision, {
@@ -319,6 +333,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           messages: loaded.messages,
           target,
           seoStrategy,
+          classification,
         });
         if (deps.store.insertEditorialBrief) {
           editorialBriefId = (await deps.store.insertEditorialBrief(brief.editorial)).id;
@@ -493,6 +508,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
         content: finalHtml,
         contentSemantic: finalSemanticHtml,
         metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
+          ...classifiedMetadata(brief.editorial, classification),
           update_of: target.id,
           generation: {
             decision,

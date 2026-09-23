@@ -4,15 +4,6 @@ export type SearchIntent =
   | "commercial"
   | "transactional"
   | "navigational";
-export type ArticleType =
-  | "guide"
-  | "comparison"
-  | "pricing"
-  | "explainer"
-  | "listicle"
-  | "case-study"
-  | "faq"
-  | "landing-support";
 
 export type TenantSeoStrategy = {
   id?: string;
@@ -67,7 +58,7 @@ export type EditorialBrief = {
   needsReview: boolean;
   searchIntent: SearchIntent;
   targetAudience: string | null;
-  articleType: ArticleType;
+  articleType: string;
 };
 
 export type EditorialBriefMessage = {
@@ -89,7 +80,7 @@ export type ArticleSeoFields = {
   secondaryKeywords: string[];
   searchIntent: SearchIntent | null;
   targetAudience: string | null;
-  articleType: ArticleType | null;
+  articleType: string | null;
   internalLinkSuggestions: Array<{ url: string; label?: string }>;
   ctaGoal: string | null;
 };

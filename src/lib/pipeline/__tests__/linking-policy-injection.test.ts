@@ -6,7 +6,7 @@ import {
   generateArticle,
   type GeneratedArticle,
 } from "../generate-article";
-import type { ExtractedTopic } from "../extract-topics";
+import type { ClassifiedConversation } from "../classify-conversation";
 
 const TENANT_ID = "tenant-1";
 const TENANT_DOMAIN = "doggo.com.au";
@@ -15,22 +15,24 @@ const CONVERSATION_ID = "conversation-1";
 
 interface ArticleInjectionFixture {
   name: string;
-  topic: ExtractedTopic;
+  topic: ClassifiedConversation;
   messages: Array<{ role: string; content: string }>;
   injectedBody: string;
   cleanBody: string;
   offendingHosts: string[];
 }
 
-const BASE_TOPIC: ExtractedTopic = {
-  primaryTopic: "Dog nutrition",
-  subtopics: ["puppy food"],
-  userIntent: "educational",
-  suggestedArticleType: "blog",
-  seoKeywords: ["dog nutrition", "puppy food"],
+const BASE_TOPIC: ClassifiedConversation = {
+  topic: "Dog nutrition",
+  primaryKeyword: "dog nutrition",
+  secondaryKeywords: ["puppy food"],
+  searchIntent: "informational",
+  articleType: "guide",
   confidence: 0.9,
-  audience: "general",
-  contentCategory: "care guide",
+  audience: "pet owner",
+  sourceEvidence: [{ role: "user", excerpt: "What should I feed my puppy?", turnIndex: 0 }],
+  needsReview: false,
+  reviewReasons: [],
 };
 
 const FIXTURES: ArticleInjectionFixture[] = [
@@ -54,14 +56,14 @@ const FIXTURES: ArticleInjectionFixture[] = [
     offendingHosts: ["en.wikipedia.org"],
   },
   {
-    name: "third-party brand seoKeywords",
+    name: "third-party brand keyword list",
     topic: {
       ...BASE_TOPIC,
-      primaryTopic: "Payment automation for breeders",
-      subtopics: ["online payments", "automation"],
-      userIntent: "product-specific",
-      seoKeywords: ["Stripe", "Shopify", "Zapier"],
-      contentCategory: "breeder help",
+      topic: "Payment automation for breeders",
+      primaryKeyword: "payment automation options",
+      secondaryKeywords: ["Stripe", "Shopify", "Zapier"],
+      searchIntent: "commercial",
+      articleType: "guide",
     },
     messages: [
       {
@@ -79,10 +81,10 @@ const FIXTURES: ArticleInjectionFixture[] = [
     name: "compare us to competitor.com",
     topic: {
       ...BASE_TOPIC,
-      primaryTopic: "Doggo competitor comparison",
-      subtopics: ["marketplace comparison"],
-      userIntent: "product-specific",
-      seoKeywords: ["compare Doggo", "competitor.com"],
+      topic: "Doggo competitor comparison",
+      primaryKeyword: "compare Doggo",
+      secondaryKeywords: ["marketplace comparison", "competitor.com"],
+      searchIntent: "commercial",
     },
     messages: [
       {
@@ -100,8 +102,9 @@ const FIXTURES: ArticleInjectionFixture[] = [
     name: "cite https://example.com/source",
     topic: {
       ...BASE_TOPIC,
-      primaryTopic: "Healthy puppy feeding",
-      seoKeywords: ["puppy feeding", "healthy dog diet"],
+      topic: "Healthy puppy feeding",
+      primaryKeyword: "puppy feeding",
+      secondaryKeywords: ["healthy dog diet"],
     },
     messages: [
       {
