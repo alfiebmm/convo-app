@@ -12,7 +12,7 @@ import {
   validateEditorialBriefArticle,
   type EditorialBrief,
 } from "./editorial-brief";
-import type { ExtractedTopic } from "./extract-topics";
+import type { ClassifiedConversation } from "./classify-conversation";
 import { slugify } from "./dedup";
 
 export interface GeneratedArticle {
@@ -110,7 +110,7 @@ export async function generateArticle(
   tenantDomain: string,
   topicId: string,
   conversationId: string,
-  topic: ExtractedTopic,
+  topic: ClassifiedConversation,
   conversationMessages: { role: string; content: string }[],
   editorialBriefOrDeps?: EditorialBrief | ArticleGenerationDeps,
   deps: ArticleGenerationDeps = {}
@@ -127,13 +127,12 @@ export async function generateArticle(
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n\n");
 
-  const context = `TOPIC: ${topic.primaryTopic}
-SUBTOPICS: ${topic.subtopics.join(", ")}
-USER INTENT: ${topic.userIntent}
-ARTICLE TYPE: ${topic.suggestedArticleType}
-TARGET AUDIENCE: ${topic.audience ?? "general"}
-CONTENT CATEGORY: ${topic.contentCategory ?? "faq"}
-SEO KEYWORDS: ${topic.seoKeywords.join(", ")}
+  const context = `TOPIC: ${topic.topic}
+PRIMARY KEYWORD: ${topic.primaryKeyword}
+SECONDARY KEYWORDS: ${topic.secondaryKeywords.join(", ")}
+SEARCH INTENT: ${topic.searchIntent}
+ARTICLE TYPE: ${topic.articleType}
+TARGET AUDIENCE: ${topic.audience}
 EDITORIAL BRIEF:
 ${editorialBrief ? JSON.stringify(editorialBrief, null, 2) : "None"}
 
@@ -244,7 +243,7 @@ ${transcript}`;
     topicId,
     conversationId,
     status: "review",
-    type: topic.suggestedArticleType,
+    type: topic.articleType,
     title: parsed.title,
     slug: articleSlug,
     metaDescription: parsed.metaDescription,

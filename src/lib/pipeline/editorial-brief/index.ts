@@ -1,12 +1,12 @@
 import type {
   ArticleSeoFields,
-  ArticleType,
   EditorialBrief,
   EditorialBriefDecision,
   EditorialBriefMessage,
   SearchIntent,
   TenantSeoStrategy,
 } from "./types";
+import type { ClassifiedConversation } from "../classify-conversation";
 
 const PRIORITY_WEIGHT = { high: 3, medium: 2, low: 1 } as const;
 const SEARCH_INTENTS = new Set<SearchIntent>([
@@ -62,7 +62,7 @@ function normaliseIntent(value: string | null | undefined): SearchIntent {
   return "informational";
 }
 
-function inferArticleType(intent: SearchIntent, text: string): ArticleType {
+function inferArticleType(intent: SearchIntent, text: string): string {
   const lower = text.toLowerCase();
   if (/compare|versus| vs /.test(lower)) return "comparison";
   if (/price|cost|quote|fee/.test(lower)) return "pricing";
@@ -72,12 +72,73 @@ function inferArticleType(intent: SearchIntent, text: string): ArticleType {
   return "guide";
 }
 
-function modulesFor(intent: SearchIntent, articleType: ArticleType, hasLinks: boolean, hasCta: boolean) {
+const MODULES_BY_ARTICLE_TYPE: Record<string, string[]> = {
+  guide: ["quick-answer", "checklist"],
+  comparison: ["quick-answer", "comparison"],
+  pricing: ["quick-answer", "pricing"],
+  explainer: ["quick-answer", "checklist"],
+  listicle: ["quick-answer", "checklist"],
+  "case-study": ["quick-answer"],
+  faq: ["quick-answer", "faq"],
+  "landing-support": ["quick-answer", "cta"],
+};
+
+export function modulesForArticleType(params: {
+  searchIntent: SearchIntent;
+  articleType: string;
+  hasLinks: boolean;
+  hasCta: boolean;
+}) {
+  const normalisedType = params.articleType.trim().toLowerCase();
+  const modules = new Set<string>(MODULES_BY_ARTICLE_TYPE[normalisedType] ?? MODULES_BY_ARTICLE_TYPE.guide);
+  if (params.searchIntent === "commercial" || params.searchIntent === "transactional") modules.add("cta");
+  if (params.hasLinks) modules.add("internal-links");
+  if (params.hasCta) modules.add("cta");
+  return Array.from(modules);
+}
+
+function modulesFor(intent: SearchIntent, articleType: string, hasLinks: boolean, hasCta: boolean) {
+  return modulesForArticleType({
+    searchIntent: intent,
+    articleType,
+    hasLinks,
+    hasCta,
+  });
+}
+
+function evidenceFromClassification(classification: ClassifiedConversation) {
+  return classification.sourceEvidence.map((item) => ({
+    role: item.role,
+    snippet: item.excerpt,
+  }));
+}
+
+function hasClassification(params: {
+  classification?: ClassifiedConversation | null;
+}): params is { classification: ClassifiedConversation } {
+  return Boolean(params.classification);
+}
+
+function classifiedSelectionRationale(classification: ClassifiedConversation): string {
+  return classification.needsReview
+    ? `Classifier selected "${classification.primaryKeyword}" with review required.`
+    : `Classifier selected "${classification.primaryKeyword}" from the source conversation.`;
+}
+
+function reviewFallbacks(classification: ClassifiedConversation) {
+  return classification.reviewReasons.map((reason) => ({
+    field: "classification",
+    fallback_strategy: reason,
+  }));
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function moduleSelection(intent: SearchIntent, articleType: string, hasLinks: boolean, hasCta: boolean) {
   const modules = new Set<string>(["quick-answer"]);
-  if (articleType === "pricing") modules.add("pricing");
-  if (articleType === "comparison") modules.add("comparison");
-  if (articleType === "faq") modules.add("faq");
-  if (articleType === "guide") modules.add("checklist");
+  for (const moduleName of modulesFor(intent, articleType, hasLinks, hasCta)) modules.add(moduleName);
   if (intent === "commercial" || intent === "transactional") modules.add("cta");
   if (hasLinks) modules.add("internal-links");
   if (hasCta) modules.add("cta");
@@ -90,6 +151,7 @@ export function buildEditorialBrief(params: {
   strategy: TenantSeoStrategy | null;
   messages: EditorialBriefMessage[];
   decision: EditorialBriefDecision;
+  classification?: ClassifiedConversation | null;
 }): EditorialBrief {
   const strategy = params.strategy ?? {
     ...EMPTY_TENANT_SEO_STRATEGY,
@@ -119,13 +181,27 @@ export function buildEditorialBrief(params: {
     .sort((a, b) => b.score - a.score || a.index - b.index);
 
   const selected = candidates[0] ?? null;
-  const noStrongTarget = !selected || selected.score <= 3;
+  const noStrongTarget = hasClassification(params) ? false : !selected || selected.score <= 3;
   const fallbackKeyword =
     decisionKeyword && !textIncludesAny(decisionKeyword, avoided) ? decisionKeyword : null;
-  const selectedPrimaryKeyword = noStrongTarget ? fallbackKeyword : selected.keyword;
-  const searchIntent = normaliseIntent(params.decision.intent);
-  const articleType = inferArticleType(searchIntent, `${transcript}\n${selectedPrimaryKeyword ?? ""}`);
+  const selectedPrimaryKeyword = hasClassification(params)
+    ? params.classification.primaryKeyword
+    : noStrongTarget
+      ? fallbackKeyword
+      : selected.keyword;
+  const searchIntent = hasClassification(params)
+    ? params.classification.searchIntent
+    : normaliseIntent(params.decision.intent);
+  const articleType = hasClassification(params)
+    ? params.classification.articleType
+    : inferArticleType(searchIntent, `${transcript}\n${selectedPrimaryKeyword ?? ""}`);
   const audience =
+    hasClassification(params)
+      ? strategy.targetAudiences.find((candidate) => candidate.persona === params.classification.audience) ??
+        (params.classification.audience
+          ? { persona: params.classification.audience, description: undefined }
+          : null)
+      :
     strategy.targetAudiences.find((candidate) =>
       textIncludesAny(transcript, [candidate.persona, candidate.description ?? ""]),
     ) ?? strategy.targetAudiences[0] ?? null;
@@ -155,29 +231,35 @@ export function buildEditorialBrief(params: {
     conversationId: params.conversationId,
     tenantId: params.tenantId,
     selectedPrimaryKeyword,
-    selectionRationale: noStrongTarget
+    selectionRationale: hasClassification(params)
+      ? classifiedSelectionRationale(params.classification)
+      : noStrongTarget
       ? "No tenant SEO target strongly matched the source conversation."
       : `Selected "${selected.keyword}" because it best matched the conversation and tenant priority.`,
-    supportingKeywords: candidates
-      .filter((candidate) => candidate.keyword !== selectedPrimaryKeyword)
-      .slice(0, 5)
-      .map((candidate) => candidate.keyword),
+    supportingKeywords: hasClassification(params)
+      ? uniqueStrings(params.classification.secondaryKeywords)
+      : candidates
+          .filter((candidate) => candidate.keyword !== selectedPrimaryKeyword)
+          .slice(0, 5)
+          .map((candidate) => candidate.keyword),
     supportingEntities: [
       ...strategy.priorityServices.map((service) => service.name),
       ...strategy.priorityLocations.map((location) => location.name),
     ].filter((entity) => textIncludesAny(transcript, [entity])),
-    conversationEvidence: params.messages
-      .filter((message) =>
-        selectedPrimaryKeyword
-          ? textIncludesAny(message.content, [selectedPrimaryKeyword])
-          : message.role === "user",
-      )
-      .slice(0, 5)
-      .map((message) => ({
-        messageId: message.id,
-        role: message.role,
-        snippet: message.content.slice(0, 240),
-      })),
+    conversationEvidence: hasClassification(params)
+      ? evidenceFromClassification(params.classification)
+      : params.messages
+          .filter((message) =>
+            selectedPrimaryKeyword
+              ? textIncludesAny(message.content, [selectedPrimaryKeyword])
+              : message.role === "user",
+          )
+          .slice(0, 5)
+          .map((message) => ({
+            messageId: message.id,
+            role: message.role,
+            snippet: message.content.slice(0, 240),
+          })),
     tenantFactsUsed: {
       services: strategy.priorityServices.filter((service) =>
         textIncludesAny(transcript, [service.name]),
@@ -194,8 +276,9 @@ export function buildEditorialBrief(params: {
       ...(links.length === 0
         ? [{ field: "approved_internal_urls", fallback_strategy: "Avoid invented links." }]
         : []),
+      ...(hasClassification(params) ? reviewFallbacks(params.classification) : []),
     ],
-    requiredModules: modulesFor(searchIntent, articleType, links.length > 0, Boolean(cta)),
+    requiredModules: moduleSelection(searchIntent, articleType, links.length > 0, Boolean(cta)),
     internalLinkPlan: links,
     ctaPlan: cta
       ? { label: cta.label, url: cta.url, rationale: "Tenant-preferred CTA matched the brief." }
@@ -209,7 +292,7 @@ export function buildEditorialBrief(params: {
     createUpdateSkipRationale:
       params.decision.reason ?? "Derived from the blog decision phase.",
     noStrongTarget,
-    needsReview: noStrongTarget,
+    needsReview: noStrongTarget || (hasClassification(params) && params.classification.needsReview),
     searchIntent,
     targetAudience: audience?.persona ?? null,
     articleType,

@@ -78,6 +78,7 @@ test("createArticle persists an editorial brief before the draft and writes SEO 
     brief: null,
     seo: null,
   };
+  let savedMetadata: Record<string, unknown> | null = null;
 
   const store: BlogCreateStore = {
     async loadConversation() {
@@ -120,8 +121,9 @@ test("createArticle persists an editorial brief before the draft and writes SEO 
     async slugExists() {
       return false;
     },
-    async insertBlogPost() {
+    async insertBlogPost(values) {
       calls.push("post");
+      savedMetadata = values.metadata;
       return { id: "post-1" };
     },
     async loadTenantSeoStrategy() {
@@ -143,7 +145,27 @@ test("createArticle persists an editorial brief before the draft and writes SEO 
 
   const service = __testing.buildCreateService({
     store,
-    ai: { generatePost: async () => JSON.stringify(validPost()) },
+    ai: {
+      classifyConversation: async () => ({
+        topic: "Service pricing",
+        primaryKeyword: "service pricing guide",
+        secondaryKeywords: ["service fees", "service questions"],
+        searchIntent: "commercial",
+        articleType: "pricing",
+        audience: "Decision makers",
+        confidence: 0.9,
+        sourceEvidence: [
+          {
+            role: "user",
+            excerpt: "Can you explain your service pricing guide before I enquire?",
+            turnIndex: 0,
+          },
+        ],
+        needsReview: false,
+        reviewReasons: [],
+      }),
+      generatePost: async () => JSON.stringify(validPost()),
+    },
     render: () => "<article>Rendered</article>",
     renderSemantic: () => "<article>Rendered</article>",
     validate: () => [],
@@ -163,4 +185,15 @@ test("createArticle persists an editorial brief before the draft and writes SEO 
   assert.deepEqual(calls, ["brief", "post", "brief-link", "seo"]);
   assert.equal(saved.brief?.selectedPrimaryKeyword, "service pricing guide");
   assert.equal(saved.seo?.primaryKeyword, "service pricing guide");
+  assert.deepEqual(saved.seo?.secondaryKeywords, ["service fees", "service questions"]);
+  assert.equal(saved.seo?.searchIntent, "commercial");
+  assert.equal(saved.seo?.targetAudience, "Decision makers");
+  assert.equal(saved.seo?.articleType, "pricing");
+  assert.ok(savedMetadata);
+  const metadata = savedMetadata as Record<string, unknown>;
+  assert.equal(metadata.topic, "Service pricing");
+  assert.equal(metadata.primaryKeyword, "service pricing guide");
+  assert.equal(metadata.audience, "Decision makers");
+  assert.equal(metadata.articleType, "pricing");
+  assert.equal(metadata.searchIntent, "commercial");
 });

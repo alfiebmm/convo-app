@@ -29,6 +29,10 @@ import {
   type EditorialBrief,
   type TenantSeoStrategy,
 } from "@/lib/pipeline/editorial-brief";
+import {
+  classifyConversation,
+  type ClassifiedConversation,
+} from "@/lib/pipeline/classify-conversation";
 
 import type { DecisionResult } from "./decision";
 import {
@@ -157,6 +161,10 @@ export type BlogCreateStore = {
 };
 
 export type BlogCreateAi = {
+  classifyConversation?(params: {
+    conversationMessages: Array<{ role: string; content: string }>;
+    tenantSeoStrategy?: TenantSeoStrategy | null;
+  }): Promise<ClassifiedConversation>;
   generatePost(params: {
     systemPrompt: string;
     userPrompt: string;
@@ -443,6 +451,7 @@ function buildBrief(
     tenant: TenantRecord;
     messages: MessageRecord[];
     seoStrategy?: TenantSeoStrategy | null;
+    classification?: ClassifiedConversation | null;
   }
 ): BlogBrief {
   if (decision.action !== "create") {
@@ -501,6 +510,7 @@ function buildBrief(
         reason: decision.reason,
         targetBlogPostId: decision.target_blog_post_id,
       },
+      classification: loaded.classification ?? null,
     }),
     knowledge: {
       entries: [],
@@ -658,6 +668,21 @@ export function buildBlogPostMetadata(
       wordCount,
       cards: post.stats ?? null,
     },
+  };
+}
+
+export function classifiedMetadata(
+  editorial: EditorialBrief,
+  classification?: ClassifiedConversation | null
+): Record<string, unknown> {
+  return {
+    topic: classification?.topic ?? editorial.selectedPrimaryKeyword,
+    primaryKeyword: editorial.selectedPrimaryKeyword,
+    secondaryKeywords: editorial.supportingKeywords,
+    audience: editorial.targetAudience,
+    articleType: editorial.articleType,
+    searchIntent: editorial.searchIntent,
+    needsReview: editorial.needsReview,
   };
 }
 
@@ -874,15 +899,26 @@ function buildCreateService(deps: BlogCreateDeps) {
       let brief: BlogBrief;
       let editorialBriefId: string | undefined;
       let hasConfiguredSeoTargets = false;
+      let classification: ClassifiedConversation | null = null;
       try {
         const seoStrategy = deps.store.loadTenantSeoStrategy
           ? await deps.store.loadTenantSeoStrategy(loaded.tenant.id)
+          : null;
+        classification = deps.ai.classifyConversation
+          ? await deps.ai.classifyConversation({
+              conversationMessages: loaded.messages.map((message) => ({
+                role: message.role,
+                content: message.content,
+              })),
+              tenantSeoStrategy: seoStrategy,
+            })
           : null;
         hasConfiguredSeoTargets = Boolean(seoStrategy?.targetKeywords.length);
         brief = buildBrief(conversationId, decision, {
           tenant: loaded.tenant,
           messages: loaded.messages,
           seoStrategy,
+          classification,
         });
         if (deps.store.insertEditorialBrief) {
           editorialBriefId = (await deps.store.insertEditorialBrief(brief.editorial)).id;
@@ -1032,6 +1068,7 @@ function buildCreateService(deps: BlogCreateDeps) {
       }
 
       const metadata = buildBlogPostMetadata(finalPost, finalWordCount, {
+        ...classifiedMetadata(brief.editorial, classification),
         generation: {
           decision,
           editorialBrief: brief.editorial,
@@ -1140,6 +1177,13 @@ export class OpenAiBlogCreateClient implements BlogCreateAi {
     const raw = response.choices[0]?.message?.content;
     if (!raw) throw new Error("OpenAI article generation returned no content");
     return raw;
+  }
+
+  async classifyConversation(params: {
+    conversationMessages: Array<{ role: string; content: string }>;
+    tenantSeoStrategy?: TenantSeoStrategy | null;
+  }): Promise<ClassifiedConversation> {
+    return classifyConversation(params);
   }
 }
 
