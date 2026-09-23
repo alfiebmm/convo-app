@@ -44,6 +44,11 @@ import {
   type TenantRecord,
 } from "./create";
 import type { DecisionResult } from "./decision";
+import {
+  groundingViolation,
+  validateGrounding,
+  type GroundingReport,
+} from "./grounding";
 import { repairBlogPost, type RepairOperation } from "./repair";
 import postSchema from "./schemas/post.schema.json";
 import { validateSeoMetadata } from "./seo";
@@ -357,6 +362,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
       let finalHtml = "";
       let finalSemanticHtml = "";
       let finalWordCount: number | null = null;
+      let finalGrounding: GroundingReport | null = null;
       let failureReason = "Article update generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
       const repairOperations: RepairOperation[] = [];
@@ -410,6 +416,18 @@ function buildUpdateService(deps: BlogUpdateDeps) {
               message: editorialIssues.map((issue) => issue.message).join(" "),
             } satisfies WritingRuleViolation;
           }
+          const grounding = validateGrounding(validated.post, {
+            tenant: {
+              name: loaded.tenant.name,
+              settings: loaded.tenant.settings,
+              brandJson: brief.tenant.brandJson,
+            },
+            sourceMessages: loaded.messages,
+            editorial: brief.editorial,
+            previousPost: target.metadata,
+          });
+          const groundingIssue = groundingViolation(grounding);
+          if (groundingIssue) throw groundingIssue;
           const slug = await uniqueGeneratedSlug(
             deps.store,
             brief.tenant.id,
@@ -417,6 +435,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           );
           finalPost = { ...validated.post, slug };
           finalWordCount = validated.wordCount;
+          finalGrounding = grounding;
           await logSeoValidation(deps.store, {
             loaded,
             decision,
@@ -504,6 +523,9 @@ function buildUpdateService(deps: BlogUpdateDeps) {
       if (finalWordCount === null) {
         throw new Error("Validated article update is missing word count");
       }
+      if (!finalGrounding) {
+        throw new Error("Validated article update is missing grounding report");
+      }
 
       const row = await deps.store.insertBlogPost({
         tenantId: loaded.tenant.id,
@@ -514,17 +536,20 @@ function buildUpdateService(deps: BlogUpdateDeps) {
         contentSemantic: finalSemanticHtml,
         metadata: buildBlogPostMetadata(finalPost, finalWordCount, {
           ...classifiedMetadata(brief.editorial, classification),
+          grounding: finalGrounding,
           update_of: target.id,
           generation: {
             decision,
             editorialBrief: brief.editorial,
+            grounding: finalGrounding,
             updateOf: target.id,
             emDashReplacements: allEmDashReplacements,
             repairOperations,
           },
         }),
         status:
-          brief.editorial.noStrongTarget && hasConfiguredSeoTargets
+          (brief.editorial.noStrongTarget && hasConfiguredSeoTargets) ||
+          finalGrounding.needsReview
             ? "in_review"
             : "draft",
         persona: decision.primary_keyword,

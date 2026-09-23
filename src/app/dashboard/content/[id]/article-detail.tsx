@@ -281,6 +281,13 @@ function FailureState({ post }: { post: BlogPostDetail }) {
   );
 }
 
+function groundingSummary(metadata: JsonRecord): string | null {
+  const grounding = metadata.grounding;
+  if (!isRecord(grounding)) return null;
+  if (grounding.ok === true) return null;
+  return stringValue(grounding.summary) ?? "Grounding is uncertain; review tenant evidence before publishing.";
+}
+
 function heroImageState(metadata: JsonRecord) {
   const state = nestedRecord(metadata, "aiHeroImage");
   const images = Array.isArray(state.images) ? state.images : [];
@@ -380,6 +387,7 @@ export async function ArticleDetailViewWithPublishing({
   const body = await articleBodyHtml(post);
   const similar = similarPosts(decision);
   const count = wordCount(post);
+  const groundingWarning = groundingSummary(post.metadata);
 
   return (
     <div className="space-y-6">
@@ -403,6 +411,15 @@ export async function ArticleDetailViewWithPublishing({
       </dl>
 
       <ArticleSeoPanel post={post} seoFields={seoSidecar} decision={decision} />
+
+      {groundingWarning ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-sm font-semibold text-amber-950">
+            Grounding review needed
+          </h2>
+          <p className="mt-1 text-sm text-amber-900">{groundingWarning}</p>
+        </section>
+      ) : null}
 
       {editorialBrief ? <EditorialBriefPanel brief={editorialBrief} /> : null}
 

@@ -3,6 +3,7 @@ import Ajv from "ajv";
 import type { TenantSettings } from "@/lib/publishing";
 
 import { validateJsonLd } from "./jsonld-validator";
+import { groundingReportFromMetadata } from "./grounding";
 import type { BlogPostDetail } from "./queries";
 import postSchema from "./schemas/post.schema.json";
 import { validateSeoMetadata } from "./seo";
@@ -31,6 +32,7 @@ export type ChecklistItemId =
   | "no_banned_terms"
   | "word_count"
   | "single_cta"
+  | "grounding"
   | "no_pii_from_thread";
 
 export type ChecklistItemResult = {
@@ -70,6 +72,7 @@ const ITEM_LABELS: Record<ChecklistItemId, string> = {
   no_banned_terms: "No banned terms",
   word_count: "Word count gates",
   single_cta: "Exactly one CTA",
+  grounding: "Grounded in tenant facts",
   no_pii_from_thread: "No source-thread contact details",
 };
 
@@ -275,6 +278,20 @@ function piiMessage(post: BlogPostJson, tenant: PrePublishChecklistTenant): stri
   return null;
 }
 
+function groundingMessage(post: BlogPostDetail): string | null {
+  const report = groundingReportFromMetadata(post.metadata);
+  if (!report) return null;
+  if (report.ok) return null;
+  const unsupported = report.claims.filter((claim) => claim.decision === "unsupported");
+  const uncertain = report.claims.filter((claim) => claim.decision === "uncertain");
+  if (unsupported.length > 0) {
+    const first = unsupported[0];
+    return `${report.summary} First issue: ${first.sentence || first.reason}`;
+  }
+  if (uncertain.length > 0) return report.summary;
+  return "Grounding is uncertain; review tenant evidence before publishing.";
+}
+
 function normalisePhone(value: string): string {
   return value.replace(/[^\d+]/g, "");
 }
@@ -338,6 +355,7 @@ export function runPrePublishChecklist(
     ),
     result("word_count", validateWordCountGates(postJson)?.message),
     result("single_cta", singleCtaMessage(postJson)),
+    result("grounding", groundingMessage(post)),
     result("no_pii_from_thread", piiMessage(postJson, checklistTenant)),
   ];
 

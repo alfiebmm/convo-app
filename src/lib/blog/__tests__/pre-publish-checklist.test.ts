@@ -24,6 +24,7 @@ const EXPECTED_ORDER: ChecklistItemId[] = [
   "no_banned_terms",
   "word_count",
   "single_cta",
+  "grounding",
   "no_pii_from_thread",
 ];
 
@@ -145,6 +146,12 @@ function makePost(metadata = validPostJson()): BlogPostDetail {
     metadata: {
       ...metadata,
       decision: { primary_keyword: KEYWORD },
+      grounding: {
+        ok: true,
+        needsReview: false,
+        summary: "Grounding checks passed.",
+        claims: [],
+      },
     } as unknown as Record<string, unknown>,
     status: "approved",
     persona: "pharmacists",
@@ -248,6 +255,29 @@ test("single_cta fails when no CTA block exists", () => {
     blocks: section.blocks.filter((block) => block.type !== "cta"),
   }));
   assert.equal(item("single_cta", makePost(post))?.status, "fail");
+});
+
+test("grounding fails when unsupported claims are recorded", () => {
+  const metadata = validPostJson();
+  const post = makePost(metadata);
+  post.metadata.grounding = {
+    ok: false,
+    needsReview: true,
+    summary: "1 unsupported product claim found.",
+    claims: [
+      {
+        claim: "reviews",
+        category: "reviews_ratings",
+        decision: "unsupported",
+        sentence: "The draft claims verified customer reviews.",
+        sources: [],
+        reason: "No tenant evidence supports reviews.",
+      },
+    ],
+  };
+
+  assert.equal(item("grounding", post)?.status, "fail");
+  assert.match(item("grounding", post)?.message ?? "", /unsupported product claim/i);
 });
 
 test("no_pii_from_thread fails when source contact details appear in the article", () => {

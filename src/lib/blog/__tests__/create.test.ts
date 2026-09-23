@@ -8,6 +8,7 @@ import type { DecisionResult } from "../decision";
 import { wordCountGateStats, type BlogPostJson } from "../writing-rules";
 import brandFixture from "../schemas/brand.example.chemist2u.json";
 import postFixture from "../schemas/post.example.chemist2u.json";
+import agpagesGroundingFixture from "./fixtures/agpages-grounding.json";
 
 const require = createRequire(import.meta.url);
 const { render, renderSemantic } = require("../template-pack/renderer.js") as {
@@ -64,6 +65,12 @@ type SeoValidationLog = {
 type MakeServiceOptions = {
   brandJson?: Record<string, unknown>;
   settings?: Record<string, unknown>;
+  tenant?: {
+    name?: string;
+    slug?: string;
+    domain?: string;
+  };
+  messages?: Array<{ role: string; content: string; createdAt: Date }>;
   heroImages?: Parameters<typeof __testing.buildCreateService>[0]["heroImages"];
 };
 
@@ -323,6 +330,25 @@ function makeService(responses: unknown[], options: MakeServiceOptions = {}) {
     brandJson,
     blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
   };
+  const tenant = {
+    name: options.tenant?.name ?? "Chemist2U",
+    slug: options.tenant?.slug ?? "chemist2u",
+    domain: options.tenant?.domain ?? "chemist2u.com.au",
+  };
+  const messages = options.messages ?? [
+    {
+      role: "user",
+      content:
+        "Can pharmacists help with medicine side effects and ongoing medication questions?",
+      createdAt: new Date("2026-07-31T00:00:00.000Z"),
+    },
+    {
+      role: "assistant",
+      content:
+        "Yes. We discussed medicine reviews, interactions, side effects, and when to see a GP.",
+      createdAt: new Date("2026-07-31T00:01:00.000Z"),
+    },
+  ];
 
   const service = __testing.buildCreateService({
     store: {
@@ -332,25 +358,12 @@ function makeService(responses: unknown[], options: MakeServiceOptions = {}) {
           conversation: { id: CONVERSATION_ID, tenantId: TENANT_ID },
           tenant: {
             id: TENANT_ID,
-            name: "Chemist2U",
-            slug: "chemist2u",
-            domain: "chemist2u.com.au",
+            name: tenant.name,
+            slug: tenant.slug,
+            domain: tenant.domain,
             settings,
           },
-          messages: [
-            {
-              role: "user",
-              content:
-                "Can pharmacists help with medicine side effects and ongoing medication questions?",
-              createdAt: new Date("2026-07-31T00:00:00.000Z"),
-            },
-            {
-              role: "assistant",
-              content:
-                "Yes. We discussed medicine reviews, interactions, side effects, and when to see a GP.",
-              createdAt: new Date("2026-07-31T00:01:00.000Z"),
-            },
-          ],
+          messages,
         };
       },
       async slugExists(_tenantId, slug) {
@@ -546,6 +559,63 @@ test("AgPages rates fixture repairs thin prose into required modules with no-dat
   assert.match(inserts[0].contentSemantic ?? "", /Book a consult/);
   assert.match(inserts[0].contentSemantic ?? "", /<h2>FAQ<\/h2>/);
   assert.doesNotMatch(inserts[0].contentSemantic ?? "", /\$[0-9]/);
+});
+
+test("AgPages contractor rates hallucinations are repaired before save", async () => {
+  const hallucinatedRatesPost = validRatesPost();
+  hallucinatedRatesPost.sections[0].blocks.unshift(
+    ...agpagesGroundingFixture.unsupportedSentences.map((text) => ({
+      type: "p" as const,
+      text,
+    })),
+  );
+  const repairedRatesPost = validRatesPost({
+    intro: agpagesGroundingFixture.repairedSentences.join(" "),
+  });
+  const { service, inserts, prompts, seoValidationLogs } = makeService(
+    [hallucinatedRatesPost, repairedRatesPost],
+    {
+      tenant: {
+        name: "AgPages",
+        slug: "agpages",
+        domain: "agpages.com.au",
+      },
+      settings: {
+        brandJson: validBrand(),
+        blog: { cta: CTA, bannedTerms: ["journey", "robust"] },
+      },
+      messages: agpagesGroundingFixture.sourceMessages.map((message, index) => ({
+        role: message.role ?? "user",
+        content: message.content ?? "",
+        createdAt: new Date(`2026-07-31T00:0${index}:00.000Z`),
+      })),
+    },
+  );
+
+  await service.createArticle(CONVERSATION_ID, ratesDecision());
+
+  assert.equal(inserts[0].status, "draft");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /Unsupported tenant product claim/i);
+  assert.equal(seoValidationLogs[0].metadata.phase, "repair_loop");
+  assert.equal(
+    (
+      (seoValidationLogs[0].metadata.operations as Array<Record<string, unknown>>)[0]
+    ).action,
+    "repair_unsupported_grounding_claims",
+  );
+  assert.equal((inserts[0].metadata.grounding as Record<string, unknown>).ok, true);
+  assert.doesNotMatch(
+    [
+      inserts[0].contentSemantic,
+      (inserts[0].metadata as BlogPostJson).title,
+      (inserts[0].metadata as BlogPostJson).dek,
+      (inserts[0].metadata as BlogPostJson).intro,
+      JSON.stringify((inserts[0].metadata as BlogPostJson).sections),
+      JSON.stringify((inserts[0].metadata as BlogPostJson).faqs),
+    ].join("\n"),
+    /verified customer reviews|star ratings|forums|discussion boards|webinars|training sessions|Secure payments|escrow|digital contracts/i,
+  );
 });
 
 test("createArticle preserves a valid HTTPS hero URL from the generated post", async () => {

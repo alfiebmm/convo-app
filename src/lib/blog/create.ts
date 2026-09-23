@@ -37,6 +37,11 @@ import {
 
 import type { DecisionResult } from "./decision";
 import {
+  groundingViolation,
+  validateGrounding,
+  type GroundingReport,
+} from "./grounding";
+import {
   heroPlaceholderUrlForBrand,
   heroUrlMatchesBrandLogo,
   isHttpsUrl,
@@ -1045,6 +1050,7 @@ function buildCreateService(deps: BlogCreateDeps) {
       let finalHtml = "";
       let finalSemanticHtml = "";
       let finalWordCount: number | null = null;
+      let finalGrounding: GroundingReport | null = null;
       let failureReason = "Article generation failed.";
       const allEmDashReplacements: Array<{ before: string; after: string }> = [];
       const repairOperations: RepairOperation[] = [];
@@ -1086,6 +1092,17 @@ function buildCreateService(deps: BlogCreateDeps) {
       for (let repairPass = 0; !finalPost && repairPass <= MAX_REPAIR_PASSES; repairPass++) {
         try {
           const validated = validateCandidate(candidate, brief, deps.validate);
+          const grounding = validateGrounding(validated.post, {
+            tenant: {
+              name: loaded.tenant.name,
+              settings: loaded.tenant.settings,
+              brandJson: brief.tenant.brandJson,
+            },
+            sourceMessages: loaded.messages,
+            editorial: brief.editorial,
+          });
+          const groundingIssue = groundingViolation(grounding);
+          if (groundingIssue) throw groundingIssue;
           const slug = await uniqueGeneratedSlug(
             deps.store,
             brief.tenant.id,
@@ -1093,6 +1110,7 @@ function buildCreateService(deps: BlogCreateDeps) {
           );
           finalPost = { ...validated.post, slug };
           finalWordCount = validated.wordCount;
+          finalGrounding = grounding;
           const seoValidation = validateSeoMetadata(finalPost);
           await logSeoValidation(deps.store, {
             loaded,
@@ -1175,12 +1193,17 @@ function buildCreateService(deps: BlogCreateDeps) {
       if (finalWordCount === null) {
         throw new Error("Validated article is missing word count");
       }
+      if (!finalGrounding) {
+        throw new Error("Validated article is missing grounding report");
+      }
 
       const metadata = buildBlogPostMetadata(finalPost, finalWordCount, {
         ...classifiedMetadata(brief.editorial, classification),
+        grounding: finalGrounding,
         generation: {
           decision,
           editorialBrief: brief.editorial,
+          grounding: finalGrounding,
           emDashReplacements: allEmDashReplacements,
           repairOperations,
         },
@@ -1194,7 +1217,8 @@ function buildCreateService(deps: BlogCreateDeps) {
         contentSemantic: finalSemanticHtml,
           metadata,
         status:
-          brief.editorial.noStrongTarget && hasConfiguredSeoTargets
+          (brief.editorial.noStrongTarget && hasConfiguredSeoTargets) ||
+          finalGrounding.needsReview
             ? "in_review"
             : "draft",
         persona: decision.primary_keyword,
