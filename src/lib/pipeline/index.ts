@@ -8,11 +8,23 @@
  *   4. Mark conversation as completed
  */
 import { db } from "../db";
-import { conversations, messages, content, tenants } from "../db/schema";
+import {
+  blogEditorialBriefs,
+  conversations,
+  messages,
+  content,
+  tenantSeoStrategy,
+  tenants,
+} from "../db/schema";
 import { eq } from "drizzle-orm";
 import { extractTopics } from "./extract-topics";
 import { dedup } from "./dedup";
 import { generateArticle, type GeneratedArticle } from "./generate-article";
+import {
+  buildEditorialBrief,
+  type EditorialBrief,
+  type TenantSeoStrategy,
+} from "./editorial-brief";
 import {
   publishContent,
   hasCMSConfigured,
@@ -103,6 +115,17 @@ export async function processConversation(
       throw new Error("Tenant domain is required for article link validation");
     }
 
+    const editorialBrief = await createEditorialBriefForLegacyPipeline({
+      tenantId: conversation.tenantId,
+      conversationId,
+      topic,
+      messages: convoMessages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.content,
+      })),
+    });
+
     // 4. Generate article
     let article: GeneratedArticle | undefined;
     try {
@@ -112,7 +135,8 @@ export async function processConversation(
         dedupResult.topicId,
         conversationId,
         topic,
-        messagePairs
+        messagePairs,
+        editorialBrief
       );
     } catch (genErr) {
       console.error(
@@ -163,6 +187,76 @@ export async function processConversation(
       error: err instanceof Error ? err.message : "Unknown pipeline error",
     };
   }
+}
+
+async function createEditorialBriefForLegacyPipeline(params: {
+  tenantId: string;
+  conversationId: string;
+  topic: {
+    primaryTopic: string;
+    userIntent: string;
+    seoKeywords: string[];
+    suggestedArticleType: string;
+  };
+  messages: Array<{ id: string; role: string; content: string }>;
+}): Promise<EditorialBrief> {
+  const [strategyRow] = await db
+    .select()
+    .from(tenantSeoStrategy)
+    .where(eq(tenantSeoStrategy.tenantId, params.tenantId))
+    .limit(1);
+  const strategy: TenantSeoStrategy | null = strategyRow
+    ? {
+        id: strategyRow.id,
+        tenantId: strategyRow.tenantId,
+        targetKeywords: strategyRow.targetKeywords,
+        priorityServices: strategyRow.priorityServices,
+        priorityLocations: strategyRow.priorityLocations,
+        targetAudiences: strategyRow.targetAudiences,
+        approvedInternalUrls: strategyRow.approvedInternalUrls,
+        preferredCtas: strategyRow.preferredCtas,
+        avoidTopics: strategyRow.avoidTopics,
+        avoidClaims: strategyRow.avoidClaims,
+        avoidKeywords: strategyRow.avoidKeywords,
+        revision: strategyRow.revision,
+      }
+    : null;
+  const brief = buildEditorialBrief({
+    tenantId: params.tenantId,
+    conversationId: params.conversationId,
+    strategy,
+    messages: params.messages,
+    decision: {
+      action: "create",
+      primaryKeyword: params.topic.seoKeywords[0] ?? params.topic.primaryTopic,
+      intent: params.topic.userIntent,
+      reason: `Legacy content pipeline topic: ${params.topic.primaryTopic}`,
+    },
+  });
+
+  const [row] = await db
+    .insert(blogEditorialBriefs)
+    .values({
+      conversationId: brief.conversationId,
+      tenantId: brief.tenantId,
+      selectedPrimaryKeyword: brief.selectedPrimaryKeyword,
+      selectionRationale: brief.selectionRationale,
+      supportingKeywords: brief.supportingKeywords,
+      supportingEntities: brief.supportingEntities,
+      conversationEvidence: brief.conversationEvidence,
+      tenantFactsUsed: brief.tenantFactsUsed,
+      missingDataFallbacks: brief.missingDataFallbacks,
+      requiredModules: brief.requiredModules,
+      internalLinkPlan: brief.internalLinkPlan,
+      ctaPlan: brief.ctaPlan,
+      createUpdateSkip: brief.createUpdateSkip,
+      createUpdateSkipRationale: brief.createUpdateSkipRationale,
+      noStrongTarget: brief.noStrongTarget,
+      needsReview: brief.needsReview,
+    })
+    .returning({ id: blogEditorialBriefs.id });
+
+  return { ...brief, id: row.id };
 }
 
 /**

@@ -9,10 +9,36 @@ import {
   regenerateHeroImage,
   revalidatePrePublishChecklist,
   revertHeroImage,
+  saveBlogPostSeo,
 } from "./actions";
 import { PublishBlogPostButton } from "./publish-blog-post-button";
 
 type JsonRecord = Record<string, unknown>;
+type SeoSidecar = {
+  primaryKeyword: string | null;
+  secondaryKeywords: string[];
+  searchIntent: string | null;
+  targetAudience: string | null;
+  articleType: string | null;
+  internalLinkSuggestions: Array<{ url: string; label?: string }>;
+  ctaGoal: string | null;
+};
+type EditorialBriefRow = {
+  selectedPrimaryKeyword: string | null;
+  selectionRationale: string | null;
+  supportingKeywords: string[];
+  supportingEntities: string[];
+  conversationEvidence: unknown;
+  tenantFactsUsed: unknown;
+  missingDataFallbacks: unknown;
+  requiredModules: string[];
+  internalLinkPlan: unknown;
+  ctaPlan: unknown;
+  createUpdateSkip: string;
+  createUpdateSkipRationale: string | null;
+  noStrongTarget: boolean;
+  needsReview: boolean;
+};
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -327,6 +353,8 @@ export async function ArticleDetailView({ post }: { post: BlogPostDetail }) {
     post,
     checklist: readChecklist(post.metadata),
     wordpressSiteUrl: null,
+    seoFields: null,
+    editorialBrief: null,
   });
 }
 
@@ -334,10 +362,14 @@ export async function ArticleDetailViewWithPublishing({
   post,
   checklist,
   wordpressSiteUrl,
+  seoFields: seoSidecar,
+  editorialBrief,
 }: {
   post: BlogPostDetail;
   checklist: PrePublishChecklistResult | null;
   wordpressSiteUrl: string | null;
+  seoFields?: SeoSidecar | null;
+  editorialBrief?: EditorialBriefRow | null;
 }) {
   if (post.status === "generation_failed") {
     return <FailureState post={post} />;
@@ -369,6 +401,10 @@ export async function ArticleDetailViewWithPublishing({
         />
         <DetailItem label="Intent" value={stringValue(decision.intent) ?? post.topic} />
       </dl>
+
+      <ArticleSeoPanel post={post} seoFields={seoSidecar} decision={decision} />
+
+      {editorialBrief ? <EditorialBriefPanel brief={editorialBrief} /> : null}
 
       <details className="rounded-lg border border-slate-200 bg-white">
         <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-900">
@@ -453,6 +489,180 @@ export async function ArticleDetailViewWithPublishing({
         />
       </div>
     </div>
+  );
+}
+
+function textareaLines(values: string[] | null | undefined) {
+  return (values ?? []).join("\n");
+}
+
+function linkLines(values: Array<{ url: string; label?: string }> | null | undefined) {
+  return (values ?? [])
+    .map((link) => (link.label ? `${link.url} | ${link.label}` : link.url))
+    .join("\n");
+}
+
+function ArticleSeoPanel({
+  post,
+  seoFields,
+  decision,
+}: {
+  post: BlogPostDetail;
+  seoFields?: SeoSidecar | null;
+  decision: JsonRecord;
+}) {
+  const action = async (formData: FormData) => {
+    "use server";
+    await saveBlogPostSeo(post.id, formData);
+  };
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5">
+      <h2 className="text-lg font-semibold text-slate-900">Article SEO fields</h2>
+      <form action={action} className="mt-4 grid gap-4 md:grid-cols-2">
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700">Primary keyword</span>
+          <input
+            name="primaryKeyword"
+            defaultValue={
+              seoFields?.primaryKeyword ??
+              stringValue(decision.primary_keyword) ??
+              post.persona ??
+              ""
+            }
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700">Search intent</span>
+          <select
+            name="searchIntent"
+            defaultValue={seoFields?.searchIntent ?? stringValue(decision.intent) ?? ""}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="">None</option>
+            <option value="informational">Informational</option>
+            <option value="commercial">Commercial</option>
+            <option value="transactional">Transactional</option>
+            <option value="navigational">Navigational</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700">Target audience</span>
+          <input
+            name="targetAudience"
+            defaultValue={seoFields?.targetAudience ?? ""}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700">Article type</span>
+          <select
+            name="articleType"
+            defaultValue={seoFields?.articleType ?? ""}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="">None</option>
+            <option value="guide">Guide</option>
+            <option value="comparison">Comparison</option>
+            <option value="pricing">Pricing</option>
+            <option value="explainer">Explainer</option>
+            <option value="listicle">Listicle</option>
+            <option value="case-study">Case study</option>
+            <option value="faq">FAQ</option>
+            <option value="landing-support">Landing support</option>
+          </select>
+        </label>
+        <label className="block md:col-span-2">
+          <span className="text-sm font-medium text-slate-700">
+            Secondary keywords or questions
+          </span>
+          <textarea
+            name="secondaryKeywords"
+            rows={3}
+            defaultValue={textareaLines(seoFields?.secondaryKeywords)}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="text-sm font-medium text-slate-700">
+            Internal link suggestions
+          </span>
+          <textarea
+            name="internalLinkSuggestions"
+            rows={3}
+            defaultValue={linkLines(seoFields?.internalLinkSuggestions)}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="text-sm font-medium text-slate-700">CTA goal</span>
+          <input
+            name="ctaGoal"
+            defaultValue={seoFields?.ctaGoal ?? ""}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </label>
+        <div className="md:col-span-2">
+          <button
+            type="submit"
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+          >
+            Save SEO fields
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function EditorialBriefPanel({ brief }: { brief: EditorialBriefRow }) {
+  return (
+    <details className="rounded-lg border border-slate-200 bg-white">
+      <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-900">
+        Editorial brief
+      </summary>
+      <div className="grid gap-4 border-t border-slate-100 p-5 md:grid-cols-2">
+        <DetailItem label="Selected keyword" value={brief.selectedPrimaryKeyword} />
+        <DetailItem label="Decision" value={brief.createUpdateSkip} />
+        <DetailItem
+          label="Needs review"
+          value={brief.needsReview || brief.noStrongTarget ? "Yes" : "No"}
+        />
+        <DetailItem
+          label="Required modules"
+          value={brief.requiredModules.length ? brief.requiredModules.join(", ") : null}
+        />
+        <div className="md:col-span-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+            Rationale
+          </p>
+          <p className="mt-1 text-sm text-slate-800">
+            {brief.selectionRationale ?? brief.createUpdateSkipRationale ?? "None"}
+          </p>
+        </div>
+        <div className="md:col-span-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+            Brief data
+          </p>
+          <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-50">
+            {JSON.stringify(
+              {
+                supportingKeywords: brief.supportingKeywords,
+                supportingEntities: brief.supportingEntities,
+                conversationEvidence: brief.conversationEvidence,
+                tenantFactsUsed: brief.tenantFactsUsed,
+                missingDataFallbacks: brief.missingDataFallbacks,
+                internalLinkPlan: brief.internalLinkPlan,
+                ctaPlan: brief.ctaPlan,
+              },
+              null,
+              2,
+            )}
+          </pre>
+        </div>
+      </div>
+    </details>
   );
 }
 

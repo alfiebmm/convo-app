@@ -2,6 +2,13 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { blogPosts } from "@/lib/db/schema";
+import {
+  articleSeoFromBrief,
+  buildEditorialBrief,
+  validateEditorialBriefArticle,
+  type EditorialBrief,
+  type TenantSeoStrategy,
+} from "@/lib/pipeline/editorial-brief";
 
 import {
   defaultBlogRender,
@@ -80,6 +87,7 @@ type BlogUpdateBrief = {
   };
   source: { conversationId: string; messages: MessageRecord[]; wordCount: number };
   decision: { primaryKeyword: string; intent: string; targetBlogPostId: string };
+  editorial: EditorialBrief;
   previousVersion: {
     id: string;
     title: string;
@@ -105,6 +113,9 @@ Article update requirements:
 - Refresh stale or weak sections, intro, FAQs, and stats when the source supports it.
 - Keep the same search intent and primary keyword unless the brief explicitly says otherwise.
 - Preserve the tenant CTA config exactly for any type=cta block.
+- Follow the supplied editorial brief. It defines required modules, planned internal links, CTA goal, target audience, supporting keywords, and tenant facts to use.
+- If editorial.requiredModules includes "internal-links", include at least one planned internal link exactly as supplied in editorial.internalLinkPlan.
+- If editorial.requiredModules includes "cta", include a CTA block using the tenant CTA config and make the CTA purpose match editorial.ctaPlan.
 - Write post.seo.metaTitle as a 50-60 character search title.
 - Write post.seo.metaDescription as a 140-160 character search description.
 - Use a lowercase, hyphenated post.slug with stop words removed, 70 characters or fewer.
@@ -117,7 +128,12 @@ Article update requirements:
 function buildBrief(
   conversationId: string,
   decision: DecisionResult,
-  loaded: { tenant: TenantRecord; messages: MessageRecord[]; target: TargetBlogPost }
+  loaded: {
+    tenant: TenantRecord;
+    messages: MessageRecord[];
+    target: TargetBlogPost;
+    seoStrategy?: TenantSeoStrategy | null;
+  }
 ): BlogUpdateBrief {
   if (decision.action !== "update") {
     throw new Error(`updateArticle only accepts update decisions, got ${decision.action}`);
@@ -157,6 +173,22 @@ function buildBrief(
       intent: decision.intent?.trim() || "educational",
       targetBlogPostId: decision.target_blog_post_id,
     },
+    editorial: buildEditorialBrief({
+      tenantId: loaded.tenant.id,
+      conversationId,
+      strategy: loaded.seoStrategy ?? null,
+      messages: loaded.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      decision: {
+        action: decision.action,
+        primaryKeyword: decision.primary_keyword,
+        intent: decision.intent,
+        reason: decision.reason,
+        targetBlogPostId: decision.target_blog_post_id,
+      },
+    }),
     previousVersion: {
       id: loaded.target.id,
       title: loaded.target.title,
@@ -212,6 +244,7 @@ async function persistFailure(
     decision: DecisionResult;
     targetBlogPostId: string | null;
     reason: string;
+    editorialBriefId?: string;
   }
 ): Promise<string> {
   console.error("[blog] article update generation failed", {
@@ -246,6 +279,9 @@ async function persistFailure(
     persona: params.decision.primary_keyword,
     topic: params.decision.intent,
   });
+  if (params.editorialBriefId && store.linkEditorialBriefToBlogPost) {
+    await store.linkEditorialBriefToBlogPost(params.editorialBriefId, row.id);
+  }
   return row.id;
 }
 
@@ -271,12 +307,23 @@ function buildUpdateService(deps: BlogUpdateDeps) {
       }
 
       let brief: BlogUpdateBrief;
+      let editorialBriefId: string | undefined;
+      let hasConfiguredSeoTargets = false;
       try {
+        const seoStrategy = deps.store.loadTenantSeoStrategy
+          ? await deps.store.loadTenantSeoStrategy(loaded.tenant.id)
+          : null;
+        hasConfiguredSeoTargets = Boolean(seoStrategy?.targetKeywords.length);
         brief = buildBrief(conversationId, decision, {
           tenant: loaded.tenant,
           messages: loaded.messages,
           target,
+          seoStrategy,
         });
+        if (deps.store.insertEditorialBrief) {
+          editorialBriefId = (await deps.store.insertEditorialBrief(brief.editorial)).id;
+          brief.editorial.id = editorialBriefId;
+        }
       } catch (error) {
         return persistFailure(deps.store, {
           loaded,
@@ -313,6 +360,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           decision,
           targetBlogPostId: target.id,
           reason: failureReason,
+          editorialBriefId,
         });
       }
 
@@ -325,12 +373,23 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           decision,
           targetBlogPostId: target.id,
           reason: error instanceof Error ? error.message : `Invalid JSON: ${String(error)}`,
+          editorialBriefId,
         });
       }
 
       for (let repairPass = 0; !finalPost && repairPass <= MAX_REPAIR_PASSES; repairPass++) {
         try {
           const validated = validateCandidate(candidate, brief, deps.validate);
+          const editorialIssues = validateEditorialBriefArticle({
+            brief: brief.editorial,
+            article: validated.post,
+          });
+          if (editorialIssues.length > 0 && !brief.editorial.noStrongTarget) {
+            throw {
+              code: "primary_keyword",
+              message: editorialIssues.map((issue) => issue.message).join(" "),
+            } satisfies WritingRuleViolation;
+          }
           const slug = await uniqueGeneratedSlug(
             deps.store,
             brief.tenant.id,
@@ -419,6 +478,7 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           decision,
           targetBlogPostId: target.id,
           reason: failureReason,
+          editorialBriefId,
         });
       }
       if (finalWordCount === null) {
@@ -436,15 +496,25 @@ function buildUpdateService(deps: BlogUpdateDeps) {
           update_of: target.id,
           generation: {
             decision,
+            editorialBrief: brief.editorial,
             updateOf: target.id,
             emDashReplacements: allEmDashReplacements,
             repairOperations,
           },
         }),
-        status: "draft",
+        status:
+          brief.editorial.noStrongTarget && hasConfiguredSeoTargets
+            ? "in_review"
+            : "draft",
         persona: decision.primary_keyword,
         topic: decision.intent,
       });
+      if (editorialBriefId && deps.store.linkEditorialBriefToBlogPost) {
+        await deps.store.linkEditorialBriefToBlogPost(editorialBriefId, row.id);
+      }
+      if (deps.store.upsertBlogPostSeo) {
+        await deps.store.upsertBlogPostSeo(row.id, articleSeoFromBrief(brief.editorial));
+      }
       return row.id;
     },
   };

@@ -8,6 +8,10 @@ import {
   validateOutputLinks,
   type LinkHostFinding,
 } from "../guardrails/link-host";
+import {
+  validateEditorialBriefArticle,
+  type EditorialBrief,
+} from "./editorial-brief";
 import type { ExtractedTopic } from "./extract-topics";
 import { slugify } from "./dedup";
 
@@ -108,8 +112,17 @@ export async function generateArticle(
   conversationId: string,
   topic: ExtractedTopic,
   conversationMessages: { role: string; content: string }[],
+  editorialBriefOrDeps?: EditorialBrief | ArticleGenerationDeps,
   deps: ArticleGenerationDeps = {}
 ): Promise<GeneratedArticle> {
+  const editorialBrief =
+    editorialBriefOrDeps && "tenantId" in editorialBriefOrDeps
+      ? editorialBriefOrDeps
+      : undefined;
+  const resolvedDeps =
+    editorialBriefOrDeps && !("tenantId" in editorialBriefOrDeps)
+      ? editorialBriefOrDeps
+      : deps;
   const transcript = conversationMessages
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n\n");
@@ -121,11 +134,13 @@ ARTICLE TYPE: ${topic.suggestedArticleType}
 TARGET AUDIENCE: ${topic.audience ?? "general"}
 CONTENT CATEGORY: ${topic.contentCategory ?? "faq"}
 SEO KEYWORDS: ${topic.seoKeywords.join(", ")}
+EDITORIAL BRIEF:
+${editorialBrief ? JSON.stringify(editorialBrief, null, 2) : "None"}
 
 SOURCE CONVERSATION:
 ${transcript}`;
 
-  const createCompletion = deps.createCompletion ?? (async (messages) => {
+  const createCompletion = resolvedDeps.createCompletion ?? (async (messages) => {
     const openai = getOpenAI();
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -169,13 +184,33 @@ ${transcript}`;
     };
 
     const validation = validateOutputLinks(candidate.body, tenantDomain);
-    if (validation.ok) {
+    const editorialIssues = editorialBrief
+      ? validateEditorialBriefArticle({
+          brief: editorialBrief,
+          article: {
+            title: candidate.title,
+            intro: candidate.body.split(/\n\n+/)[0] ?? candidate.body,
+            sections: Array.from(candidate.body.matchAll(/^##\s+(.+)$/gm)).map(
+              (match) => ({ heading: match[1] }),
+            ),
+            content: candidate.body,
+          },
+        })
+      : [];
+    if (validation.ok && (editorialBrief?.noStrongTarget || editorialIssues.length === 0)) {
       parsed = candidate;
       lastFindings = [];
       break;
     }
 
     lastFindings = validation.findings;
+    if (validation.ok && editorialIssues.length > 0) {
+      throw new Error(
+        `Editorial brief validation failed: ${editorialIssues
+          .map((issue) => issue.message)
+          .join(" ")}`
+      );
+    }
   }
 
   if (!parsed) {
@@ -189,7 +224,7 @@ ${transcript}`;
   // Ensure slug is valid
   const articleSlug = slugify(parsed.slug || parsed.title);
 
-  const insertContent = deps.insertContent ?? (async (values) => {
+  const insertContent = resolvedDeps.insertContent ?? (async (values) => {
     const [record] = await db.insert(content).values(values).returning();
     return {
       id: record.id,
