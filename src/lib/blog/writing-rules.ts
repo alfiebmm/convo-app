@@ -29,6 +29,15 @@ export type BlogPostJson = {
       | { type: "h3"; text: string }
       | { type: "ul"; items: string[] }
       | { type: "ol"; items: string[] }
+      | { type: "quickAnswer"; heading: string; body: string }
+      | {
+          type: "table";
+          caption: string;
+          headers: string[];
+          rows: string[][];
+        }
+      | { type: "checklist"; items: string[] }
+      | { type: "noRateDataFallback"; text: string }
       | { type: "keyTakeaway"; label: string; body: string }
       | { type: "readNext"; label: string; links: Array<{ label: string; url: string }> }
       | {
@@ -62,6 +71,7 @@ export type WritingRuleViolation = {
     | "banned_term"
     | "australian_english"
     | "primary_keyword"
+    | "required_module"
     | "word_count"
     | "schema";
   message: string;

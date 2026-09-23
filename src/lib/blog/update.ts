@@ -15,6 +15,7 @@ import {
   defaultBlogRender,
   defaultBlogSemanticRender,
   buildBlogPostMetadata,
+  contentModulePromptBlock,
   classifiedMetadata,
   DrizzleBlogCreateStore,
   generateWithRateLimitRetry,
@@ -118,6 +119,7 @@ Article update requirements:
 - Follow the supplied editorial brief. It defines required modules, planned internal links, CTA goal, target audience, supporting keywords, and tenant facts to use.
 - If editorial.requiredModules includes "internal-links", include at least one planned internal link exactly as supplied in editorial.internalLinkPlan.
 - If editorial.requiredModules includes "cta", include a CTA block using the tenant CTA config and make the CTA purpose match editorial.ctaPlan.
+- If editorial.topicType is "rates", satisfy every required content module. Rate ranges require source support; use the noRateDataFallback block when source data is missing.
 - Write post.seo.metaTitle as a 50-60 character search title.
 - Write post.seo.metaDescription as a 140-160 character search description.
 - Use a lowercase, hyphenated post.slug with stop words removed, 70 characters or fewer.
@@ -211,6 +213,9 @@ function buildUserPrompt(brief: BlogUpdateBrief, retryInstructions: string[]): s
     {
       brief,
       retryInstructions,
+      contentModuleInstructions: contentModulePromptBlock(
+        brief.editorial.requiredModuleContract
+      ),
       outputContract: {
         schema: postSchema,
         currentMonth: new Date().toLocaleString("en-AU", {

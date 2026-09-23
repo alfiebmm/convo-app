@@ -11,6 +11,7 @@ import {
 import {
   validateEditorialBriefArticle,
   type EditorialBrief,
+  type RequiredModules,
 } from "./editorial-brief";
 import type { ClassifiedConversation } from "./classify-conversation";
 import { slugify } from "./dedup";
@@ -72,6 +73,39 @@ function buildArticleRetryReminder(tenantDomain: string): string {
     `Your previous response contained a link to a non-tenant domain. ` +
     `Only link to https://${tenantDomain}.`
   );
+}
+
+function moduleInstructions(contract: RequiredModules | undefined): string {
+  if (!contract) return "";
+  const lines: string[] = [];
+  if (contract.quickAnswer) {
+    lines.push('- Emit a quick answer callout as `<aside class="quick-answer">...</aside>`.');
+  }
+  if (contract.rateTableOrFallback) {
+    lines.push(
+      '- Emit a `<table>` only when verified rate data exists. If verified rate data is missing, never invent ranges; emit `<p data-fallback="no-rate-data">We do not yet have verified rate data for this service. Use the CTA to request a quote for the exact job scope.</p>`.'
+    );
+  }
+  if (contract.quoteDrivers) {
+    lines.push("- Include a quote-driver list explaining practical cost/rate factors.");
+  }
+  if (contract.checklist) {
+    lines.push('- Include a practical checklist as `<ul class="checklist">...</ul>`.');
+  }
+  if (contract.cta) {
+    lines.push("- Include a relevant CTA block in portable HTML.");
+  }
+  if (contract.faq) {
+    lines.push("- Include answered FAQs, not questions without answer copy.");
+  }
+  if (contract.internalLinks) {
+    lines.push("- Include approved internal links where the brief supplies them.");
+  }
+  return lines.length ? `\nREQUIRED CONTENT MODULES:\n${lines.join("\n")}` : "";
+}
+
+function buildArticlePrompt(editorialBrief?: EditorialBrief): string {
+  return `${ARTICLE_PROMPT}${moduleInstructions(editorialBrief?.requiredModuleContract)}`;
 }
 
 // CON-186: linking hard-rule block. Per Cam-approved policy (delegated
@@ -164,7 +198,7 @@ ${transcript}`;
 
   for (let attempt = 1; attempt <= MAX_ARTICLE_GENERATION_ATTEMPTS; attempt++) {
     const raw = await createCompletion([
-      { role: "system", content: ARTICLE_PROMPT },
+      { role: "system", content: buildArticlePrompt(editorialBrief) },
       {
         role: "user",
         content:

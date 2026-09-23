@@ -32,6 +32,11 @@ export type BlogRepairBrief = {
     primaryKeyword: string;
     intent: string;
   };
+  editorial?: {
+    topicType?: string;
+    requiredModules?: string[];
+    requiredModuleContract?: unknown;
+  };
 };
 
 export type RepairOperation = {
@@ -402,6 +407,52 @@ async function repairWordCount(
   };
 }
 
+async function repairRequiredModules(
+  post: BlogPostJson,
+  brief: BlogRepairBrief,
+  violation: WritingRuleViolation,
+  ai: BlogRepairAi
+): Promise<RepairResult> {
+  const raw = await ai.generatePost({
+    systemPrompt:
+      "You repair Convo blog post JSON so it satisfies required content modules. Return only the full repaired post.json object. Do not include markdown fences.",
+    userPrompt: JSON.stringify(
+      {
+        task: "Repair the article so every missing required content module is present while preserving accurate existing prose.",
+        primaryKeyword: brief.decision.primaryKeyword,
+        tenantName: brief.tenant.name,
+        violation: violation.message,
+        editorial: brief.editorial ?? null,
+        requirements: {
+          noFabricatedRates:
+            "Do not invent rate ranges. If verified rate data is not present in the post or source context, use a noRateDataFallback block instead of a table.",
+          quickAnswerBlock: "Use type=quickAnswer.",
+          rateTableBlock: "Use type=table with caption, headers, and rows only when rate data is verified.",
+          noDataFallbackBlock: "Use type=noRateDataFallback for missing verified rate data.",
+          quoteDrivers: "Include a heading containing quote drivers and a list of factors.",
+          checklist: "Use type=checklist for a practical job brief checklist.",
+          cta: "Use type=cta and preserve the tenant CTA config.",
+          faq: "Keep at least three answered FAQs.",
+        },
+        post,
+      },
+      null,
+      2
+    ),
+  });
+
+  return {
+    post: enforceCtaConfig(JSON.parse(raw) as BlogPostJson, brief.tenant.ctaConfig),
+    operations: [
+      {
+        kind: "model",
+        code: "required_module",
+        action: "repair_required_content_modules",
+      },
+    ],
+  };
+}
+
 export async function repairBlogPost(
   post: BlogPostJson,
   brief: BlogRepairBrief,
@@ -414,6 +465,9 @@ export async function repairBlogPost(
   }
   if (violation.code === "australian_english") return normaliseAustralianEnglish(post);
   if (violation.code === "schema") return repairSafeSchemaDefaults(post, brief);
+  if (violation.code === "required_module") {
+    return repairRequiredModules(post, brief, violation, ai);
+  }
   if (violation.code === "word_count") {
     return repairWordCount(post, brief, violation as WordCountGateViolation, ai);
   }

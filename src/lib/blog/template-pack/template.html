@@ -183,6 +183,10 @@
       {{#eq type "h3"}}<h3>{{{text}}}</h3>{{/eq}}
       {{#eq type "ul"}}<ul>{{#each items}}<li>{{{this}}}</li>{{/each}}</ul>{{/eq}}
       {{#eq type "ol"}}<ol>{{#each items}}<li>{{{this}}}</li>{{/each}}</ol>{{/eq}}
+      {{#eq type "quickAnswer"}}<aside class="quick-answer"><h3>{{heading}}</h3><p>{{{body}}}</p></aside>{{/eq}}
+      {{#eq type "table"}}<table><caption>{{caption}}</caption><thead><tr>{{#each headers}}<th scope="col">{{this}}</th>{{/each}}</tr></thead><tbody>{{#each rows}}<tr>{{#each this}}<td>{{{this}}}</td>{{/each}}</tr>{{/each}}</tbody></table>{{/eq}}
+      {{#eq type "checklist"}}<ul class="checklist">{{#each items}}<li>{{{this}}}</li>{{/each}}</ul>{{/eq}}
+      {{#eq type "noRateDataFallback"}}<p data-fallback="no-rate-data">{{{text}}}</p>{{/eq}}
       {{#eq type "keyTakeaway"}}<aside class="gh-blog-key-takeaway"><h4>{{label}}</h4><p>{{{body}}}</p></aside>{{/eq}}
       {{#eq type "readNext"}}<aside class="gh-blog-related-inline"><p class="gh-blog-related-inline__label">{{label}}</p><div class="gh-blog-related-inline__links">{{#each links}}<a class="gh-blog-related-inline-link" href="{{url}}"><span>{{label}}</span><span class="gh-blog-related-inline-link__arrow">→</span></a>{{/each}}</div></aside>{{/eq}}
       {{#eq type "cta"}}<aside class="gh-blog-key-takeaway" role="complementary"><h4>{{heading}}</h4><p>{{{body}}}</p><p style="margin-top:16px !important;"><a class="gh-blog-site-header__order" href="{{linkUrl}}">{{linkLabel}} →</a></p></aside>{{/eq}}

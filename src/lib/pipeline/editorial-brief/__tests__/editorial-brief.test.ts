@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   buildEditorialBrief,
+  detectTopicType,
+  requiredModulesForTopicType,
   validateEditorialBriefArticle,
   type TenantSeoStrategy,
 } from "../index";
@@ -49,6 +51,47 @@ test("selects the best-fit tenant keyword and plans modules", () => {
   assert.ok(brief.requiredModules.includes("internal-links"));
   assert.ok(brief.requiredModules.includes("cta"));
   assert.equal(brief.internalLinkPlan[0].url, "https://example.com/leaks");
+});
+
+test("detects rates topic type from primary query and maps required modules", () => {
+  const topicType = detectTopicType({
+    primaryKeyword: "AgPages contractor rates",
+    secondaryKeywords: ["how much does contract spraying cost", "per hectare rates"],
+    articleType: "guide",
+    searchIntent: "commercial",
+  });
+  const modules = requiredModulesForTopicType(topicType, {
+    hasLinks: false,
+    hasCta: false,
+  });
+
+  assert.equal(topicType, "rates");
+  assert.deepEqual(modules, {
+    quickAnswer: true,
+    rateTableOrFallback: true,
+    quoteDrivers: true,
+    checklist: true,
+    cta: true,
+    faq: true,
+    internalLinks: true,
+  });
+});
+
+test("keeps non-rates topics on the general contract", () => {
+  const topicType = detectTopicType({
+    primaryKeyword: "how to prepare a paddock",
+    secondaryKeywords: ["spraying preparation checklist"],
+    articleType: "guide",
+    searchIntent: "informational",
+  });
+  const modules = requiredModulesForTopicType(topicType, {
+    hasLinks: true,
+    hasCta: false,
+  });
+
+  assert.equal(topicType, "general");
+  assert.equal(modules.rateTableOrFallback, false);
+  assert.equal(modules.internalLinks, true);
 });
 
 test("marks noStrongTarget when tenant targets do not fit", () => {

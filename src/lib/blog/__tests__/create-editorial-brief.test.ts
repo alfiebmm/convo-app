@@ -34,13 +34,49 @@ function validPost(): BlogPostJson {
     intro:
       "This service pricing guide explains common factors, useful questions, and practical next steps for people comparing support options.",
     sections: Array.from({ length: 4 }, (_, index) => ({
-      heading: index === 0 ? "Service pricing guide" : `Planning section ${index}`,
+      heading:
+        index === 0
+          ? "Service pricing guide"
+          : index === 1
+            ? "Quote drivers for service pricing"
+            : `Planning section ${index}`,
       blocks: [
+        ...(index === 0
+          ? [
+              {
+                type: "quickAnswer" as const,
+                heading: "Quick answer",
+                body:
+                  "Use this service pricing guide to scope the request. Verified rate ranges are not available in this source.",
+              },
+            ]
+          : []),
         { type: "p" as const, text: `${prose(70)} service pricing guide` },
         { type: "p" as const, text: prose(70) },
         { type: "p" as const, text: prose(70) },
+        ...(index === 1
+          ? [
+              {
+                type: "ul" as const,
+                items: ["Scope", "Timing", "Support needs"],
+              },
+            ]
+          : []),
+        ...(index === 2
+          ? [
+              {
+                type: "noRateDataFallback" as const,
+                text:
+                  "We do not yet have verified rate data for this service. Use the CTA to request a quote for the exact job scope.",
+              },
+            ]
+          : []),
         ...(index === 3
           ? [
+              {
+                type: "checklist" as const,
+                items: ["Share the scope", "Confirm timing", "Ask what is included"],
+              },
               {
                 type: "cta" as const,
                 heading: "Request support",

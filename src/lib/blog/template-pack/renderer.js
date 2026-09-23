@@ -177,6 +177,55 @@ function renderSemanticBlock(block) {
       '</ol>',
     ]);
   }
+  if (block.type === 'quickAnswer') {
+    return compact([
+      '<aside class="quick-answer">',
+      block.heading ? `  <h3>${sanitizeInlineHtml(block.heading)}</h3>` : '',
+      block.body ? `  <p>${sanitizeInlineHtml(block.body)}</p>` : '',
+      '</aside>',
+    ]);
+  }
+  if (block.type === 'table') {
+    const headers = Array.isArray(block.headers) ? block.headers : [];
+    const rows = Array.isArray(block.rows) ? block.rows : [];
+    return compact([
+      '<table>',
+      block.caption ? `  <caption>${sanitizeInlineHtml(block.caption)}</caption>` : '',
+      headers.length
+        ? compact([
+            '  <thead>',
+            '    <tr>',
+            ...headers.map((header) => `      <th scope="col">${sanitizeInlineHtml(header)}</th>`),
+            '    </tr>',
+            '  </thead>',
+          ])
+        : '',
+      rows.length
+        ? compact([
+            '  <tbody>',
+            ...rows.flatMap((row) => [
+              '    <tr>',
+              ...(Array.isArray(row) ? row : []).map(
+                (cell) => `      <td>${sanitizeInlineHtml(cell)}</td>`
+              ),
+              '    </tr>',
+            ]),
+            '  </tbody>',
+          ])
+        : '',
+      '</table>',
+    ]);
+  }
+  if (block.type === 'checklist') {
+    return compact([
+      '<ul class="checklist">',
+      ...(block.items || []).map((item) => `  <li>${sanitizeInlineHtml(item)}</li>`),
+      '</ul>',
+    ]);
+  }
+  if (block.type === 'noRateDataFallback') {
+    return `<p data-fallback="no-rate-data">${sanitizeInlineHtml(block.text)}</p>`;
+  }
   if (block.type === 'keyTakeaway') {
     return `<blockquote><p><strong>${escapeHtml(block.label || 'Key takeaway')}:</strong> ${sanitizeInlineHtml(block.body)}</p></blockquote>`;
   }

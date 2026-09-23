@@ -3,8 +3,10 @@ import type {
   EditorialBrief,
   EditorialBriefDecision,
   EditorialBriefMessage,
+  RequiredModules,
   SearchIntent,
   TenantSeoStrategy,
+  TopicType,
 } from "./types";
 import type { ClassifiedConversation } from "../classify-conversation";
 
@@ -82,6 +84,116 @@ const MODULES_BY_ARTICLE_TYPE: Record<string, string[]> = {
   faq: ["quick-answer", "faq"],
   "landing-support": ["quick-answer", "cta"],
 };
+
+const RATES_TOPIC_TRIGGERS = [
+  "rates",
+  "rate",
+  "cost",
+  "costs",
+  "pricing",
+  "price",
+  "quote",
+  "quotes",
+  "fee",
+  "fees",
+  "$/hr",
+  "per hour",
+  "hourly",
+  "day rate",
+  "per acre",
+  "per hectare",
+  "price list",
+  "how much",
+];
+
+const RATES_TOPIC_PATTERNS = RATES_TOPIC_TRIGGERS.map((trigger) => {
+  if (trigger === "$/hr") return /\$\/hr/i;
+  const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
+});
+
+const GENERAL_REQUIRED_MODULES: RequiredModules = {
+  quickAnswer: false,
+  rateTableOrFallback: false,
+  quoteDrivers: false,
+  checklist: false,
+  cta: false,
+  faq: false,
+  internalLinks: false,
+};
+
+const RATES_REQUIRED_MODULES: RequiredModules = {
+  quickAnswer: true,
+  rateTableOrFallback: true,
+  quoteDrivers: true,
+  checklist: true,
+  cta: true,
+  faq: true,
+  internalLinks: true,
+};
+
+function detectTopicTypeFromQueries(values: string[]): TopicType {
+  const queryText = values
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+  if (!queryText) return "general";
+  return RATES_TOPIC_PATTERNS.some((pattern) => pattern.test(queryText))
+    ? "rates"
+    : "general";
+}
+
+export function detectTopicType(params: {
+  primaryKeyword?: string | null;
+  secondaryKeywords?: string[];
+  articleType?: string | null;
+  searchIntent?: SearchIntent | null;
+}): TopicType {
+  const primarySignals = [
+    params.primaryKeyword ?? "",
+    ...(params.secondaryKeywords ?? []),
+  ];
+  const queryTopic = detectTopicTypeFromQueries(primarySignals);
+  if (queryTopic !== "general") return queryTopic;
+
+  const articleType = params.articleType?.trim().toLowerCase() ?? "";
+  if (articleType === "pricing") return "rates";
+  if (params.searchIntent === "commercial" && detectTopicTypeFromQueries([articleType]) === "rates") {
+    return "rates";
+  }
+  return "general";
+}
+
+export function requiredModulesForTopicType(
+  topicType: TopicType,
+  params: { hasLinks: boolean; hasCta: boolean }
+): RequiredModules {
+  if (topicType === "rates") {
+    return {
+      ...RATES_REQUIRED_MODULES,
+      internalLinks: true,
+      cta: true,
+    };
+  }
+
+  return {
+    ...GENERAL_REQUIRED_MODULES,
+    internalLinks: params.hasLinks,
+    cta: params.hasCta,
+  };
+}
+
+function requiredModuleNames(contract: RequiredModules): string[] {
+  const modules: string[] = [];
+  if (contract.quickAnswer) modules.push("quick-answer");
+  if (contract.rateTableOrFallback) modules.push("rate-table-or-fallback");
+  if (contract.quoteDrivers) modules.push("quote-drivers");
+  if (contract.checklist) modules.push("checklist");
+  if (contract.cta) modules.push("cta");
+  if (contract.faq) modules.push("faq");
+  if (contract.internalLinks) modules.push("internal-links");
+  return modules;
+}
 
 export function modulesForArticleType(params: {
   searchIntent: SearchIntent;
@@ -226,6 +338,25 @@ export function buildEditorialBrief(params: {
         .filter(Boolean)
         .some((value) => value === articleType || value === audience?.persona),
     ) ?? strategy.preferredCtas[0] ?? null;
+  const topicType = detectTopicType({
+    primaryKeyword: selectedPrimaryKeyword,
+    secondaryKeywords: hasClassification(params)
+      ? params.classification.secondaryKeywords
+      : candidates
+          .filter((candidate) => candidate.keyword !== selectedPrimaryKeyword)
+          .slice(0, 5)
+          .map((candidate) => candidate.keyword),
+    articleType,
+    searchIntent,
+  });
+  const requiredModuleContract = requiredModulesForTopicType(topicType, {
+    hasLinks: links.length > 0,
+    hasCta: Boolean(cta),
+  });
+  const selectedModules =
+    topicType === "rates"
+      ? requiredModuleNames(requiredModuleContract)
+      : moduleSelection(searchIntent, articleType, links.length > 0, Boolean(cta));
 
   return {
     conversationId: params.conversationId,
@@ -278,7 +409,8 @@ export function buildEditorialBrief(params: {
         : []),
       ...(hasClassification(params) ? reviewFallbacks(params.classification) : []),
     ],
-    requiredModules: moduleSelection(searchIntent, articleType, links.length > 0, Boolean(cta)),
+    requiredModules: selectedModules,
+    requiredModuleContract,
     internalLinkPlan: links,
     ctaPlan: cta
       ? { label: cta.label, url: cta.url, rationale: "Tenant-preferred CTA matched the brief." }
@@ -294,6 +426,7 @@ export function buildEditorialBrief(params: {
     noStrongTarget,
     needsReview: noStrongTarget || (hasClassification(params) && params.classification.needsReview),
     searchIntent,
+    topicType,
     targetAudience: audience?.persona ?? null,
     articleType,
   };
@@ -346,6 +479,7 @@ export function validateEditorialBriefArticle(params: {
     .join(" ")
     .toLowerCase();
   const fullText = plainText(params.article).toLowerCase();
+  const rawContent = (params.article.content ?? "").toLowerCase();
   const lowerKeyword = keyword.toLowerCase();
 
   if (!title.includes(lowerKeyword)) {
@@ -379,6 +513,18 @@ export function validateEditorialBriefArticle(params: {
     !fullText.includes(plannedCta.toLowerCase())
   ) {
     issues.push({ code: "cta_missing", message: "Planned CTA is missing." });
+  }
+
+  if (params.brief.topicType === "rates" && rawContent.includes("<")) {
+    if (!/<aside[^>]*class=["'][^"']*quick-answer/i.test(rawContent)) {
+      issues.push({ code: "quick_answer_missing", message: "Rates article is missing a quick-answer callout." });
+    }
+    if (!/<table[\s>]/i.test(rawContent) && !/data-fallback=["']no-rate-data["']/i.test(rawContent)) {
+      issues.push({ code: "rate_table_missing", message: "Rates article is missing a rate table or no-rate-data fallback." });
+    }
+    if (!/<ul[^>]*class=["'][^"']*checklist/i.test(rawContent)) {
+      issues.push({ code: "checklist_missing", message: "Rates article is missing a checklist block." });
+    }
   }
 
   return issues;

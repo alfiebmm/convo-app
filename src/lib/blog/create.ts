@@ -25,6 +25,7 @@ import {
   articleSeoFromBrief,
   buildEditorialBrief,
   validateEditorialBriefArticle,
+  type RequiredModules,
   type ArticleSeoFields,
   type EditorialBrief,
   type TenantSeoStrategy,
@@ -203,6 +204,7 @@ export type RetryClass =
   | "banned_term"
   | "australian_english"
   | "primary_keyword"
+  | "required_module"
   | "word_count";
 
 const MAX_RATE_LIMIT_ATTEMPTS = 2;
@@ -211,6 +213,44 @@ const MAX_REPAIR_PASSES = 12;
 
 const AU_ENGLISH_RULE =
   "Write in Australian English. Use -ise, -our, -re spellings. Words: organisation, optimise, colour, centre, behaviour, favourite, honour, licence (noun), license (verb), programme (noun), analyse, realise.";
+
+export function contentModulePromptBlock(contract: RequiredModules): string {
+  const lines: string[] = [];
+  if (contract.quickAnswer) {
+    lines.push(
+      '- Include a quick answer block using `{ "type": "quickAnswer", "heading": "Quick answer", "body": "..." }`.'
+    );
+  }
+  if (contract.rateTableOrFallback) {
+    lines.push(
+      '- Include a rates table using `{ "type": "table", "caption": "...", "headers": [...], "rows": [[...]] }` when verified rate data exists. If verified rate data is missing, do not invent ranges; include `{ "type": "noRateDataFallback", "text": "We do not yet have verified rate data for this service. Use the CTA to request a quote for the exact job scope." }` instead.'
+    );
+  }
+  if (contract.quoteDrivers) {
+    lines.push(
+      '- Include a section or subsection headed with "quote drivers" and a list of practical factors that change the quote.'
+    );
+  }
+  if (contract.checklist) {
+    lines.push(
+      '- Include a practical job brief checklist using `{ "type": "checklist", "items": [...] }`.'
+    );
+  }
+  if (contract.cta) {
+    lines.push("- Include a CTA block using the supplied tenant CTA config exactly.");
+  }
+  if (contract.faq) {
+    lines.push("- Include at least three FAQs and answer every FAQ with useful body text.");
+  }
+  if (contract.internalLinks) {
+    lines.push(
+      "- Include approved internal links when the brief supplies them. Never invent internal URLs."
+    );
+  }
+
+  if (lines.length === 0) return "";
+  return `\nRequired content modules:\n${lines.join("\n")}\n`;
+}
 
 function formatBannedTerms(terms: string[]): string {
   return `[${terms.join(", ")}]`;
@@ -250,10 +290,12 @@ Article requirements:
 - Follow the supplied editorial brief. It defines required modules, planned internal links, CTA goal, target audience, supporting keywords, and tenant facts to use.
 - If editorial.requiredModules includes "internal-links", include at least one planned internal link exactly as supplied in editorial.internalLinkPlan.
 - If editorial.requiredModules includes "cta", include a CTA block using the tenant CTA config and make the CTA purpose match editorial.ctaPlan.
+- If editorial.topicType is "rates", satisfy every required content module. Rate ranges require source support; use the noRateDataFallback block when source data is missing.
 - Do not invent facts that are not supported by the source conversation, tenant context, or common non-sensitive industry knowledge.
 - Do not fabricate customer names, prices, guarantees, credentials, or policies.
 - Use sentence case headings.
 - ${AU_ENGLISH_RULE}
+${contentModulePromptBlock(brief.editorial.requiredModuleContract)}
 
 ${contentRulesPrompt}`;
 }
@@ -523,6 +565,9 @@ function buildUserPrompt(brief: BlogBrief, retryInstructions: string[]): string 
     {
       brief,
       retryInstructions,
+      contentModuleInstructions: contentModulePromptBlock(
+        brief.editorial.requiredModuleContract
+      ),
       outputContract: {
         schema: postSchema,
         currentMonth: new Date().toLocaleString("en-AU", {
@@ -539,6 +584,65 @@ function buildUserPrompt(brief: BlogBrief, retryInstructions: string[]): string 
 
 export function parsePostJson(raw: string): BlogPostJson {
   return JSON.parse(raw) as BlogPostJson;
+}
+
+function requiredModuleViolation(missing: string[]): WritingRuleViolation | null {
+  if (missing.length === 0) return null;
+  return {
+    code: "required_module",
+    message: `Required content module(s) missing: ${missing.join(", ")}. Rates/cost articles must not pass as generic prose.`,
+  };
+}
+
+export function validateRequiredModules(
+  post: BlogPostJson,
+  contract: RequiredModules
+): WritingRuleViolation | null {
+  const blocks = post.sections.flatMap((section) => section.blocks);
+  const headings = post.sections
+    .map((section) => section.heading)
+    .join(" ")
+    .toLowerCase();
+  const missing: string[] = [];
+
+  if (contract.quickAnswer && !blocks.some((block) => block.type === "quickAnswer")) {
+    missing.push("quick-answer");
+  }
+
+  if (
+    contract.rateTableOrFallback &&
+    !blocks.some((block) => block.type === "table") &&
+    !blocks.some((block) => block.type === "noRateDataFallback")
+  ) {
+    missing.push("rate-table-or-no-data-fallback");
+  }
+
+  if (
+    contract.quoteDrivers &&
+    !(
+      /\bquote drivers?\b|\bcost drivers?\b|\brate drivers?\b|\bpricing factors?\b/.test(headings) &&
+      blocks.some((block) => block.type === "ul" || block.type === "ol" || block.type === "checklist")
+    )
+  ) {
+    missing.push("quote-drivers");
+  }
+
+  if (contract.checklist && !blocks.some((block) => block.type === "checklist")) {
+    missing.push("checklist");
+  }
+
+  if (contract.cta && !blocks.some((block) => block.type === "cta")) {
+    missing.push("cta");
+  }
+
+  if (
+    contract.faq &&
+    post.faqs.filter((faq) => faq.q.trim() && faq.a.trim().split(/\s+/).length >= 4).length < 3
+  ) {
+    missing.push("answered-faq");
+  }
+
+  return requiredModuleViolation(missing);
 }
 
 function schemaFailure(errors: ValidationResult): WritingRuleViolation {
@@ -612,6 +716,9 @@ export function validateCandidate(
 
   let post = enforceCtaConfig(stripped.value, brief.tenant.ctaConfig);
 
+  const requiredModules = validateRequiredModules(post, brief.editorial.requiredModuleContract);
+  if (requiredModules) throw requiredModules;
+
   const banned = findBannedTerm(post, brief.tenant.writingRules.bannedTerms);
   if (banned) throw banned;
 
@@ -681,6 +788,8 @@ export function classifiedMetadata(
     secondaryKeywords: editorial.supportingKeywords,
     audience: editorial.targetAudience,
     articleType: editorial.articleType,
+    topicType: editorial.topicType,
+    requiredModuleContract: editorial.requiredModuleContract,
     searchIntent: editorial.searchIntent,
     needsReview: editorial.needsReview,
   };
