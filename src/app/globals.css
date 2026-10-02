@@ -54,3 +54,206 @@ html {
   color: #71717a;
   opacity: 1;
 }
+
+.wp-preview {
+  font-family: var(--wp-brand-font);
+}
+
+.wp-preview * {
+  box-sizing: border-box;
+}
+
+.wp-preview img {
+  display: block;
+  max-width: 100%;
+}
+
+.wp-preview__content {
+  color: var(--wp-brand-text);
+}
+
+.wp-preview__content > :first-child {
+  margin-top: 0;
+}
+
+.wp-preview__content h2 {
+  margin: 3rem 0 1rem;
+  color: var(--wp-brand-text);
+  font-size: 1.75rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.wp-preview__content h3 {
+  margin: 2rem 0 0.75rem;
+  color: var(--wp-brand-text);
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.wp-preview__content p,
+.wp-preview__content li,
+.wp-preview__content td,
+.wp-preview__content th {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.wp-preview__content p {
+  margin: 0 0 1.25rem;
+}
+
+.wp-preview__content a {
+  color: var(--wp-brand-primary);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--wp-brand-primary) 35%, transparent);
+}
+
+.wp-preview__content a:hover {
+  color: var(--wp-brand-primary-hover);
+  border-bottom-color: var(--wp-brand-primary-hover);
+}
+
+.wp-preview__content ul,
+.wp-preview__content ol {
+  margin: 0 0 1.5rem;
+  padding-left: 1.5rem;
+}
+
+.wp-preview__content li {
+  margin: 0.45rem 0;
+}
+
+.wp-preview__content figure {
+  margin: 2rem 0;
+}
+
+.wp-preview__content figure img {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.wp-preview__content figcaption {
+  margin-top: 0.75rem;
+  color: var(--wp-brand-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.wp-preview__content table {
+  display: table;
+  table-layout: fixed;
+  width: 100%;
+  margin: 2rem 0;
+  border-collapse: collapse;
+  border: 1px solid var(--wp-brand-border);
+  border-radius: 8px;
+}
+
+.wp-preview__content caption {
+  padding: 0.875rem 1rem;
+  text-align: left;
+  color: var(--wp-brand-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.wp-preview__content th,
+.wp-preview__content td {
+  padding: 0.875rem 1rem;
+  text-align: left;
+  border-top: 1px solid var(--wp-brand-border);
+  overflow-wrap: anywhere;
+}
+
+.wp-preview__content th {
+  background: var(--wp-brand-secondary);
+  color: var(--wp-brand-bg);
+  font-weight: 650;
+}
+
+.wp-preview__content tbody tr:nth-child(even) td {
+  background: var(--wp-brand-surface);
+}
+
+.wp-preview__content blockquote,
+.wp-preview__content .quick-answer,
+.wp-preview__content .gh-blog-key-takeaway {
+  margin: 2.75rem 0;
+  padding: 1.5rem 1.75rem;
+  border-left: 4px solid var(--wp-brand-primary);
+  border-radius: 0 8px 8px 0;
+  background: var(--wp-brand-surface);
+}
+
+.wp-preview__content blockquote p:last-child,
+.wp-preview__content .quick-answer p:last-child,
+.wp-preview__content .gh-blog-key-takeaway p:last-child {
+  margin-bottom: 0;
+}
+
+.wp-preview__content .quick-answer h3,
+.wp-preview__content .gh-blog-key-takeaway h4 {
+  margin-top: 0;
+  color: var(--wp-brand-primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wp-preview__content .checklist {
+  list-style: none;
+  padding-left: 0;
+}
+
+.wp-preview__content .checklist li {
+  position: relative;
+  padding-left: 1.75rem;
+}
+
+.wp-preview__content .checklist li::before {
+  position: absolute;
+  left: 0;
+  color: var(--wp-brand-primary);
+  content: "-";
+  font-weight: 700;
+}
+
+.wp-preview__content h2:is(:first-child) {
+  margin-top: 0;
+}
+
+.wp-preview__content h2:has(+ h3 + p),
+.wp-preview__content h2:has(+ h3) {
+  padding-top: 3rem;
+  border-top: 1px solid var(--wp-brand-border);
+}
+
+@media (min-width: 768px) {
+  .wp-preview__content h2 {
+    font-size: 2.35rem;
+  }
+
+  .wp-preview__content h3 {
+    font-size: 1.65rem;
+  }
+
+  .wp-preview__content p,
+  .wp-preview__content li {
+    font-size: 1.08rem;
+  }
+
+  .wp-preview__content th,
+  .wp-preview__content td {
+    min-width: 9rem;
+  }
+}
