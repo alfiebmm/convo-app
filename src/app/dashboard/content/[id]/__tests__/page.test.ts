@@ -129,6 +129,9 @@ test("renders success state with title and body", async () => {
   const markup = await renderArticle(makePost());
 
   assert.match(markup, /How pharmacists support ongoing care/);
+  assert.match(markup, /Draft/);
+  assert.match(markup, /Publish preview/);
+  assert.match(markup, /\/publish-preview\/content\/33333333-3333-4333-8333-333333333333/);
   assert.match(markup, /Article body/);
   assert.match(markup, /rel="noopener noreferrer"/);
   assert.match(markup, /View source conversation/);

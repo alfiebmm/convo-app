@@ -392,7 +392,23 @@ export async function ArticleDetailViewWithPublishing({
   return (
     <div className="space-y-6">
       <header className="space-y-4">
-        <h1 className="text-3xl font-bold text-slate-900">{post.title}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1 className="text-3xl font-bold text-slate-900">{post.title}</h1>
+          <div
+            className="flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-sm font-medium"
+            aria-label="Preview mode"
+          >
+            <span className="rounded-md bg-white px-3 py-1.5 text-slate-950 shadow-sm">
+              Draft
+            </span>
+            <Link
+              href={`/publish-preview/content/${post.id}`}
+              className="rounded-md px-3 py-1.5 text-slate-600 hover:text-slate-950"
+            >
+              Publish preview
+            </Link>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <BlogPostStatusPill status={post.status} />
           <span>{formatDate(post.createdAt)}</span>
