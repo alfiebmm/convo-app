@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { marked } from "marked";
 
-import type { PrePublishChecklistResult } from "@/lib/blog/pre-publish-checklist";
+import type {
+  ChecklistItemId,
+  ChecklistItemResult,
+  PrePublishChecklistResult,
+} from "@/lib/blog/pre-publish-checklist";
 import type { BlogPostDetail } from "@/lib/blog/queries";
 
 import { BlogPostStatusPill } from "../content-list";
@@ -504,24 +508,120 @@ export async function ArticleDetailViewWithPublishing({
         </a>
       ) : null}
 
-      {checklist ? (
-        <PrePublishChecklistPanel postId={post.id} checklist={checklist} />
+      <PublishReadinessPanel
+        postId={post.id}
+        checklist={checklist}
+        status={post.status}
+        wordpressSiteUrl={wordpressSiteUrl}
+        publishChecklist={readChecklist(post.metadata)}
+      />
+    </div>
+  );
+}
+
+// Short, tenant-friendly phrasing for each hard-blocker checklist item.
+// Keep concise — this is the plain-language blocker summary near Publish.
+const BLOCKER_SHORT_LABEL: Record<ChecklistItemId, string> = {
+  keyword_placement: "primary keyword placement",
+  meta_title_length: "meta title length",
+  meta_description_length: "meta description length",
+  slug_format: "slug format",
+  schema_valid: "schema invalid",
+  canonical_url: "canonical URL missing",
+  internal_links: "internal links missing",
+  og_fields: "Open Graph fields",
+  locale_en_au: "Australian English",
+  no_em_dashes: "em dashes present",
+  no_banned_terms: "banned terms present",
+  word_count: "word count",
+  single_cta: "CTA count",
+  grounding: "tenant grounding",
+  no_pii_from_thread: "contact details leaked from chat",
+};
+
+function blockerSummary(fails: ChecklistItemResult[]): string | null {
+  if (fails.length === 0) return null;
+  const parts = fails.map((item) => BLOCKER_SHORT_LABEL[item.id] ?? item.label.toLowerCase());
+  if (parts.length === 1) return `Cannot publish yet: ${parts[0]}.`;
+  if (parts.length === 2) return `Cannot publish yet: ${parts[0]} and ${parts[1]}.`;
+  const head = parts.slice(0, -1).join(", ");
+  const tail = parts[parts.length - 1];
+  return `Cannot publish yet: ${head}, and ${tail}.`;
+}
+
+function PublishReadinessPanel({
+  postId,
+  checklist,
+  status,
+  wordpressSiteUrl,
+  publishChecklist,
+}: {
+  postId: string;
+  checklist: PrePublishChecklistResult | null;
+  status: BlogPostDetail["status"];
+  wordpressSiteUrl: string | null;
+  publishChecklist: PrePublishChecklistResult | null;
+}) {
+  const fails = checklist?.items.filter((item) => item.status === "fail") ?? [];
+  const summary = blockerSummary(fails);
+
+  return (
+    <section
+      aria-label="Publishing readiness"
+      className="rounded-lg border border-slate-200 bg-white p-5"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Publishing readiness</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Review and publish controls for this article. The article preview above is
+            kept clean for reading — the full review checks live below.
+          </p>
+        </div>
+      </div>
+
+      {summary ? (
+        <div
+          role="status"
+          className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900"
+        >
+          {summary}
+        </div>
+      ) : checklist ? (
+        <div
+          role="status"
+          className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900"
+        >
+          All pre-publish checks passing. Ready to publish.
+        </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {["Approve", "Reject", "Edit"].map((action) => (
           <DisabledAction key={action} tooltip="Coming in CON-107 / CON-111">
             {action}
           </DisabledAction>
         ))}
         <PublishBlogPostButton
-          postId={post.id}
-          status={post.status}
-          prePublishChecklist={readChecklist(post.metadata)}
+          postId={postId}
+          status={status}
+          prePublishChecklist={publishChecklist}
           wordpressSiteUrl={wordpressSiteUrl}
         />
       </div>
-    </div>
+
+      {checklist ? (
+        <details className="mt-5 rounded-lg border border-slate-200 bg-slate-50">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">
+            Review checks ({checklist.items.filter((item) => item.status === "pass").length} /{" "}
+            {checklist.items.length} passed)
+          </summary>
+          <div className="border-t border-slate-200 bg-white px-4 py-3">
+            <PrePublishChecklistPanel postId={postId} checklist={checklist} />
+          </div>
+        </details>
+      ) : null}
+    </section>
   );
 }
 
@@ -713,13 +813,13 @@ function PrePublishChecklistPanel({
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5">
+    <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">
+          <p className="text-sm font-medium text-slate-900">
             Pre-publish checklist
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
             {passed} / {checklist.items.length} checks passed
           </p>
         </div>
@@ -750,7 +850,7 @@ function PrePublishChecklistPanel({
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   );
 }
 
