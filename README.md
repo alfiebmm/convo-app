@@ -43,6 +43,10 @@ Platform-admin Supabase access uses anon plus a short-lived JWT signed with
 `SUPABASE_JWT_SECRET` so RLS checks `public.is_platform_staff()` against the
 current admin user.
 
+## Blog engine rebuild
+
+Roadmap: [`docs/blog-engine-rebuild-roadmap.md`](docs/blog-engine-rebuild-roadmap.md).
+
 ## Project Structure
 
 ```
